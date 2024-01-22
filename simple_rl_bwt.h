@@ -15,10 +15,11 @@ struct simple_rl_bwt{
     typedef uint8_t sym_type;
 
     static const size_t b_size = 4096;
-    static const size_t max_runs_per_block = 256;
+    static const size_t max_runs_per_block = 128;
     static const size_t mb_size = 512;
     static constexpr size_t max_run_len = 2048;
     static const size_t n_mini_blocks = INT_CEIL(b_size, mb_size);
+    static constexpr uint8_t mb_header_widths[7] ={0, 12, 24, 36, 48, 60, 72};
 
     size_t n_blocks=0;
     size_t alphabet=0;
@@ -322,6 +323,7 @@ struct simple_rl_bwt{
         bwt.stream_size = INT_CEIL(bwt_pos, (sizeof(size_t)*8));
         bwt.stream = (size_t *) realloc(bwt.stream, bwt.stream_size*sizeof(size_t));
 
+        /*
         std::vector<size_t> tmp_ranks(alphabet, 0);
         size_t pos=0;
         for(size_t i=0;i<bwt_buff.size();i++){
@@ -342,7 +344,7 @@ struct simple_rl_bwt{
                 tmp_ranks[sym_map[sym]]++;
                 pos++;
             }
-        }
+        }*/
     }
 
     std::pair<size_t, uint8_t> inverse_select(size_t& idx){
@@ -359,7 +361,7 @@ struct simple_rl_bwt{
         block_pos += header_width;
 
         //the header is a byte aligned
-        assert((block_pos & 3) ==0);
+        //assert((block_pos & 3) ==0);
 
         auto *bwt_ptr = (uint8_t *)bwt.stream;
         bwt_ptr += (block_pos>>3);
@@ -401,10 +403,10 @@ struct simple_rl_bwt{
             equal = (data & 15)==symbol;//run symbol matches query symbol?
             data>>=4;//get the run len
 
-            if(long_run){//get the missing bits of the len
-                data |=(*bwt_ptr)<<3;
-                bwt_ptr++;
-            }
+            //if(long_run){//get the missing bits of the len
+            data |= (-long_run & ((*bwt_ptr)<<3)) | (-!long_run & 0); ;
+            bwt_ptr+=long_run;
+            //}
             data++;
 
             rank+= (-equal & data) | (-!equal & 0);//add len only if it matches
