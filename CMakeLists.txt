@@ -13,7 +13,7 @@ add_executable(simple_rl_bwt_2024
 target_compile_options(simple_rl_bwt_2024
         PUBLIC
         -Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function
-        -O3 -funroll-loops -fomit-frame-pointer -ffast-math -std=c++20
+        -O3 -funroll-loops -fomit-frame-pointer -ffast-math
 )
 
 target_include_directories(simple_rl_bwt_2024
