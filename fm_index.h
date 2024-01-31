@@ -41,7 +41,7 @@ struct fm_index{
         bwt_reader.close();
         ofs.close();
         sdsl::construct(bwt, plain_bwt_file, 1);
-        remove(plain_bwt_file.c_str());
+        //remove(plain_bwt_file.c_str());
 
         k=0;
         std::vector<size_t> C_tmp;

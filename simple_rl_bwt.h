@@ -17,7 +17,7 @@ struct simple_rl_bwt{
     static const size_t mb_size = 256;
     static constexpr uint8_t mb_width = 8;
 
-    static const size_t max_runs_per_block = 64;
+    static const size_t max_runs_per_block = 128;
     static constexpr size_t max_run_len = 2048;//max value we can encode in 11 bits
     static const size_t n_mini_blocks = INT_CEIL(b_size, mb_size);
     static constexpr uint8_t mb_header_widths[16] = {0, 12, 24, 36, 48, 60, 72, 84, 96,
@@ -27,7 +27,7 @@ struct simple_rl_bwt{
     size_t b_header_bits=0;
     size_t n_symbols=0;
     size_t mb_header_bytes=0;
-    size_t tot_runs=0;//, acc_r_bits=0, acc_h_bits=0;
+    size_t tot_runs=0;
     size_t orig_n_runs=0;
     size_t n_sampled_blocks=0;
     uint8_t *data_pointer;
@@ -38,20 +38,22 @@ struct simple_rl_bwt{
     std::vector<size_t> block_pointers;
     bitstream<size_t> bwt;
 
-    //I was testing the effective alphabet of each block
-    //std::vector<size_t> b_alpha;
+    size_t len_hist[4096]={0};
 
     inline size_t insert_run(size_t sym, size_t len, size_t& bwt_pos) {
 
         //short run encoded in one byte
+        assert(len>0);
+        len_hist[len]++;
+
         size_t run_byte_pos=0;
         if(len<=8){
             uint8_t run = ((len-1)<< 4) | sym;
             run = (run<<1) | 0;
-            bwt.write(bwt_pos, bwt_pos + 8 -1, run);
+            //bwt.write(bwt_pos, bwt_pos + 8 -1, run);
+            data_pointer[bwt_pos>>3] = run;
             bwt_pos +=8;
             run_byte_pos+=1;
-            //acc_r_bits+=8;
         }else{
             //long run encoded in two bytes
             uint16_t run = ((len-1) << 4) | sym;
@@ -59,7 +61,6 @@ struct simple_rl_bwt{
             bwt.write(bwt_pos, bwt_pos + 16 -1, run);
             bwt_pos +=16;
             run_byte_pos+=2;
-            //acc_r_bits+=16;
         }
         tot_runs++;
         return run_byte_pos;
@@ -82,8 +83,6 @@ struct simple_rl_bwt{
 
         insert_block_header(b_sym_freqs, mb_rank_widths, 12*(alphabet+1), mb_rank_offset);
 
-        //uint8_t mb_alpha[16]={0};
-
         size_t acc_block=0, broken_run_len;
         for(auto const& run : block_runs) {
 
@@ -91,18 +90,10 @@ struct simple_rl_bwt{
 
                 //last run of the previous mini block
                 broken_run_len = mb_size-acc_block;
-                runs_byte_pos +=insert_run(run.first, broken_run_len, bwt_pos);
-                b_sym_freqs[run.first]+=broken_run_len;
-
-                //TODO testing
-                /*mb_alpha[run.first]=1;
-                size_t eff_mb_alphabet=0;
-                for(unsigned char & i : mb_alpha){
-                    eff_mb_alphabet+=i;
-                    i=0;
+                if(broken_run_len>0){
+                    runs_byte_pos +=insert_run(run.first, broken_run_len, bwt_pos);
+                    b_sym_freqs[run.first]+=broken_run_len;
                 }
-                b_alpha[eff_mb_alphabet]++;*/
-                //
 
                 //break rules into mini blocks as long as they are
                 // bigger than the mini block size
@@ -115,11 +106,6 @@ struct simple_rl_bwt{
                     runs_byte_pos+=insert_run(run.first, mb_size, bwt_pos);
                     b_sym_freqs[run.first]+=mb_size;
                     broken_run_len-=mb_size;
-
-                    //TODO testing
-                    /*b_alpha[1]++;
-                    n_mb++;*/
-                    //
                 }
 
                 //insert the header of the first mini run
@@ -133,35 +119,11 @@ struct simple_rl_bwt{
 
             } else {
                 //the run fits the mini block size
-
                 runs_byte_pos+=insert_run(run.first, run.second, bwt_pos);
                 b_sym_freqs[run.first]+=run.second;
                 acc_block+=run.second;
-
-                //TODO
-                /*if(bwt_pos>=360){
-                    //TODO whut?
-                    std::cout<<"whut? "<<int(((uint8_t*)bwt.stream)[44])<<" "<<bwt_pos<<std::endl;
-                    //
-                    if(bwt_pos==1976){
-                        std::cout<<"hola"<<std::endl;
-                    }
-                    assert(int(((uint8_t*)bwt.stream)[44]!=0));
-                }*/
-                //
             }
         }
-
-        //TODO testing
-        /*size_t eff_mb_alphabet=0;
-        for(unsigned char & i : mb_alpha){
-            eff_mb_alphabet+=i;
-            i=0;
-        }
-        b_alpha[eff_mb_alphabet]++;*/
-        //
-
-        //assert(acc_block==mb_size);
     }
 
     inline void insert_block_header(std::vector<size_t>& sym_freq, std::vector<size_t>& rank_widths, size_t h_width, size_t& bwt_pos) {
@@ -169,7 +131,6 @@ struct simple_rl_bwt{
             bwt.write(bwt_pos+rank_widths[i], bwt_pos+rank_widths[i+1]-1, sym_freq[i]);
         }
         bwt_pos+=h_width;
-        //acc_h_bits+=h_width;
     }
 
     explicit simple_rl_bwt(std::string& plain_rl_bwt) {
@@ -186,9 +147,11 @@ struct simple_rl_bwt{
             if((acc_block+len)>b_size){
                 //last run of the previous block
                 broken_run_len = b_size-acc_block;
-                sym_freqs[sym]+=broken_run_len;
-                eff_runs += INT_CEIL(broken_run_len, max_run_len);
-                runs_in_block += INT_CEIL(broken_run_len, max_run_len);
+                if(broken_run_len>0){//corner case : the current run is also the start of a block
+                    sym_freqs[sym]+=broken_run_len;
+                    eff_runs += INT_CEIL(broken_run_len, max_run_len);
+                    runs_in_block += INT_CEIL(broken_run_len, max_run_len);
+                }
 
                 if(runs_in_block>=max_runs_per_block){
                     n_sampled_blocks++;
@@ -246,8 +209,6 @@ struct simple_rl_bwt{
         freq_widths[alphabet] = acc;
         b_header_bits = INT_CEIL(acc, 8)*8;
 
-        //b_alpha = std::vector<size_t>(alphabet+1, 0);
-
         orig_n_runs = bwt_buff.size();
 
         size_t n_blocks = INT_CEIL(n_syms, b_size);
@@ -264,6 +225,7 @@ struct simple_rl_bwt{
         size_t bwt_size_bits = n_blocks*(b_header_bits+8) + n_sampled_blocks*(mb_header_bytes*8) + eff_runs*16;
         bwt.stream_size = INT_CEIL(bwt_size_bits, (sizeof(size_t)*8));
         bwt.stream = (size_t *) malloc(bwt.stream_size*sizeof(size_t));
+        data_pointer = (uint8_t *)bwt.stream;
 
         size_t bwt_pos = 0;
         size_t idx_block=0;
@@ -277,7 +239,6 @@ struct simple_rl_bwt{
         std::vector<std::pair<uint8_t, uint16_t>> block_runs;
         block_runs.reserve(b_size);
 
-
         for(size_t k=0;k<n_runs;k++){
 
             bwt_buff.read_run(k, sym, len);
@@ -287,15 +248,15 @@ struct simple_rl_bwt{
 
                 //last run of the previous block
                 broken_run_len = b_size-acc_block;
-                acc_ranks[sym] += broken_run_len;
-                assert(acc_block+broken_run_len==b_size);
-
-                while(broken_run_len>max_run_len){
-                    block_runs.emplace_back(sym, broken_run_len);
-                    broken_run_len-=max_run_len;
+                if(broken_run_len>0){//corner case : the current run is also the start of a block
+                    acc_ranks[sym] += broken_run_len;
+                    assert(acc_block+broken_run_len==b_size);
+                    while(broken_run_len>max_run_len){
+                        block_runs.emplace_back(sym, broken_run_len);
+                        broken_run_len-=max_run_len;
+                    }
+                    if(broken_run_len>0) block_runs.emplace_back(sym, broken_run_len);
                 }
-                if(broken_run_len>0) block_runs.emplace_back(sym, broken_run_len);
-
 
                 if(block_runs.size()>=max_runs_per_block){
                     //mark the block as subsampled (i.e., it has mini blocks)
@@ -306,22 +267,25 @@ struct simple_rl_bwt{
                     //mark the block as not subsampled (i.e., it does not have mini blocks)
                     bwt.write(bwt_pos, bwt_pos+8-1, 0);
                     bwt_pos+=8;
+
+                    //bool alph[16]={false};
                     for(auto const& run : block_runs){
                         insert_run(run.first, run.second, bwt_pos);
+                        //alph[run.first] = true;
                     }
 
-                    //TODO: testing
-                    /*uint8_t b_alphabet[16]={0};
+                    /*size_t eff_alph=0;
+                    for(size_t i=0;i<16;i++){
+                        eff_alph+=alph[i];
+                    }
+                    size_t alph_bits = sym_width(eff_alph);
+                    size_t max_len = 1 << (8-alph_bits);
+                    size_t comp_runs=0;
                     for(auto const& run : block_runs){
-                        b_alphabet[run.first] = 1;
+                        std::cout<<run.second<<" "<<eff_alph<<" "<<alph_bits<<" "<<(run.second<=max_len && run.second>8)<<std::endl;
+                        comp_runs+=run.second<=max_len && run.second>8;
                     }
-
-                    size_t eff_alph=0;
-                    for(unsigned char i : b_alphabet){
-                        eff_alph+=i;
-                    }
-                    //b_alpha[eff_alph]++;*/
-                    //
+                    std::cout<<double(comp_runs)/double(block_runs.size())<<" "<<comp_runs<<" out of "<<block_runs.size()<<" "<<eff_alph<<std::endl;*/
                 }
 
                 //break rules into blocks as long as they are bigger than the block size
@@ -343,10 +307,6 @@ struct simple_rl_bwt{
                         len-=max_run_len;
                     }
                     if(len>0) insert_run(sym, max_run_len, bwt_pos);
-
-                    //TODO testing
-                    //b_alpha[1]++;
-                    //
                 }
 
                 //insert the block header
@@ -401,15 +361,15 @@ struct simple_rl_bwt{
         //shrink to fit
         bwt.stream_size = INT_CEIL(bwt_pos, (sizeof(size_t)*8));
         bwt.stream = (size_t *) realloc(bwt.stream, bwt.stream_size*sizeof(size_t));
-
-        //TODO testing
-        /*size_t over_head=0;
-        for(size_t i=1;i<=alphabet;i++){
-            std::cout<<i<<" has "<<b_alpha[i]<<" blocks "<<std::endl;
-            std::cout<<"Over head: "<<INT_CEIL((((i+1)*12)+5), 8)*b_alpha[i]<<" bytes "<<std::endl;
-        }*/
-        //
         data_pointer = (uint8_t *)bwt.stream;
+
+        /*size_t acc_l=0;
+        for(size_t i=0;i<4096;i++){
+            if(len_hist[i]!=0){
+                acc_l+=len_hist[i];
+                std::cout<<i<<" "<<len_hist[i]<<" "<<double(acc_l)/double(tot_runs)<<std::endl;
+            }
+        }*/
     }
 
     [[nodiscard]] inline std::pair<size_t, sym_type> inverse_select(size_t idx) const {
