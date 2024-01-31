@@ -7,6 +7,7 @@
 
 #include<iostream>
 #include <limits>
+#include <vector>
 #include "macros.h"
 #include "cdt_common.hpp"
 
@@ -100,6 +101,27 @@ struct bitstream{
                 size_t right = word_bits-i_pos;
                 size_t left = 1+(j & (word_bits - 1UL));
                 return ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
+            }
+        }
+    }
+
+    inline void multi_read(size_t start, const std::vector<size_t>& offsets, std::vector<size_t>& values, size_t n) const{
+        size_t cell_i, cell_j, i_pos, i, j;
+
+        for(size_t u=0;u<n;u++) {
+
+            i = start + offsets[u];
+            j = start + offsets[u+1]-1;
+
+            cell_i = i >> word_shift;
+            i_pos = (i & (word_bits - 1UL));
+            cell_j = j >> word_shift;
+            if (cell_i == cell_j) {
+                values[u] = (stream[cell_i] >> i_pos) & masks[(j - i + 1UL)];
+            } else {
+                size_t right = word_bits - i_pos;
+                size_t left = 1 + (j & (word_bits - 1UL));
+                values[u] = ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
             }
         }
     }

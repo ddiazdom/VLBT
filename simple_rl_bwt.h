@@ -17,10 +17,11 @@ struct simple_rl_bwt{
     static const size_t mb_size = 256;
     static constexpr uint8_t mb_width = 8;
 
-    static const size_t max_runs_per_block = 128;
+    static const size_t max_runs_per_block = 64;
     static constexpr size_t max_run_len = 2048;//max value we can encode in 11 bits
     static const size_t n_mini_blocks = INT_CEIL(b_size, mb_size);
-    static constexpr uint8_t mb_header_widths[7] = {0, 12, 24, 36, 48, 60, 72};
+    static constexpr uint8_t mb_header_widths[16] = {0, 12, 24, 36, 48, 60, 72, 84, 96,
+                                                     108, 120, 132, 144, 156, 168, 180};
 
     size_t alphabet=0;
     size_t b_header_bits=0;
@@ -29,6 +30,7 @@ struct simple_rl_bwt{
     size_t tot_runs=0;//, acc_r_bits=0, acc_h_bits=0;
     size_t orig_n_runs=0;
     size_t n_sampled_blocks=0;
+    uint8_t *data_pointer;
 
     std::vector<uint8_t> sym_map;
     std::vector<uint8_t> sym_inv_map;
@@ -129,17 +131,23 @@ struct simple_rl_bwt{
                 b_sym_freqs[run.first]+= broken_run_len;
                 acc_block = broken_run_len;
 
-                //TODO testing
-                //mb_alpha[run.first]=1;
-                //
             } else {
                 //the run fits the mini block size
+
                 runs_byte_pos+=insert_run(run.first, run.second, bwt_pos);
                 b_sym_freqs[run.first]+=run.second;
                 acc_block+=run.second;
 
-                //TODO testing
-                //mb_alpha[run.first]=1;
+                //TODO
+                /*if(bwt_pos>=360){
+                    //TODO whut?
+                    std::cout<<"whut? "<<int(((uint8_t*)bwt.stream)[44])<<" "<<bwt_pos<<std::endl;
+                    //
+                    if(bwt_pos==1976){
+                        std::cout<<"hola"<<std::endl;
+                    }
+                    assert(int(((uint8_t*)bwt.stream)[44]!=0));
+                }*/
                 //
             }
         }
@@ -226,7 +234,7 @@ struct simple_rl_bwt{
         }
 
         sym_inv_map.resize(alphabet);
-        sym_map.resize(sym_inv_map.back());
+        sym_map.resize(sym_inv_map.back()+1);
 
         size_t acc=0, tmp;
         freq_widths.resize(alphabet+1);
@@ -250,7 +258,7 @@ struct simple_rl_bwt{
         // the block. This position requires 12 bits: in the extreme case that all the runs use one byte, then
         // the highest value is 4096 bytes. The other extreme case is that all the runs use two bytes: then we have
         // at most ceil(4096/9)=456 runs and thus 456*2=912 bytes
-        mb_header_bytes = INT_CEIL(n_mini_blocks*mb_header_widths[alphabet+1], 8);//align metadata to bytes
+        mb_header_bytes = INT_CEIL((n_mini_blocks*mb_header_widths[alphabet+1]), 8);//align metadata to bytes
 
         //estimate the number of bits in the BWT
         size_t bwt_size_bits = n_blocks*(b_header_bits+8) + n_sampled_blocks*(mb_header_bytes*8) + eff_runs*16;
@@ -389,6 +397,7 @@ struct simple_rl_bwt{
         assert(idx_block == n_blocks);
         assert(bwt_pos<=bwt_size_bits);
 
+
         //shrink to fit
         bwt.stream_size = INT_CEIL(bwt_pos, (sizeof(size_t)*8));
         bwt.stream = (size_t *) realloc(bwt.stream, bwt.stream_size*sizeof(size_t));
@@ -400,9 +409,10 @@ struct simple_rl_bwt{
             std::cout<<"Over head: "<<INT_CEIL((((i+1)*12)+5), 8)*b_alpha[i]<<" bytes "<<std::endl;
         }*/
         //
+        data_pointer = (uint8_t *)bwt.stream;
     }
 
-    std::pair<size_t, sym_type> inverse_select(size_t idx){
+    [[nodiscard]] inline std::pair<size_t, sym_type> inverse_select(size_t idx) const {
 
         uint16_t b_freq[16] = {0};
 
@@ -414,25 +424,24 @@ struct simple_rl_bwt{
 
         block_pos += b_header_bits;
 
-        auto *bwt_ptr = (uint8_t *)bwt.stream;
-        bwt_ptr += (block_pos>>3);
+        auto *bwt_ptr = data_pointer + (block_pos>>3);
         bool has_mini_blocks = *bwt_ptr;
         block_pos+=8;
         bwt_ptr++;
 
         size_t tmp_idx = block<<12;
+        size_t mini_block=0;
 
         //the current position indicates if the block was sub sampled or not
         if(has_mini_blocks){
             //idx of the mini block within the block
-            size_t mini_block = (idx-tmp_idx) >> mb_width;
+            mini_block = (idx-tmp_idx) >> mb_width;
 
             //read metadata of the mini block
             mb_start = block_pos + mini_block*mb_header_widths[alphabet+1];
 
             //read the mini block position within the block
-            size_t mini_block_pos = bwt.read(mb_start + mb_header_widths[alphabet], mb_start + mb_header_widths[alphabet+1] -1);
-            bwt_ptr += mb_header_bytes + mini_block_pos;
+            bwt_ptr += mb_header_bytes + bwt.read(mb_start + mb_header_widths[alphabet], mb_start + mb_header_widths[alphabet+1] -1);
             tmp_idx += mini_block<< mb_width;
         }
 
@@ -440,6 +449,7 @@ struct simple_rl_bwt{
         uint8_t long_run, symbol;
 
         while(tmp_idx<=idx){
+
             data = *bwt_ptr;
             bwt_ptr++;
 
@@ -453,7 +463,6 @@ struct simple_rl_bwt{
             data |= (-long_run & ((*bwt_ptr)<<3));
             bwt_ptr+=long_run;
 
-
             //the len is in data (adding one due to encoding)
             data++;
 
@@ -461,13 +470,13 @@ struct simple_rl_bwt{
             tmp_idx+=data;
         }
 
-        size_t rank = bwt.read(b_start + mb_header_widths[symbol], b_start + mb_header_widths[symbol+1] -1);
-        if(has_mini_blocks){
+        size_t rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+        if(mini_block>0){
             rank+= bwt.read(mb_start + mb_header_widths[symbol], mb_start + mb_header_widths[symbol+1] -1);
         }
         rank+=b_freq[symbol];
 
-        return {rank-(tmp_idx-idx), symbol};
+        return {rank-(tmp_idx-idx), sym_inv_map[symbol]};
     }
 
     [[nodiscard]] inline size_t rank(size_t idx, sym_type symbol) const {
@@ -526,159 +535,187 @@ struct simple_rl_bwt{
         return rank - (-equal & (tmp_idx-idx));
     }
 
-    void interval_symbols(size_t i, size_t j, size_t& k,
-                          std::vector<sym_type>& cs,
-                          std::vector<size_t>& rank_c_i,
-                          std::vector<size_t>& rank_c_j) const {
+    inline void interval_symbols(size_t i, size_t j, size_t& k,
+                                 std::vector<sym_type>& cs,
+                                 std::vector<size_t>& rank_c_i,
+                                 std::vector<size_t>& rank_c_j) const {
 
-        size_t i_block = i>>12;
-        j--;
-        size_t j_block = j>>12;
-
-        size_t i_block_pos = block_pointers[i_block];
-        size_t j_block_pos;
-        bool same_mini_block=false;
-
-        //sample the ranks up to the respective blocks
-        if(j_block==i_block){
-            //copy the ranks if i and j-1 are withing the same block
-            j_block_pos = i_block_pos;
-            for(size_t u=0;u<alphabet;u++){
-                rank_c_i[u] = bwt.read(i_block_pos+freq_widths[u], i_block_pos+freq_widths[u+1]-1);
-                rank_c_j[u] = rank_c_i[u];
-            }
+        if(j-i==0){
+            k=0;
+        }else if(j-i==1){
+            auto res = inverse_select(i);
+            k=1;
+            cs[0] = res.second;
+            rank_c_i[0] = res.first;
+            rank_c_j[0] = res.first+1;
         }else{
-            j_block_pos = block_pointers[j_block];
-            for(size_t u=0;u<alphabet;u++){
-                rank_c_i[u] = bwt.read(i_block_pos+freq_widths[u], i_block_pos+freq_widths[u+1]-1);
-                rank_c_j[u] = bwt.read(j_block_pos+freq_widths[u], j_block_pos+freq_widths[u+1]-1);
-            }
-        }
-        i_block_pos += b_header_bits;
-        j_block_pos += b_header_bits;
+            //auto t1 = std::chrono::high_resolution_clock::now();
 
-        //scan the block for i
-        auto *i_bwt_ptr = (uint8_t *)bwt.stream;
-        i_bwt_ptr += (i_block_pos>>3);
-        i_block_pos+=8;
-        size_t tmp_i = i_block<<12;
-        size_t i_mini_block=0;
+            size_t i_block = i>>12;
+            j--;
+            size_t j_block = j>>12;
 
-        //the current position indicates if the block was sub sampled or not
-        if(*i_bwt_ptr){
+            size_t i_block_pos = block_pointers[i_block];
+            size_t j_block_pos;
 
-            //idx of the mini block within the block
-            i_mini_block = (i-tmp_i) >> mb_width;
-
-            //metadata of the mini block
-            size_t i_mb_start = i_block_pos + i_mini_block*mb_header_widths[alphabet+1];
-
-            //read the ranks
-            size_t off_set=0;
-            for(size_t u=0;u<alphabet;u++){
-                rank_c_i[u] += bwt.read(i_mb_start + off_set, i_mb_start + off_set+11);
-                off_set+=12;
-            }
-
-            //read the mini block position within the block
-            size_t mini_block_pos = bwt.read(i_mb_start + mb_header_widths[alphabet], i_mb_start + mb_header_widths[alphabet+1] -1);
-            i_bwt_ptr += mb_header_bytes + mini_block_pos;
-            tmp_i += i_mini_block<< mb_width;
-        }
-
-        //scan the block for j
-        auto *j_bwt_ptr = (uint8_t *)bwt.stream;
-        j_bwt_ptr += (j_block_pos>>3);
-        j_block_pos+=8;
-        size_t tmp_j = j_block<<12;
-
-        //the current position indicates if the block was sub sampled
-        if(*j_bwt_ptr){
-            //idx of the mini block within the block
-            size_t j_mini_block = (j-tmp_j) >> mb_width;
-
-            //i and j-1 are within the same mini block, so copy the information
-            same_mini_block = i_block==j_block && i_mini_block==j_mini_block;
-            if(same_mini_block){
-                tmp_j = tmp_i;
-                j_bwt_ptr = i_bwt_ptr;
-            }else{//not in the same mini block
-
-                //the bit position within the BWT for the mini block metadata
-                size_t j_mb_start = j_block_pos + j_mini_block*mb_header_widths[alphabet+1];
-
-                //read all the precomputed ranks from the mini block metadata
-                size_t off_set=0;
+            //sample the ranks up to the respective blocks
+            if(j_block==i_block){
+                //copy the ranks if i and j-1 are withing the same block
+                j_block_pos = i_block_pos;
                 for(size_t u=0;u<alphabet;u++){
-                    rank_c_j[u] += bwt.read(j_mb_start + off_set, j_mb_start + off_set + 11);
+                    rank_c_i[u] = bwt.read(i_block_pos+freq_widths[u], i_block_pos+freq_widths[u+1]-1);
+                }
+                memcpy(rank_c_j.data(), rank_c_i.data(), alphabet*sizeof(size_t));
+            }else{
+                j_block_pos = block_pointers[j_block];
+                for(size_t u=0;u<alphabet;u++){
+                    rank_c_i[u] = bwt.read(i_block_pos+freq_widths[u], i_block_pos+freq_widths[u+1]-1);
+                    rank_c_j[u] = bwt.read(j_block_pos+freq_widths[u], j_block_pos+freq_widths[u+1]-1);
+                }
+            }
+            i_block_pos += b_header_bits;
+            j_block_pos += b_header_bits;
+
+            //scan the block for i
+            uint8_t * i_bwt_ptr = data_pointer + (i_block_pos>>3);
+            i_block_pos+=8;
+            size_t tmp_i = i_block<<12;
+            size_t i_mini_block=0;
+
+            //the current position indicates if the block was sub sampled or not
+            if(*i_bwt_ptr){
+
+                //idx of the mini block within the block
+                i_mini_block = (i-tmp_i) >> mb_width;
+
+                //metadata of the mini block
+                size_t i_mb_start = i_block_pos + i_mini_block*mb_header_widths[alphabet+1];
+
+                //read the ranks
+                size_t tmp_val, off_set=0, pos;
+                for(size_t u=0;u<alphabet;u++){
+                    pos = i_mb_start+off_set;
+                    memcpy(&tmp_val, &data_pointer[pos>>3], 2);
+                    rank_c_i[u] += (tmp_val>> (pos & 7)) & 4095;
+                    //rank_c_i[u] += bwt.read(i_mb_start + off_set, i_mb_start + off_set+11);
                     off_set+=12;
                 }
 
-                //read the mini block byte position within the BWT block
-                size_t mini_block_pos = bwt.read(j_mb_start + mb_header_widths[alphabet], j_mb_start + mb_header_widths[alphabet+1] -1);
-                j_bwt_ptr += mb_header_bytes + mini_block_pos;
-                tmp_j += j_mini_block<< mb_width;
+                //read the mini block position within the block
+                i_bwt_ptr += mb_header_bytes;//+ mini_block_pos;
+                i_bwt_ptr += bwt.read(i_mb_start + mb_header_widths[alphabet], i_mb_start + mb_header_widths[alphabet+1] -1);
+                tmp_i += i_mini_block<< mb_width;
             }
-        }
 
-        i_bwt_ptr++;
-        j_bwt_ptr++;
+            //scan the block for j
+            uint8_t *j_bwt_ptr = data_pointer + (j_block_pos>>3);
+            j_block_pos+=8;
+            size_t tmp_j = j_block<<12;
+            bool same_mini_block=false;
 
-        uint16_t data;
-        uint8_t long_run;
-        sym_type symbol;
-        while(tmp_i<i){
-            data = *i_bwt_ptr;
+            //the current position indicates if the block was sub sampled
+            if(*j_bwt_ptr){
+                //idx of the mini block within the block
+                size_t j_mini_block = (j-tmp_j) >> mb_width;
+
+                //i and j-1 are within the same mini block, so copy the information
+                same_mini_block = i_block==j_block && i_mini_block==j_mini_block;
+                if(same_mini_block){
+                    tmp_j = tmp_i;
+                    j_bwt_ptr = i_bwt_ptr;
+                }else{//not in the same mini block
+
+                    //the bit position within the BWT for the mini block metadata
+                    size_t j_mb_start = j_block_pos + j_mini_block*mb_header_widths[alphabet+1];
+
+                    //read all the precomputed ranks from the mini block metadata
+                    size_t tmp_val, off_set=0, pos;
+                    for(size_t u=0;u<alphabet;u++){
+                        pos = j_mb_start+off_set;
+                        memcpy(&tmp_val, &data_pointer[pos>>3], 2);
+                        rank_c_j[u] += (tmp_val>> (pos & 7)) & 4095;
+                        //rank_c_j[u] += bwt.read(j_mb_start + off_set, j_mb_start + off_set + 11);
+                        off_set+=12;
+                    }
+
+                    //read the mini block byte position within the BWT block
+                    j_bwt_ptr += mb_header_bytes;
+                    j_bwt_ptr += bwt.read(j_mb_start + mb_header_widths[alphabet], j_mb_start + mb_header_widths[alphabet+1] -1);
+                    tmp_j += j_mini_block<< mb_width;
+                }
+            }
+
             i_bwt_ptr++;
-            long_run = data & 1;//is a long or short run?
-            data>>=1;
-
-            symbol = (data & 15);//get the run symbol
-            data>>=4;//get the run len
-
-            data |= (-long_run & ((*i_bwt_ptr)<<3));
-            i_bwt_ptr+=long_run;
-            data++;
-
-            rank_c_i[symbol]+=data;
-            tmp_i+=data;
-        }
-        rank_c_i[symbol]-=tmp_i-i;
-
-        if(same_mini_block){
-            for(size_t u=0;u<alphabet;u++){
-                rank_c_j[u] = rank_c_i[u];
-            }
-            rank_c_j[symbol]+=tmp_i-i;
-            tmp_j=tmp_i;
-            j_bwt_ptr=i_bwt_ptr;
-        }
-
-        while(tmp_j<=j) {
-            data = *j_bwt_ptr;
             j_bwt_ptr++;
-            long_run = data & 1;//is a long or short run?
-            data>>=1;
 
-            symbol = (data & 15);//get the run symbol
-            data>>=4;//get the run len
+            //auto t2 = std::chrono::high_resolution_clock::now();
+            //std::cout<<"The first part: "<<std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count()<<" now we will scan "<<i-tmp_i<<" symbols from "<<tmp_i<<" to "<<i<<" block: "<<i_block<<" and mini block: "<<i_mini_block<<std::endl;
 
-            data |= (-long_run & ((*j_bwt_ptr)<<3));
-            j_bwt_ptr+=long_run;
-            data++;
 
-            rank_c_j[symbol]+=data;
-            tmp_j+=data;
-        }
-        rank_c_j[symbol]-=(tmp_j-j-1);
+            //auto t1 = std::chrono::high_resolution_clock::now();
 
-        k=0;
-        for(size_t u=0;u<alphabet;u++){
-            if(rank_c_i[u]<rank_c_j[u]){
-                rank_c_i[k] = rank_c_i[u];
-                rank_c_j[k] = rank_c_j[u];
-                cs[k] = sym_inv_map[u];
-                k++;
+            uint16_t data;
+            uint8_t long_run;
+            sym_type symbol;
+
+            //size_t n_runs=0;
+            while(tmp_i<i){
+                data = *i_bwt_ptr;
+                i_bwt_ptr++;
+                long_run = data & 1;//is a long or short run?
+                data>>=1;
+
+                symbol = (data & 15);//get the run symbol
+                data>>=4;//get the run len
+
+                data |= (-long_run & ((*i_bwt_ptr)<<3));
+                i_bwt_ptr+=long_run;
+                data++;
+
+                rank_c_i[symbol]+=data;
+                tmp_i+=data;
+                //n_runs++;
+            }
+            rank_c_i[symbol]-=tmp_i-i;
+
+
+            if(same_mini_block){
+                memcpy(rank_c_j.data(), rank_c_i.data(), alphabet*sizeof(size_t));
+                rank_c_j[symbol]+=tmp_i-i;
+                tmp_j=tmp_i;
+                j_bwt_ptr=i_bwt_ptr;
+            }
+
+            while(tmp_j<=j) {
+                data = *j_bwt_ptr;
+                j_bwt_ptr++;
+                long_run = data & 1;//is a long or short run?
+                data>>=1;
+
+                symbol = (data & 15);//get the run symbol
+                data>>=4;//get the run len
+
+                data |= (-long_run & ((*j_bwt_ptr)<<3));
+                j_bwt_ptr+=long_run;
+                data++;
+
+                rank_c_j[symbol]+=data;
+                tmp_j+=data;
+                //n_runs++;
+            }
+            rank_c_j[symbol]-=tmp_j-j-1;
+
+            //auto t2 = std::chrono::high_resolution_clock::now();
+            //std::cout<<"The second part: "<<std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count()<<" "<<i<<" "<<j<<" "<<n_runs<<" "<<same_mini_block<<std::endl;
+
+            k=0;
+            for(size_t u=0;u<alphabet;u++){
+                if(rank_c_i[u]<rank_c_j[u]){
+                    rank_c_i[k] = rank_c_i[u];
+                    rank_c_j[k] = rank_c_j[u];
+                    cs[k] = sym_inv_map[u];
+                    k++;
+                }
             }
         }
     }
@@ -775,6 +812,7 @@ struct simple_rl_bwt{
         load_plain_vector(ifs, freq_widths);
         load_plain_vector(ifs, block_pointers);
         bwt.load(ifs);
+        data_pointer = (uint8_t *)bwt.stream;
     }
 };
 #endif //SIMPLE_RL_BWT_2024_SIMPLE_RL_BWT_H
