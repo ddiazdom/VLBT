@@ -1,6 +1,7 @@
 #include <iostream>
 #include "simple_rl_bwt.h"
 #include "fm_index.h"
+#include "sdsl/wavelet_trees.hpp"
 
 void test_inverse_select(fm_index& fmi, simple_rl_bwt& srlbwt){
     unsigned long my_time=0, their_time=0;
@@ -34,7 +35,7 @@ void test_interval_symbols(fm_index& fmi, simple_rl_bwt& srlbwt){
     std::vector<size_t> my_rank_c_j(16, 0);
     size_t my_k;
 
-    typedef unsigned long long size_type;
+    typedef sdsl::wt_huff<>::size_type size_type;
     std::vector<uint8_t> their_cs(16, 0);
     std::vector<size_type> their_rank_c_i(16, 0);
     std::vector<size_type> their_rank_c_j(16, 0);
