@@ -22,7 +22,7 @@ void test_inverse_select(fm_index& fmi, simple_rl_bwt& srlbwt){
         bool equal = my_res.first==their_res.first && my_res.second==their_res.second;
 
         if(!equal){
-            std::cout<<"? "<<i<<","<<" -> "<<my_res.first<<" "<<int(my_res.second)<<" -> "<<their_res.first<<" "<<int(their_res.second)<<std::endl;
+            std::cout<<"? pos:"<<i<<","<<" -> rank:"<<my_res.first<<" sym:"<<int(my_res.second)<<" -> rank:"<<their_res.first<<" sym:"<<int(their_res.second)<<std::endl;
         }
         assert(equal);
     }

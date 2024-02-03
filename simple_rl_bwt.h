@@ -259,7 +259,7 @@ struct simple_rl_bwt{
         orig_n_runs = bwt_buff.size();
 
         size_t n_blocks = INT_CEIL(n_syms, b_size);
-        block_pointers.resize(n_blocks, 0);
+        block_pointers.resize(n_blocks+1, 0);
 
         // number of bytes used by the concatenated rank samples of the mini blocks within a block.
         // the alphabet+1 position within the mini block header stores the byte position of the mini block within
@@ -387,6 +387,11 @@ struct simple_rl_bwt{
             }
         }
 
+        //appending the full ranks at the end of the encoding
+        // to scan the blocks backwards
+        block_pointers[idx_block] = bwt_pos;
+        insert_block_header(acc_ranks, freq_widths, b_header_bits, bwt_pos);
+
         assert(idx_block == n_blocks);
         assert(bwt_pos<=bwt_size_bits);
 
@@ -396,103 +401,228 @@ struct simple_rl_bwt{
         data_pointer = (uint8_t *)bwt.stream;
     }
 
-    [[nodiscard]] inline std::pair<size_t, sym_type> inverse_select(size_t idx) const {
+    [[nodiscard]] inline std::pair<size_t, sym_type> inverse_select(size_t idx)  {
 
         uint16_t b_freq[16] = {0};
+        uint8_t symbol;
 
+        size_t rank=0;
         size_t block = idx>>12;
         size_t block_pos = block_pointers[block];
 
         size_t b_start =  block_pos;
-        size_t mb_start;
-
         block_pos += b_header_bits;
 
         auto *bwt_ptr = data_pointer + (block_pos>>3);
         bool has_mini_blocks = *bwt_ptr;
         block_pos+=8;
         bwt_ptr++;
-
         size_t tmp_idx = block<<12;
-        size_t mini_block=0;
-        bool one_byte_encoding=false;
 
         //the current position indicates if the block has mini blocks or not
-        if(has_mini_blocks){
+        if(has_mini_blocks) {
             //idx of the mini block within the block
-            mini_block = (idx-tmp_idx) >> mb_width;
+            size_t mini_block = (idx-tmp_idx) >> mb_width;
 
             //read metadata of the mini block
-            mb_start = block_pos + mini_block*(mb_header_widths[alphabet+1]+1);
+            size_t mb_start = block_pos + mini_block*(mb_header_widths[alphabet+1]+1);
 
             //read the mini block position within the block and the mini block encoding
             size_t mini_block_pos = bwt.read(mb_start + mb_header_widths[alphabet], mb_start + mb_header_widths[alphabet+1]);
-            one_byte_encoding = !(mini_block_pos & 4096);
+            bool one_byte_encoding = !(mini_block_pos & 4096);
+            mini_block_pos &= 4095;//clear the bit indicating the mini block encoding
+
             tmp_idx += mini_block<< mb_width;
 
-            /*if((idx-tmp_idx)>(mb_size>>1)){
+            if((idx-tmp_idx)>(mb_size>>1)){
+
                 size_t mini_block_end;
+                size_t next_mb_mt_start;
                 if(mini_block<(n_mini_blocks-1)){
-                    size_t tmp = block_pos + (mini_block+1)*(mb_header_widths[alphabet+1]+1);
-                    mini_block_end = bwt.read(tmp + mb_header_widths[alphabet], tmp + mb_header_widths[alphabet+1])-1;
+                    next_mb_mt_start = block_pos + (mini_block+1)*(mb_header_widths[alphabet+1]+1);
+                    mini_block_end = bwt.read(next_mb_mt_start + mb_header_widths[alphabet],
+                                              next_mb_mt_start + mb_header_widths[alphabet+1]-1)-1;
                 }else{
-                    mini_block_end = block_pointers[block+1]-block_pointers[block];
+                    next_mb_mt_start = block_pointers[block+1];
+                    mini_block_end = next_mb_mt_start-block_pointers[block];
                     mini_block_end -= b_header_bits + (mb_header_bytes<<3)+8+8;//subtract the header bits
                     mini_block_end >>=3;//in bytes
                 }
 
                 //TODO testing I am accessing the right position
-                uint8_t *tmp_ptr  = bwt_ptr;
+                /*uint8_t *tmp_ptr  = bwt_ptr;
                 tmp_ptr +=mb_header_bytes + mini_block_pos;
                 uint16_t data;
-                size_t acc=0, n_bytes=0;
+                size_t acc=0, n_bytes=0, r=0, r2=0;
                 if(one_byte_encoding){
                     while(acc<mb_size){
                         //get the run symbol
                         data = *tmp_ptr;
+                        uint8_t s = data & 15;
 
                         //get the run len
                         data>>=4;
                         data++;
+                        if(s==2){
+                            //if((acc+data)>=260){
+                            //    r2+=data;
+                            //}
+                            //std::cout<<int(s)<<" "<<acc+data<<" "<<r+data<<" "<<r2<<std::endl;
+                            std::cout<<int(s)<<" "<<acc<<" "<<r<<" "<<data<<std::endl;
+                            r+=data;
+                        }
 
                         //move to the next position
                         tmp_ptr++;
                         n_bytes++;
                         acc+=data;
                     }
-
-                    if((mini_block_pos + n_bytes-1)!=mini_block_end){
-                        std::cout<<(mini_block_pos + n_bytes-1)<<" "<<mini_block_end<<" "<<mini_block<<" "<<block<<std::endl;
-                    }
-                    assert((mini_block_pos + n_bytes-1)==mini_block_end);
                 }else{
+                    while(acc<mb_size){
+                        //get the run symbol
+                        data = tmp_ptr[1];
+                        data = (data<<8) | tmp_ptr[0];
+                        uint8_t s = data & 15;
+
+                        //get the run len
+                        data>>=4;
+                        data++;
+
+                        //if(s==2){
+                            std::cout<<int(s)<<" "<<acc<<" "<<r<<" "<<data<<std::endl;
+                            r+=data;
+                        //}
+
+                        //move to the next position
+                        tmp_ptr+=2;
+                        n_bytes+=2;
+                        acc+=data;
+                    }
                 }
-            }*/
-            mini_block_pos &= 4095;//clean the bit indicating the mini block encoding
-            bwt_ptr += mb_header_bytes + mini_block_pos;
+                if((mini_block_pos + n_bytes-1)!=mini_block_end){
+                    std::cout<<(mini_block_pos + n_bytes-1)<<" "<<mini_block_end<<" "<<mini_block<<" "<<block<<" "<<one_byte_encoding<<" "<<n_bytes/2<<std::endl;
+                }
+                assert((mini_block_pos + n_bytes-1)==mini_block_end);*/
+                mini_block_pos = mini_block_end;
+                bwt_ptr+= mb_header_bytes + mini_block_pos;
+                if(one_byte_encoding){
+                    b_scan<true>(idx, tmp_idx+mb_size, bwt_ptr, b_freq, symbol);
+                }else{
+                    b_scan<false>(idx, tmp_idx+mb_size, bwt_ptr, b_freq, symbol);
+                }
+
+                if(mini_block<(n_mini_blocks-1)){
+                    rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+                    rank += bwt.read(next_mb_mt_start + mb_header_widths[symbol], next_mb_mt_start + mb_header_widths[symbol+1]-1);
+                }else{
+                    rank = bwt.read(next_mb_mt_start + freq_widths[symbol], next_mb_mt_start + freq_widths[symbol+1] -1);
+                }
+                rank-=b_freq[symbol];
+            }else{
+                bwt_ptr+= mb_header_bytes + mini_block_pos;
+                if(one_byte_encoding){
+                    f_scan<true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
+                }else{
+                    f_scan<false>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
+                }
+                rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+                rank+= bwt.read(mb_start + mb_header_widths[symbol], mb_start + mb_header_widths[symbol+1] -1);
+                rank+=b_freq[symbol];
+            }
+        } else {
+            if((idx-tmp_idx)>(b_size>>1)){
+                block_pos = block_pointers[block+1]-block_pointers[block];
+                block_pos -= b_header_bits + 16;//subtract the header bits 8+8=16 consider the mini block flag and moving one position back from the end
+                block_pos >>=3;//in bytes
+                bwt_ptr+=block_pos;
+                b_scan<false>(idx, tmp_idx+b_size, bwt_ptr, b_freq, symbol);
+
+                b_start = block_pointers[block+1];
+                rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+                rank-=b_freq[symbol];
+            }else{
+                f_scan<false>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
+                rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+                rank+=b_freq[symbol];
+            }
         }
 
-        uint16_t data;
-        uint8_t symbol;
-        size_t rank=0;
+        //uint16_t data;
+            /*if(one_byte_encoding){
+                size_t blocks_per_word = (idx-tmp_idx+1)>>7;
+                for(size_t i=0;i<blocks_per_word;i++){
+                    //the compiler should unroll this loop
+                    for(size_t j=0;j<8;j++){
+                        data = bwt_ptr[j];
+                        symbol = data & 15;
+                        data>>=4;
+                        data++;
+                        b_freq[symbol]+=data;
+                        tmp_idx+=data;
+                    }
+                    bwt_ptr+=8;
+                }
 
-        if(one_byte_encoding){
+                while(tmp_idx<=idx){
+                    //get the run symbol
+                    data = *bwt_ptr;
+                    symbol = data & 15;
 
-            size_t blocks_per_word = (idx-tmp_idx+1)>>7;
+                    //get the run len
+                    data>>=4;
+                    data++;
 
-            for(size_t i=0;i<blocks_per_word;i++){
-                //the compiler should unroll this loop
-                for(size_t j=0;j<8;j++){
-                    data = bwt_ptr[j];
+                    b_freq[symbol]+=data;
+
+                    //move to the next position
+                    tmp_idx+=data;
+                    bwt_ptr++;
+                }
+
+                rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+                if(mini_block>0) rank+= bwt.read(mb_start + mb_header_widths[symbol], mb_start + mb_header_widths[symbol+1] -1);
+                rank+=b_freq[symbol];
+                rank-=(tmp_idx-idx);
+            } else {
+                while(tmp_idx<=idx) {
+                    //I assume the compiler will unroll this loop
+                    for(size_t i=0;i<8;i+=2){
+                        data = bwt_ptr[i+1];
+                        data = (data<<8) | bwt_ptr[i];
+                        symbol = data & 15;
+                        data>>=4;
+                        data++;
+                        b_freq[symbol]+=data;
+                        tmp_idx+=data;
+                    }
+                    bwt_ptr+=8;
+                }
+
+                bwt_ptr-=8;
+                size_t pos = 7;
+                while(tmp_idx>idx){
+                    data = bwt_ptr[pos];
+                    data = (data<<8) | bwt_ptr[pos-1];
                     symbol = data & 15;
                     data>>=4;
                     data++;
-                    b_freq[symbol]+=data;
-                    tmp_idx+=data;
+                    b_freq[symbol]-=data;
+                    tmp_idx-=data;
+                    pos-=2;
                 }
-                bwt_ptr+=8;
-            }
 
+                rank=idx-tmp_idx;
+                rank += bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+                if(mini_block>0) rank+= bwt.read(mb_start + mb_header_widths[symbol], mb_start + mb_header_widths[symbol+1] -1);
+                rank+=b_freq[symbol];
+            }*/
+        return {rank, sym_inv_map[symbol]};
+    }
+
+    template<bool one_byte_encoding>
+    static inline void f_scan(size_t idx, size_t tmp_idx, uint8_t * bwt_ptr, uint16_t* b_freq, uint8_t& symbol){
+        uint16_t data;
+        if constexpr (one_byte_encoding){
             while(tmp_idx<=idx){
                 //get the run symbol
                 data = *bwt_ptr;
@@ -508,13 +638,24 @@ struct simple_rl_bwt{
                 tmp_idx+=data;
                 bwt_ptr++;
             }
+        }else{
+            while(tmp_idx<=idx){
+                //get the run symbol
+                data = bwt_ptr[1];
+                data = (data<<8) | bwt_ptr[0];
+                symbol = data & 15;
 
-            rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
-            if(mini_block>0) rank+= bwt.read(mb_start + mb_header_widths[symbol], mb_start + mb_header_widths[symbol+1] -1);
-            rank+=b_freq[symbol];
-            rank-=(tmp_idx-idx);
-        }else {
-            while(tmp_idx<=idx) {
+                //get the run len
+                data>>=4;
+                data++;
+
+                b_freq[symbol]+=data;
+
+                //move to the next position
+                tmp_idx+=data;
+                bwt_ptr+=2;
+            }
+            /*while(tmp_idx<=idx) {
                 //I assume the compiler will unroll this loop
                 for(size_t i=0;i<8;i+=2){
                     data = bwt_ptr[i+1];
@@ -539,15 +680,78 @@ struct simple_rl_bwt{
                 b_freq[symbol]-=data;
                 tmp_idx-=data;
                 pos-=2;
+            }*/
+        }
+        b_freq[symbol]-=tmp_idx-idx;
+    }
+
+    template<bool one_byte_encoding>
+    static inline void b_scan(size_t idx, size_t tmp_idx, uint8_t * bwt_ptr, uint16_t* b_freq,
+                              uint8_t& symbol){
+        uint16_t data;
+        if constexpr (one_byte_encoding) {
+            while(tmp_idx>idx){
+                //get the run symbol
+                data = *bwt_ptr;
+                symbol = data & 15;
+
+                //get the run len
+                data>>=4;
+                data++;
+
+                b_freq[symbol]+=data;
+
+                //move to the next position
+                tmp_idx-=data;
+                bwt_ptr--;
+            }
+        }else{
+            bwt_ptr--;
+            while(tmp_idx>idx){
+                //get the run symbol
+                data = bwt_ptr[1];
+                data = (data<<8) | bwt_ptr[0];
+                symbol = data & 15;
+
+                //get the run len
+                data>>=4;
+                data++;
+
+                b_freq[symbol]+=data;
+
+                //move to the next position
+                tmp_idx-=data;
+                bwt_ptr-=2;
+            }
+            /*while(tmp_idx>idx) {
+                //I assume the compiler will unroll this loop
+                for(size_t i=0;i<8;i+=2){
+                    data = bwt_ptr[i+1];
+                    data = (data<<8) | bwt_ptr[i];
+                    symbol = data & 15;
+                    data>>=4;
+                    data++;
+                    b_freq[symbol]+=data;
+                    tmp_idx-=data;
+                }
+                bwt_ptr-=8;
             }
 
-            rank=idx-tmp_idx;
-            rank += bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
-            if(mini_block>0) rank+= bwt.read(mb_start + mb_header_widths[symbol], mb_start + mb_header_widths[symbol+1] -1);
-            rank+=b_freq[symbol];
+            bwt_ptr+=8;
+            size_t pos = 0;
+            while(tmp_idx<=idx){
+                data = bwt_ptr[pos+1];
+                data = (data<<8) | bwt_ptr[pos];
+                symbol = data & 15;
+                data>>=4;
+                data++;
+                b_freq[symbol]-=data;
+                tmp_idx+=data;
+                pos+=2;
+            }*/
         }
-
-        return {rank, sym_inv_map[symbol]};
+        b_freq[symbol]-=idx-tmp_idx;
+        //TODO pad the BWT stream with zero
     }
 
     [[nodiscard]] inline size_t rank(size_t idx, sym_type symbol) const {
@@ -632,7 +836,7 @@ struct simple_rl_bwt{
     inline void interval_symbols(size_t i, size_t j, size_t& k,
                                  std::vector<sym_type>& cs,
                                  std::vector<size_t>& rank_c_i,
-                                 std::vector<size_t>& rank_c_j) const {
+                                 std::vector<size_t>& rank_c_j)  {
 
         if(j-i==0){
             k=0;
