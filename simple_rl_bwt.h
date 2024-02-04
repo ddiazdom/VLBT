@@ -638,8 +638,9 @@ struct simple_rl_bwt{
                 tmp_idx+=data;
                 bwt_ptr++;
             }
+            b_freq[symbol]-=tmp_idx-idx;
         }else{
-            while(tmp_idx<=idx){
+            /*while(tmp_idx<=idx){
                 //get the run symbol
                 data = bwt_ptr[1];
                 data = (data<<8) | bwt_ptr[0];
@@ -654,35 +655,39 @@ struct simple_rl_bwt{
                 //move to the next position
                 tmp_idx+=data;
                 bwt_ptr+=2;
-            }
-            /*while(tmp_idx<=idx) {
+            }*/
+            auto *run = (uint16_t *) bwt_ptr;
+            while(tmp_idx<=idx) {
                 //I assume the compiler will unroll this loop
-                for(size_t i=0;i<8;i+=2){
-                    data = bwt_ptr[i+1];
-                    data = (data<<8) | bwt_ptr[i];
-                    symbol = data & 15;
-                    data>>=4;
-                    data++;
+                for(size_t i=0;i<4;i++){
+                    //data = bwt_ptr[i+1];
+                    //data = (data<<8) | bwt_ptr[i];
+                    symbol = run[i] & 15;
+                    data = (run[i]>>4) + 1;
                     b_freq[symbol]+=data;
                     tmp_idx+=data;
                 }
-                bwt_ptr+=8;
+                //bwt_ptr+=8;
+                run+=4;
             }
 
-            bwt_ptr-=8;
-            size_t pos = 7;
+            //bwt_ptr-=8;
+            run-=4;
+            size_t pos = 3;
             while(tmp_idx>idx){
-                data = bwt_ptr[pos];
-                data = (data<<8) | bwt_ptr[pos-1];
-                symbol = data & 15;
-                data>>=4;
-                data++;
+                //data = bwt_ptr[pos];
+                //data = (data<<8) | bwt_ptr[pos-1];
+                //data = run[pos];
+                symbol = run[pos] & 15;
+                data = (run[pos]>>4) + 1;
+                //data>>=4;
+                //data++;
                 b_freq[symbol]-=data;
                 tmp_idx-=data;
-                pos-=2;
-            }*/
+                pos--;
+            }
+            b_freq[symbol]+=idx-tmp_idx;
         }
-        b_freq[symbol]-=tmp_idx-idx;
     }
 
     template<bool one_byte_encoding>
@@ -705,8 +710,15 @@ struct simple_rl_bwt{
                 tmp_idx-=data;
                 bwt_ptr--;
             }
+            b_freq[symbol]-=idx-tmp_idx;
         }else{
             bwt_ptr--;
+            auto *run = (uint16_t *) bwt_ptr;
+
+            //TODO testing
+            /*uint8_t *tmp_bwt_ptr=bwt_ptr;
+            uint16_t tmp_b_freqs[16]={0};
+            size_t tmp_tmp_idx=tmp_idx;
             while(tmp_idx>idx){
                 //get the run symbol
                 data = bwt_ptr[1];
@@ -717,40 +729,64 @@ struct simple_rl_bwt{
                 data>>=4;
                 data++;
 
+                std::cout<<tmp_idx<<" "<<int(symbol)<<" "<<data<<std::endl;
+
                 b_freq[symbol]+=data;
 
                 //move to the next position
                 tmp_idx-=data;
                 bwt_ptr-=2;
             }
-            /*while(tmp_idx>idx) {
+            b_freq[symbol]-=idx-tmp_idx;*/
+            //
+
+            /*if(idx==38688){
+                std::cout<<"holaa, the symbol is "<<int(symbol)<<std::endl;
+            }*/
+
+            while(tmp_idx>idx) {
                 //I assume the compiler will unroll this loop
-                for(size_t i=0;i<8;i+=2){
-                    data = bwt_ptr[i+1];
-                    data = (data<<8) | bwt_ptr[i];
-                    symbol = data & 15;
-                    data>>=4;
-                    data++;
+                for(size_t i=0;i<4;i++){
+                    //data = bwt_ptr[1];
+                    //data = (data<<8) | bwt_ptr[0];
+                    //data = run[0];
+                    symbol = run[0] & 15;
+                    data = (run[0]>>4) + 1;
+                    //data>>=4;
+                    //data++;
+                    //std::cout<<tmp_tmp_idx<<" "<<int(symbol)<<" "<<data<<std::endl;
                     b_freq[symbol]+=data;
                     tmp_idx-=data;
+                    run--;
                 }
-                bwt_ptr-=8;
             }
 
-            bwt_ptr+=8;
+            run++;
             size_t pos = 0;
             while(tmp_idx<=idx){
-                data = bwt_ptr[pos+1];
-                data = (data<<8) | bwt_ptr[pos];
-                symbol = data & 15;
-                data>>=4;
-                data++;
+                //data = bwt_ptr[pos+1];
+                //data = (data<<8) | bwt_ptr[pos];
+                //data = run[pos];
+                //symbol = data & 15;
+                //data>>=4;
+                //data++;
+                symbol = run[pos] & 15;
+                data = (run[pos] >> 4) + 1;
                 b_freq[symbol]-=data;
                 tmp_idx+=data;
-                pos+=2;
-            }*/
+                pos++;
+            }
+            b_freq[symbol]+=tmp_idx-idx;
+
+            //TODO
+            /*for(size_t i=0;i<16;i++){
+                std::cout<<idx<<" -> "<<i<<" "<<tmp_b_freqs[i]<<" "<<b_freq[i]<<" "<<int(symbol)<<std::endl;
+                assert(tmp_b_freqs[i]==b_freq[i]);
+            }
+            std::cout<<""<<std::endl;*/
+            //
+
         }
-        b_freq[symbol]-=idx-tmp_idx;
         //TODO pad the BWT stream with zero
     }
 
