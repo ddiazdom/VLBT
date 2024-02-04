@@ -6,16 +6,19 @@
 void test_inverse_select(fm_index& fmi, simple_rl_bwt& srlbwt){
     unsigned long my_time=0, their_time=0;
     std::cout<<"Testing inverse select"<<std::endl;
+    size_t samp_size = (fmi.size()*10)/100;
 
-    for(size_t i=0;i<srlbwt.size();i++){
+    for(size_t i=0;i<samp_size;i++){
+
+        size_t j = rand() % srlbwt.size();
 
         auto t1 = std::chrono::high_resolution_clock::now();
-        auto my_res = srlbwt.inverse_select(i);
+        auto my_res = srlbwt.inverse_select(j);
         auto t2 = std::chrono::high_resolution_clock::now();
         my_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
 
         t1 = std::chrono::high_resolution_clock::now();
-        auto their_res = fmi.bwt.inverse_select(i);
+        auto their_res = fmi.bwt.inverse_select(j);
         t2 = std::chrono::high_resolution_clock::now();
         their_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
 
@@ -26,8 +29,38 @@ void test_inverse_select(fm_index& fmi, simple_rl_bwt& srlbwt){
         }
         assert(equal);
     }
-    std::cout<<"my average time:    "<<double(my_time)/double(fmi.bwt.size())<<" nano seconds "<<std::endl;
-    std::cout<<"their average time: "<<double(their_time)/double(fmi.bwt.size())<<" nano seconds "<<std::endl;
+    std::cout<<"my average time:    "<<double(my_time)/double(samp_size)<<" nano seconds "<<std::endl;
+    std::cout<<"their average time: "<<double(their_time)/double(samp_size)<<" nano seconds "<<std::endl;
+}
+
+void test_access(fm_index& fmi, simple_rl_bwt& srlbwt){
+    unsigned long my_time=0, their_time=0;
+    std::cout<<"Testing access"<<std::endl;
+    size_t samp_size = (fmi.size()*10)/100;
+
+    for(size_t i=0;i<samp_size;i++){
+
+        size_t j = rand() % srlbwt.size();
+
+        auto t1 = std::chrono::high_resolution_clock::now();
+        auto my_res = srlbwt[j];
+        auto t2 = std::chrono::high_resolution_clock::now();
+        my_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
+
+        t1 = std::chrono::high_resolution_clock::now();
+        auto their_res = fmi.bwt[j];
+        t2 = std::chrono::high_resolution_clock::now();
+        their_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
+
+        bool equal = my_res==their_res;
+
+        if(!equal){
+            std::cout<<"? pos:"<<i<<","<<" -> sym:"<<int(my_res)<<" -> sym:"<<int(their_res)<<std::endl;
+        }
+        assert(equal);
+    }
+    std::cout<<"my average time:    "<<double(my_time)/double(samp_size)<<" nano seconds "<<std::endl;
+    std::cout<<"their average time: "<<double(their_time)/double(samp_size)<<" nano seconds "<<std::endl;
 }
 
 void test_rank(fm_index& fmi, simple_rl_bwt& srlbwt){
@@ -35,16 +68,20 @@ void test_rank(fm_index& fmi, simple_rl_bwt& srlbwt){
     std::cout<<"Testing rank"<<std::endl;
 
     unsigned long my_time=0, their_time=0, n_tries=0;
-    for(size_t i=0;i<20;i++){
+    size_t samp_size = (fmi.size()*10)/100;
+
+    for(size_t i=0;i<samp_size;i++){
+
+        size_t u = rand() % srlbwt.size();
 
         for(size_t j=0;j<srlbwt.sym_inv_map.size(); j++){
             auto t1 = std::chrono::high_resolution_clock::now();
-            auto my_res = srlbwt.rank(i,srlbwt.sym_inv_map[j]);
+            auto my_res = srlbwt.rank(u,srlbwt.sym_inv_map[j]);
             auto t2 = std::chrono::high_resolution_clock::now();
             my_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
 
             t1 = std::chrono::high_resolution_clock::now();
-            auto their_res = fmi.bwt.rank(i, srlbwt.sym_inv_map[j]);
+            auto their_res = fmi.bwt.rank(u, srlbwt.sym_inv_map[j]);
             t2 = std::chrono::high_resolution_clock::now();
             their_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
 
@@ -58,7 +95,6 @@ void test_rank(fm_index& fmi, simple_rl_bwt& srlbwt){
     }
     std::cout<<"my average time:    "<<double(my_time)/double(n_tries)<<" nano seconds "<<std::endl;
     std::cout<<"their average time: "<<double(their_time)/double(n_tries)<<" nano seconds "<<std::endl;
-
 }
 
 void test_interval_symbols(fm_index& fmi, simple_rl_bwt& srlbwt){
@@ -146,9 +182,11 @@ int main() {
     fm_index fmi(file);
     std::cout<<"It uses "<<sdsl::size_in_bytes(fmi.bwt)<<" bytes "<<std::endl;
 
-    //test_rank(fmi, bwt);
+    test_access(fmi, bwt);
+    test_rank(fmi, bwt);
     test_inverse_select(fmi, bwt);
     //test_interval_symbols(fmi, bwt);
+    //test_select(fmi, bwt);
 
     return 0;
 }
