@@ -15,32 +15,32 @@ struct simple_rl_bwt{
 
     typedef uint8_t sym_type;
 
-    static const size_t b_size = 4096;
-    static const size_t mb_size = 512;
-    static constexpr uint8_t mb_width = 9;
+    static const size_t b_size = 4096; //block size
+    static const size_t mb_size = 512; //mini block size
+    static constexpr uint8_t mb_width = 9; //log2(mb_size)
 
-    static const size_t max_runs_per_block = 128;
+    static const size_t max_runs_per_block = 128; //threshold to split a block into mini blocks
     static constexpr size_t max_run_len = 2048;//max value we can encode in 11 bits
-    static const size_t n_mini_blocks = INT_CEIL(b_size, mb_size);
+    static const size_t n_mini_blocks = INT_CEIL(b_size, mb_size);//number of mini blocks of a block
     static constexpr uint8_t mb_header_widths[16] = {0, 12, 24, 36, 48, 60, 72, 84, 96,
-                                                     108, 120, 132, 144, 156, 168, 180};
+                                                     108, 120, 132, 144, 156, 168, 180};//the cumulative bits used by the mini block rank samples
 
-    size_t alphabet=0;
-    size_t b_header_bits=0;
-    size_t n_symbols=0;
-    size_t mb_header_bytes=0;
-    size_t tot_runs=0;
-    size_t orig_n_runs=0;
-    size_t n_sampled_blocks=0;
-    uint8_t *data_pointer;
+    size_t alphabet=0; //text alphabet
+    size_t b_header_bits=0; //number of bits used by the block header
+    size_t n_symbols=0; //number of text symbols
+    size_t mb_header_bytes=0; //number of bytes used by a mini block header
+    size_t tot_runs=0; //number of BWT runs after cutting the text into blocks and mini blocks
+    size_t orig_n_runs=0; //original number of BWT runs (before creating the blocks)
+    size_t n_sampled_blocks=0; //number of blocks with mini blocks
+    uint8_t *data_pointer= nullptr; //pointer to the bwt stream
 
-    std::vector<uint8_t> sym_map;
-    std::vector<uint8_t> sym_inv_map;
-    std::vector<size_t> freq_widths;
-    std::vector<size_t> block_pointers;
-    bitstream<size_t> bwt;
+    std::vector<uint8_t> sym_map; //map symbols to their compacted alphabet
+    std::vector<uint8_t> sym_inv_map; //map compacted symbols to their original values
+    std::vector<uint16_t> b_header_widths; //cumulative bits for the ranks in the block header
+    std::vector<size_t> block_pointers; //position of each block within the BWT stream
+    bitstream<size_t> bwt; //BWT stream
 
-    //long run encoded in two bytes
+    //run encoded in two bytes
     inline size_t insert_run(size_t sym, size_t len, size_t& bwt_pos) {
         assert(len>0);
         uint16_t run = ((len-1) << 4) | sym;
@@ -50,6 +50,7 @@ struct simple_rl_bwt{
         return 2;
     }
 
+    //run encoded in one byte
     inline size_t insert_mini_run(size_t sym, size_t len, size_t& bwt_pos) {
         //mini run encoded in one byte
         uint8_t run = ((len-1)<< 4) | sym;
@@ -59,6 +60,7 @@ struct simple_rl_bwt{
         return 1;
     }
 
+    //break a block into mini blocks
     inline void subsample_block(std::vector<std::pair<uint8_t, uint16_t>>& block_runs, size_t& bwt_pos) {
 
         // store the start of the block just to assert
@@ -78,7 +80,7 @@ struct simple_rl_bwt{
         sub_block_runs.reserve(block_runs.size());
 
         std::vector<size_t> b_sym_freqs(alphabet+1, 0);
-        std::vector<size_t> mb_rank_widths(alphabet+2, 0);
+        std::vector<uint16_t> mb_rank_widths(alphabet+2, 0);
         for(size_t i=0;i<=alphabet+1;i++) mb_rank_widths[i] = i*12;
 
         insert_block_header(b_sym_freqs, mb_rank_widths, mb_header_widths[alphabet+1], mb_metadata_offset);
@@ -201,7 +203,7 @@ struct simple_rl_bwt{
         assert((mb_metadata_offset-block_start)<=(mb_header_bytes*8));
     }
 
-    inline void insert_block_header(std::vector<size_t>& sym_freq, std::vector<size_t>& rank_widths, size_t h_width, size_t& bwt_pos) {
+    inline void insert_block_header(std::vector<size_t>& sym_freq, std::vector<uint16_t>& rank_widths, size_t h_width, size_t& bwt_pos) {
         for(size_t i=0;i<sym_freq.size();i++){
             bwt.write(bwt_pos+rank_widths[i], bwt_pos+rank_widths[i+1]-1, sym_freq[i]);
         }
@@ -258,11 +260,11 @@ struct simple_rl_bwt{
         size_t n_syms = 0, u=0;
         sym_map.resize(256);
         sym_inv_map.resize(256);
-        freq_widths.resize(256);
+        b_header_widths.resize(256);
         for(unsigned long sym_freq : sym_freqs){
             n_syms+=sym_freq;
             if(sym_freq>0){
-                freq_widths[alphabet] = sym_width(sym_freq);
+                b_header_widths[alphabet] = sym_width(sym_freq);
                 sym_map[u] = alphabet;
                 sym_inv_map[alphabet] = u;
                 alphabet++;
@@ -275,13 +277,13 @@ struct simple_rl_bwt{
         sym_map.resize(sym_inv_map.back()+1);
 
         size_t acc=0, tmp;
-        freq_widths.resize(alphabet+1);
+        b_header_widths.resize(alphabet+1);
         for(size_t i=0;i<alphabet;i++){
-            tmp = freq_widths[i];
-            freq_widths[i] = acc;
+            tmp = b_header_widths[i];
+            b_header_widths[i] = acc;
             acc +=tmp;
         }
-        freq_widths[alphabet] = acc;
+        b_header_widths[alphabet] = acc;
         b_header_bits = INT_CEIL(acc, 8)*8;
 
         orig_n_runs = bwt_buff.size();
@@ -309,7 +311,7 @@ struct simple_rl_bwt{
         std::vector<size_t> acc_ranks(alphabet, 0);
 
         block_pointers[idx_block++] = bwt_pos;
-        insert_block_header(acc_ranks, freq_widths, b_header_bits, bwt_pos);
+        insert_block_header(acc_ranks, b_header_widths, b_header_bits, bwt_pos);
 
         acc_block=0;
         std::vector<std::pair<uint8_t, uint16_t>> block_runs;
@@ -358,7 +360,7 @@ struct simple_rl_bwt{
                 broken_run_len = (acc_block+len)-b_size;
                 while(broken_run_len>b_size){
                     block_pointers[idx_block++] = bwt_pos;
-                    insert_block_header(acc_ranks, freq_widths, b_header_bits, bwt_pos);
+                    insert_block_header(acc_ranks, b_header_widths, b_header_bits, bwt_pos);
 
                     //mark as not sub sampled
                     bwt.write(bwt_pos, bwt_pos+8-1, 0);
@@ -384,7 +386,7 @@ struct simple_rl_bwt{
                 //insert the block header
                 block_runs.clear();
                 block_pointers[idx_block++] = bwt_pos;
-                insert_block_header(acc_ranks, freq_widths, b_header_bits, bwt_pos);
+                insert_block_header(acc_ranks, b_header_widths, b_header_bits, bwt_pos);
 
                 //insert the first run
                 acc_ranks[sym] += broken_run_len;
@@ -437,7 +439,7 @@ struct simple_rl_bwt{
         //appending the full ranks at the end of the encoding
         // to scan the blocks backwards
         block_pointers[idx_block] = bwt_pos;
-        insert_block_header(acc_ranks, freq_widths, b_header_bits, bwt_pos);
+        insert_block_header(acc_ranks, b_header_widths, b_header_bits, bwt_pos);
 
         assert(idx_block == n_blocks);
         assert(bwt_pos<=bwt_size_bits);
@@ -503,10 +505,10 @@ struct simple_rl_bwt{
                 }
 
                 if(mini_block<(n_mini_blocks-1)){
-                    rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+                    rank = bwt.read(b_start + b_header_widths[symbol], b_start + b_header_widths[symbol+1] -1);
                     rank += bwt.read(next_mb_mt_start + mb_header_widths[symbol], next_mb_mt_start + mb_header_widths[symbol+1]-1);
                 }else{
-                    rank = bwt.read(next_mb_mt_start + freq_widths[symbol], next_mb_mt_start + freq_widths[symbol+1] -1);
+                    rank = bwt.read(next_mb_mt_start + b_header_widths[symbol], next_mb_mt_start + b_header_widths[symbol+1] -1);
                 }
                 rank-=b_freq[symbol];
             }else{
@@ -517,7 +519,7 @@ struct simple_rl_bwt{
                     bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
                     f_scan<false, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
                 }
-                rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+                rank = bwt.read(b_start + b_header_widths[symbol], b_start + b_header_widths[symbol+1] -1);
                 rank+= bwt.read(mb_start + mb_header_widths[symbol], mb_start + mb_header_widths[symbol+1] -1);
                 rank+=b_freq[symbol];
             }
@@ -530,12 +532,12 @@ struct simple_rl_bwt{
 
                 b_scan<false, true>(idx, tmp_idx+b_size, bwt_ptr, b_freq, symbol);
                 b_start = block_pointers[block+1];
-                rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+                rank = bwt.read(b_start + b_header_widths[symbol], b_start + b_header_widths[symbol+1] -1);
                 rank-=b_freq[symbol];
             }else{
                 bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
                 f_scan<false, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
-                rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
+                rank = bwt.read(b_start + b_header_widths[symbol], b_start + b_header_widths[symbol+1] -1);
                 rank+=b_freq[symbol];
             }
         }
@@ -717,10 +719,10 @@ struct simple_rl_bwt{
                 }
 
                 if(mini_block<(n_mini_blocks-1)){
-                    rank = bwt.read(b_start + freq_widths[q_symbol], b_start + freq_widths[q_symbol+1] -1);
+                    rank = bwt.read(b_start + b_header_widths[q_symbol], b_start + b_header_widths[q_symbol+1] -1);
                     rank += bwt.read(next_mb_mt_start + mb_header_widths[q_symbol], next_mb_mt_start + mb_header_widths[q_symbol+1]-1);
                 }else{
-                    rank = bwt.read(next_mb_mt_start + freq_widths[q_symbol], next_mb_mt_start + freq_widths[q_symbol+1] -1);
+                    rank = bwt.read(next_mb_mt_start + b_header_widths[q_symbol], next_mb_mt_start + b_header_widths[q_symbol+1] -1);
                 }
                 rank-=b_freq[q_symbol];
             }else{
@@ -731,7 +733,7 @@ struct simple_rl_bwt{
                     bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
                     f_scan<false, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
                 }
-                rank = bwt.read(b_start + freq_widths[q_symbol], b_start + freq_widths[q_symbol+1] -1);
+                rank = bwt.read(b_start + b_header_widths[q_symbol], b_start + b_header_widths[q_symbol+1] -1);
                 rank+= bwt.read(mb_start + mb_header_widths[q_symbol], mb_start + mb_header_widths[q_symbol+1] -1);
                 rank+=b_freq[q_symbol];
             }
@@ -744,12 +746,12 @@ struct simple_rl_bwt{
 
                 b_scan<false, true>(idx, tmp_idx+b_size, bwt_ptr, b_freq, symbol);
                 b_start = block_pointers[block+1];
-                rank = bwt.read(b_start + freq_widths[q_symbol], b_start + freq_widths[q_symbol+1] -1);
+                rank = bwt.read(b_start + b_header_widths[q_symbol], b_start + b_header_widths[q_symbol+1] -1);
                 rank-=b_freq[q_symbol];
             }else{
                 bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
                 f_scan<false, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
-                rank = bwt.read(b_start + freq_widths[q_symbol], b_start + freq_widths[q_symbol+1] -1);
+                rank = bwt.read(b_start + b_header_widths[q_symbol], b_start + b_header_widths[q_symbol+1] -1);
                 rank+=b_freq[q_symbol];
             }
         }
@@ -784,14 +786,14 @@ struct simple_rl_bwt{
                 //copy the ranks if i and j-1 are withing the same block
                 j_block_pos = i_block_pos;
                 for(size_t u=0;u<alphabet;u++){
-                    rank_c_i[u] = bwt.read(i_block_pos+freq_widths[u], i_block_pos+freq_widths[u+1]-1);
+                    rank_c_i[u] = bwt.read(i_block_pos+b_header_widths[u], i_block_pos+b_header_widths[u+1]-1);
                 }
                 memcpy(rank_c_j.data(), rank_c_i.data(), alphabet*sizeof(size_t));
             }else{
                 j_block_pos = block_pointers[j_block];
                 for(size_t u=0;u<alphabet;u++){
-                    rank_c_i[u] = bwt.read(i_block_pos+freq_widths[u], i_block_pos+freq_widths[u+1]-1);
-                    rank_c_j[u] = bwt.read(j_block_pos+freq_widths[u], j_block_pos+freq_widths[u+1]-1);
+                    rank_c_i[u] = bwt.read(i_block_pos+b_header_widths[u], i_block_pos+b_header_widths[u+1]-1);
+                    rank_c_j[u] = bwt.read(j_block_pos+b_header_widths[u], j_block_pos+b_header_widths[u+1]-1);
                 }
             }
             i_block_pos += b_header_bits;
@@ -805,7 +807,6 @@ struct simple_rl_bwt{
 
             //the current position indicates if the block was sub sampled or not
             if(*i_bwt_ptr){
-
                 //idx of the mini block within the block
                 i_mini_block = (i-tmp_i) >> mb_width;
 
@@ -1038,24 +1039,37 @@ struct simple_rl_bwt{
     size_t serialize(std::ofstream & ofs){
         size_t written_bytes = 0;
         written_bytes += serialize_elm(ofs, alphabet);
-        written_bytes += serialize_elm(ofs, b_size);
+        written_bytes += serialize_elm(ofs, b_header_bits);
+        written_bytes += serialize_elm(ofs, n_symbols);
+        written_bytes += serialize_elm(ofs, mb_header_bytes);
+        written_bytes += serialize_elm(ofs, tot_runs);
+        written_bytes += serialize_elm(ofs, orig_n_runs);
+        written_bytes += serialize_elm(ofs, n_sampled_blocks);
+
         written_bytes += serialize_plain_vector(ofs, sym_map);
         written_bytes += serialize_plain_vector(ofs, sym_inv_map);
-        written_bytes += serialize_plain_vector(ofs, freq_widths);
+        written_bytes += serialize_plain_vector(ofs, b_header_widths);
         written_bytes += serialize_plain_vector(ofs, block_pointers);
         written_bytes += bwt.serialize(ofs);
+
         return  written_bytes;
     }
 
     void load(std::ifstream & ifs){
-        //load_elm(ifs, n_blocks);
         load_elm(ifs, alphabet);
-        load_elm(ifs, b_size);
+        load_elm(ifs, b_header_bits);
+        load_elm(ifs, n_symbols);
+        load_elm(ifs, mb_header_bytes);
+        load_elm(ifs, tot_runs);
+        load_elm(ifs, orig_n_runs);
+        load_elm(ifs, n_sampled_blocks);
+
         load_plain_vector(ifs, sym_map);
         load_plain_vector(ifs, sym_inv_map);
-        load_plain_vector(ifs, freq_widths);
+        load_plain_vector(ifs, b_header_widths);
         load_plain_vector(ifs, block_pointers);
         bwt.load(ifs);
+
         data_pointer = (uint8_t *)bwt.stream;
     }
 };
