@@ -180,7 +180,8 @@ int main() {
 
     std::cout<<"Now building the standard FM index"<<std::endl;
     fm_index fmi(file);
-    std::cout<<"It uses "<<sdsl::size_in_bytes(fmi.bwt)<<" bytes "<<std::endl;
+    std::cout<<"It uses "<<sdsl::size_in_mega_bytes(fmi.bwt)<<" MB "<<std::endl;
+
 
     test_access(fmi, bwt);
     test_rank(fmi, bwt);

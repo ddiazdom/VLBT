@@ -111,6 +111,16 @@ struct simple_rl_bwt{
                     }
                 }else{
                     bwt.write(mb_metadata_offset, mb_metadata_offset, TWO_BYTE_ENC);//mark the mini block as using two-byte encoding
+
+                    //a mini block with two-byte encoding has to be two-byte aligned,
+                    // so we have to update the pointer in the header if it is not two-byte aligned
+                    bool two_byte_unaligned = reinterpret_cast<uintptr_t>(&data_pointer[bwt_pos>>3]) & 1;
+                    if(two_byte_unaligned){
+                        assert(runs_byte_pos==bwt.read(mb_metadata_offset-12, mb_metadata_offset-1));
+                        bwt_pos+=8;
+                        runs_byte_pos++;
+                    }
+
                     for(auto const& mini_run : sub_block_runs) {
                         runs_byte_pos+=insert_run(mini_run.first, mini_run.second, bwt_pos);
                         b_sym_freqs[mini_run.first]+= mini_run.second;
@@ -125,10 +135,19 @@ struct simple_rl_bwt{
                     b_sym_freqs[alphabet] = runs_byte_pos;
                     insert_block_header(b_sym_freqs, mb_rank_widths, mb_header_widths[alphabet+1], mb_metadata_offset);
                     bwt.write(mb_metadata_offset, mb_metadata_offset, TWO_BYTE_ENC);//mark the mini block as using two-byte encoding
-                    mb_metadata_offset++;
+
+                    //a mini block with two-byte encoding has to be two-byte aligned,
+                    // so we have to update the pointer it is not
+                    bool two_byte_unaligned = reinterpret_cast<uintptr_t>(&data_pointer[bwt_pos>>3]) & 1;
+                    if(two_byte_unaligned){
+                        bwt_pos+=8;
+                        runs_byte_pos++;
+                    }
+
                     runs_byte_pos+=insert_run(run.first, mb_size, bwt_pos);
                     b_sym_freqs[run.first]+=mb_size;
                     broken_run_len-=mb_size;
+                    mb_metadata_offset++;
                 }
 
                 sub_block_runs.clear();
@@ -162,7 +181,16 @@ struct simple_rl_bwt{
                 }
             }
         }else{
+            //a mini block with two-byte encoding has to be two-byte aligned,
+            // so we have to update the pointer it is not
+            bool two_byte_unaligned = reinterpret_cast<uintptr_t>(&data_pointer[bwt_pos>>3]) & 1;
+            if(two_byte_unaligned){
+                assert(runs_byte_pos==bwt.read(mb_metadata_offset-12, mb_metadata_offset-1));
+                bwt_pos+=8;
+                runs_byte_pos++;
+            }
             bwt.write(mb_metadata_offset, mb_metadata_offset, TWO_BYTE_ENC);//mark the mini block as using one-byte encoding
+
             for(auto const& mini_run : sub_block_runs) {
                 runs_byte_pos+=insert_run(mini_run.first, mini_run.second, bwt_pos);
             }
@@ -287,10 +315,9 @@ struct simple_rl_bwt{
         std::vector<std::pair<uint8_t, uint16_t>> block_runs;
         block_runs.reserve(b_size);
 
-          for(size_t k=0;k<n_runs;k++){
+        for(size_t k=0;k<n_runs;k++){
 
             bwt_buff.read_run(k, sym, len);
-
             sym = sym_map[sym];
 
             if((acc_block+len)>b_size) {
@@ -316,6 +343,12 @@ struct simple_rl_bwt{
                     //mark the block as not subsampled (i.e., it does not have mini blocks)
                     bwt.write(bwt_pos, bwt_pos+8-1, 0);
                     bwt_pos+=8;
+
+                    //make the block two-byte aligned
+                    bool two_byte_unaligned = reinterpret_cast<std::uintptr_t>(&data_pointer[bwt_pos>>3]) & 1;
+                    bwt_pos +=8*two_byte_unaligned;
+                    assert((reinterpret_cast<std::uintptr_t>(&data_pointer[bwt_pos>>3]) & 1)==0);
+
                     for(auto const& run : block_runs){
                         insert_run(run.first, run.second, bwt_pos);
                     }
@@ -326,9 +359,15 @@ struct simple_rl_bwt{
                 while(broken_run_len>b_size){
                     block_pointers[idx_block++] = bwt_pos;
                     insert_block_header(acc_ranks, freq_widths, b_header_bits, bwt_pos);
+
                     //mark as not sub sampled
                     bwt.write(bwt_pos, bwt_pos+8-1, 0);
                     bwt_pos+=8;
+
+                    //make the block two-byte aligned
+                    bool two_byte_unaligned = reinterpret_cast<std::uintptr_t>(&data_pointer[bwt_pos>>3]) & 1;
+                    bwt_pos+=8*two_byte_unaligned;
+                    assert((reinterpret_cast<std::uintptr_t>(&data_pointer[bwt_pos>>3]) & 1)==0);
 
                     acc_ranks[sym]+=b_size;
                     broken_run_len-=b_size;
@@ -367,7 +406,9 @@ struct simple_rl_bwt{
                     block_runs.emplace_back(sym, max_run_len);
                     len-=max_run_len;
                 }
-                if(len>0) block_runs.emplace_back(sym, len);
+                if(len>0){
+                    block_runs.emplace_back(sym, len);
+                }
             }
         }
 
@@ -382,6 +423,12 @@ struct simple_rl_bwt{
             //mark the block as not subsampled (i.e., it does not have mini blocks)
             bwt.write(bwt_pos, bwt_pos+8-1, 0);
             bwt_pos+=8;
+
+            //make the block two-byte aligned
+            bool two_byte_unaligned = reinterpret_cast<std::uintptr_t>(&data_pointer[bwt_pos>>3]) & 1;
+            bwt_pos+=8*two_byte_unaligned;
+            assert((reinterpret_cast<std::uintptr_t>(&data_pointer[bwt_pos>>3]) & 1)==0);
+
             for(auto const& run : block_runs){
                 insert_run(run.first, run.second, bwt_pos);
             }
@@ -467,6 +514,7 @@ struct simple_rl_bwt{
                 if(one_byte_encoding){
                     f_scan<true, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
                 }else{
+                    bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
                     f_scan<false, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
                 }
                 rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
@@ -485,6 +533,7 @@ struct simple_rl_bwt{
                 rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
                 rank-=b_freq[symbol];
             }else{
+                bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
                 f_scan<false, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
                 rank = bwt.read(b_start + freq_widths[symbol], b_start + freq_widths[symbol+1] -1);
                 rank+=b_freq[symbol];
@@ -679,6 +728,7 @@ struct simple_rl_bwt{
                 if(one_byte_encoding){
                     f_scan<true, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
                 }else{
+                    bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
                     f_scan<false, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
                 }
                 rank = bwt.read(b_start + freq_widths[q_symbol], b_start + freq_widths[q_symbol+1] -1);
@@ -697,6 +747,7 @@ struct simple_rl_bwt{
                 rank = bwt.read(b_start + freq_widths[q_symbol], b_start + freq_widths[q_symbol+1] -1);
                 rank-=b_freq[q_symbol];
             }else{
+                bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
                 f_scan<false, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
                 rank = bwt.read(b_start + freq_widths[q_symbol], b_start + freq_widths[q_symbol+1] -1);
                 rank+=b_freq[q_symbol];
@@ -821,7 +872,6 @@ struct simple_rl_bwt{
             //auto t2 = std::chrono::high_resolution_clock::now();
             //std::cout<<"The first part: "<<std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count()<<" now we will scan "<<i-tmp_i<<" symbols from "<<tmp_i<<" to "<<i<<" block: "<<i_block<<" and mini block: "<<i_mini_block<<std::endl;
 
-
             //auto t1 = std::chrono::high_resolution_clock::now();
 
             uint16_t data;
@@ -942,6 +992,7 @@ struct simple_rl_bwt{
                 if(one_byte_encoding){
                     f_scan<true, false>(idx, tmp_idx, bwt_ptr, nullptr, symbol);
                 }else{
+                    bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
                     f_scan<false, false>(idx, tmp_idx, bwt_ptr, nullptr, symbol);
                 }
             }
@@ -949,10 +1000,11 @@ struct simple_rl_bwt{
             if((idx-tmp_idx)>(b_size>>1)){
                 block_pos = block_pointers[block+1]-block_pointers[block];
                 block_pos -= b_header_bits + 16;//subtract the header bits 8+8=16 consider the mini block flag and moving one position back from the end
-                block_pos >>=3;//in bytes
+                block_pos >>=3;//transform to byte position
                 bwt_ptr+=block_pos;
                 b_scan<false, false>(idx, tmp_idx+b_size, bwt_ptr, nullptr, symbol);
             }else{
+                bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
                 f_scan<false, false>(idx, tmp_idx, bwt_ptr, nullptr, symbol);
             }
         }
