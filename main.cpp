@@ -99,6 +99,8 @@ void test_rank(fm_index& fmi, simple_rl_bwt& srlbwt){
 
 void test_interval_symbols(fm_index& fmi, simple_rl_bwt& srlbwt){
 
+    std::cout<<"Testing interval symbols "<<std::endl;
+
     std::vector<uint8_t> my_cs(16, 0);
     std::vector<size_t> my_rank_c_i(16, 0);
     std::vector<size_t> my_rank_c_j(16, 0);
@@ -110,11 +112,10 @@ void test_interval_symbols(fm_index& fmi, simple_rl_bwt& srlbwt){
     std::vector<size_type> their_rank_c_j(16, 0);
     size_type their_k;
 
-    //srlbwt.interval_symbols(0, 4097, my_k, my_cs, my_rank_c_i, my_rank_c_j);
     unsigned long my_time=0, their_time=0, n_tries=0;
 
-
-    for(size_t i=0;i<12000;i++) {
+    for(size_t i=0;i<60000;i++) {
+        size_t a = rand() % fmi.size()-1;
         for(size_t j=i+1;j<i+120;j++){
             //std::cout<<"We will try : "<<i<<" "<<j<<" "<<fmi.size()<<std::endl;
 
@@ -122,8 +123,18 @@ void test_interval_symbols(fm_index& fmi, simple_rl_bwt& srlbwt){
                 std::cout<<srlbwt[u]<<","<<fmi.bwt[u]<<"   ";
             }
             std::cout<<""<<std::endl;*/
+            size_t b = rand() % fmi.size()-1;
+
+            if(a>b){
+                std::swap(a, b);
+            }
+
+            if(a==b){
+                b++;
+            }
+
             auto t1 = std::chrono::high_resolution_clock::now();
-            fmi.bwt.interval_symbols(i, j, their_k, their_cs, their_rank_c_i, their_rank_c_j);
+            fmi.bwt.interval_symbols(a, b, their_k, their_cs, their_rank_c_i, their_rank_c_j);
             auto t2 = std::chrono::high_resolution_clock::now();
             their_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
 
@@ -141,24 +152,38 @@ void test_interval_symbols(fm_index& fmi, simple_rl_bwt& srlbwt){
             }*/
 
             t1 = std::chrono::high_resolution_clock::now();
-            srlbwt.interval_symbols(i, j, my_k, my_cs, my_rank_c_i, my_rank_c_j);
+            srlbwt.interval_symbols(a, b, my_k, my_cs, my_rank_c_i, my_rank_c_j);
             t2 = std::chrono::high_resolution_clock::now();
             my_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
 
-            /*std::cout<<"My results: "<<std::endl;
-            for(size_t k=0;k<my_k;k++){
-                std::cout<<int(my_cs[k])<<" "<<my_rank_c_i[k]<<" "<<my_rank_c_j[k]<<std::endl;
+            if(their_k!=my_k){
+                std::cout<<"My results: "<<std::endl;
+                for(size_t k=0;k<my_k;k++){
+                    std::cout<<int(my_cs[k])<<" "<<my_rank_c_i[k]<<" "<<my_rank_c_j[k]<<std::endl;
+                }
+                std::cout<<" "<<std::endl;
+                std::cout<<their_k<<" "<<my_k<<" "<<a<<" "<<b<<std::endl;
             }
-            std::cout<<" "<<std::endl;*/
 
-            //std::cout<<their_k<<" "<<my_k<<" "<<i<<" "<<j<<std::endl;
             assert(their_k==my_k);
             for(size_t k=0;k<my_k;k++){
-                //std::cout<<int(their_cs[res_sorted[k].first])<<" "<<int(my_cs[k])<<std::endl;
+                if(their_cs[res_sorted[k].first]!=my_cs[k] ||
+                   their_rank_c_i[res_sorted[k].first]!=my_rank_c_i[k] ||
+                   their_rank_c_j[res_sorted[k].first]!=my_rank_c_j[k]){
+                    std::cout<<"My results: "<<std::endl;
+                    for(size_t p=0;p<my_k;p++){
+                        std::cout<<int(my_cs[p])<<" "<<my_rank_c_i[p]<<" "<<my_rank_c_j[p]<<std::endl;
+                    }
+                    std::cout<<" "<<std::endl;
+                    std::cout<<"their results: "<<std::endl;
+                    for(size_t p=0;p<my_k;p++){
+                        std::cout<<int(their_cs[res_sorted[p].first])<<" "<<their_rank_c_i[res_sorted[p].first]<<" "<<their_rank_c_j[res_sorted[p].first]<<std::endl;
+                    }
+                    std::cout<<" "<<std::endl;
+                    std::cout<<their_k<<" "<<my_k<<" "<<a<<" "<<b<<std::endl;
+                }
                 assert(their_cs[res_sorted[k].first]==my_cs[k]);
-                //std::cout<<their_rank_c_i[res_sorted[k].first]<<" "<<my_rank_c_i[k]<<std::endl;
                 assert(their_rank_c_i[res_sorted[k].first] == my_rank_c_i[k]);
-                //std::cout<<their_rank_c_j[res_sorted[k].first]<<" "<<my_rank_c_j[k]<<"\n"<<std::endl;
                 assert(their_rank_c_j[res_sorted[k].first] == my_rank_c_j[k]);
             }
             n_tries++;
@@ -183,10 +208,10 @@ int main() {
     std::cout<<"It uses "<<sdsl::size_in_mega_bytes(fmi.bwt)<<" MB "<<std::endl;
 
 
-    test_access(fmi, bwt);
-    test_rank(fmi, bwt);
-    test_inverse_select(fmi, bwt);
-    //test_interval_symbols(fmi, bwt);
+    //test_access(fmi, bwt);
+    //test_rank(fmi, bwt);
+    //test_inverse_select(fmi, bwt);
+    test_interval_symbols(fmi, bwt);
     //test_select(fmi, bwt);
 
     return 0;
