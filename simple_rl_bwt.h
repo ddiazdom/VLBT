@@ -227,6 +227,8 @@ struct simple_rl_bwt{
         bwt_pos+=h_width;
     }
 
+    simple_rl_bwt() = default;
+
     explicit simple_rl_bwt(std::string& plain_rl_bwt) {
 
         bwt_buff_reader bwt_buff(plain_rl_bwt);
