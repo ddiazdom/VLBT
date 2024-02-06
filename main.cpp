@@ -3,7 +3,7 @@
 #include "fm_index.h"
 #include "sdsl/wavelet_trees.hpp"
 
-void test_inverse_select(fm_index& fmi, simple_rl_bwt<>& srlbwt){
+void test_inverse_select(fm_index& fmi, simple_rl_bwt<5>& srlbwt){
     unsigned long my_time=0, their_time=0;
     std::cout<<"Testing inverse select"<<std::endl;
     size_t samp_size = (fmi.size()*10)/100;
@@ -33,7 +33,7 @@ void test_inverse_select(fm_index& fmi, simple_rl_bwt<>& srlbwt){
     std::cout<<"their average time: "<<double(their_time)/double(samp_size)<<" nano seconds "<<std::endl;
 }
 
-void test_access(fm_index& fmi, simple_rl_bwt<>& srlbwt){
+void test_access(fm_index& fmi, simple_rl_bwt<5>& srlbwt){
     unsigned long my_time=0, their_time=0;
     std::cout<<"Testing access"<<std::endl;
     size_t samp_size = (fmi.size()*10)/100;
@@ -63,7 +63,7 @@ void test_access(fm_index& fmi, simple_rl_bwt<>& srlbwt){
     std::cout<<"their average time: "<<double(their_time)/double(samp_size)<<" nano seconds "<<std::endl;
 }
 
-void test_rank(fm_index& fmi, simple_rl_bwt<>& srlbwt){
+void test_rank(fm_index& fmi, simple_rl_bwt<5>& srlbwt){
 
     std::cout<<"Testing rank"<<std::endl;
 
@@ -72,31 +72,30 @@ void test_rank(fm_index& fmi, simple_rl_bwt<>& srlbwt){
 
     for(size_t i=0;i<samp_size;i++){
 
-        size_t u = rand() % srlbwt.size();
+        size_t u = rand() % fmi.bwt.size();
+        uint8_t s = rand() % srlbwt.alphabet;
 
-        for(size_t j=0;j<srlbwt.sym_inv_map.size(); j++){
-            auto t1 = std::chrono::high_resolution_clock::now();
-            auto my_res = srlbwt.rank(u,srlbwt.sym_inv_map[j]);
-            auto t2 = std::chrono::high_resolution_clock::now();
-            my_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
+        auto t1 = std::chrono::high_resolution_clock::now();
+        auto my_res = srlbwt.rank(u,srlbwt.sym_inv_map[s]);
+        auto t2 = std::chrono::high_resolution_clock::now();
+        my_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
 
-            t1 = std::chrono::high_resolution_clock::now();
-            auto their_res = fmi.bwt.rank(u, srlbwt.sym_inv_map[j]);
-            t2 = std::chrono::high_resolution_clock::now();
-            their_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
+        t1 = std::chrono::high_resolution_clock::now();
+        auto their_res = fmi.bwt.rank(u, srlbwt.sym_inv_map[s]);
+        t2 = std::chrono::high_resolution_clock::now();
+        their_time += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();
 
-            bool equal = my_res==their_res;
-            if(!equal){
-                std::cout<<"? position:"<<i<<", symbol:"<<srlbwt.sym_inv_map[j]<<" -> "<<my_res<<" -> "<<their_res<<std::endl;
-            }
-            assert(equal);
+        bool equal = my_res==their_res;
+        if(!equal){
+            std::cout<<"? position:"<<i<<", symbol:"<<srlbwt.sym_inv_map[s]<<" -> "<<my_res<<" -> "<<their_res<<std::endl;
         }
+        assert(equal);
     }
     std::cout<<"my average time:    "<<double(my_time)/double(samp_size)<<" nano seconds "<<std::endl;
     std::cout<<"their average time: "<<double(their_time)/double(samp_size)<<" nano seconds "<<std::endl;
 }
 
-void test_select(fm_index& fmi, simple_rl_bwt<>& srlbwt){
+void test_select(fm_index& fmi, simple_rl_bwt<5>& srlbwt){
 
     std::cout<<"Testing select"<<std::endl;
 
@@ -135,7 +134,7 @@ void test_select(fm_index& fmi, simple_rl_bwt<>& srlbwt){
     std::cout<<"their average time: "<<double(their_time)/double(samp_size)<<" nano seconds "<<std::endl;
 }
 
-void test_interval_symbols(fm_index& fmi, simple_rl_bwt<>& srlbwt){
+void test_interval_symbols(fm_index& fmi, simple_rl_bwt<5>& srlbwt){
 
     std::cout<<"Testing interval symbols "<<std::endl;
 
@@ -215,10 +214,11 @@ void test_interval_symbols(fm_index& fmi, simple_rl_bwt<>& srlbwt){
 }
 
 int main() {
-    std::string file="/Users/ddiaz/CLionProjects/ryu/cmake-build-debug/ryu.idx.cbAMY2/rl_bwt_WQA";
+    //std::string file="/Users/ddiaz/CLionProjects/ryu/cmake-build-debug/ryu.idx.cbAMY2/rl_bwt_WQA";
+    std::string file="/Users/ddiaz/CLionProjects/grlBWT/cmake-build-debug/SRR10971019-part.rl_bwt";
 
     std::cout<<"Building my rl BWT"<<std::endl;
-    simple_rl_bwt<> bwt(file);
+    simple_rl_bwt<5> bwt(file);
     std::string output_file="resulting_bwt";
     size_t written_bytes = store_to_file(output_file, bwt);
     std::cout<<"It uses "<<written_bytes<<" bytes "<<std::endl;

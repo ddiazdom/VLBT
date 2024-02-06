@@ -23,6 +23,7 @@ struct simple_rl_bwt{
 
     typedef uint8_t sym_type;
 
+    //all these variables are set at compiling time
     static constexpr const uint8_t sigma_bits = s_width(sigma-1);//number of bits that the alphabet requires
     static constexpr const uint8_t sigma_mask = (1<<sigma_bits)-1;//a mask for the alphabet
     static constexpr const uint8_t max_len_one_byte_enc = 256>>sigma_bits;//maximum run len we can encode in one byte given the alphabet
@@ -34,10 +35,10 @@ struct simple_rl_bwt{
     static constexpr const uint8_t mb_bits = s_width(mb_size-1);//log2(mb_size)
 
     static const size_t max_runs_per_block = 128; //threshold to split a block into mini blocks
-    //static const constexpr size_t max_run_len = 2048;//max value we can encode in 16-ceil(log(sigma)) bits
     static const constexpr size_t n_mini_blocks = INT_CEIL(b_size, mb_size);//number of mini blocks of a block
-    static const constexpr uint8_t mb_header_widths[16] = {0, 12, 24, 36, 48, 60, 72, 84, 96,
-                                                           108, 120, 132, 144, 156, 168, 180};//the cumulative bits used by the mini block rank samples
+    static const constexpr uint8_t mb_header_widths[17] = {0, b_bits*1, b_bits*2, b_bits*3, b_bits*4, b_bits*5, b_bits*6,
+                                                           b_bits*7, b_bits*8, b_bits*9, b_bits*10, b_bits*11, b_bits*12,
+                                                           b_bits*13, b_bits*14, b_bits*15, b_bits*16};//the cumulative bits used by the mini block's rank samples
 
     size_t alphabet=0; //text alphabet
     size_t b_header_bits=0; //number of bits used by the block header
@@ -240,8 +241,8 @@ struct simple_rl_bwt{
                 broken_run_len = b_size-acc_block;
                 if(broken_run_len>0){//corner case : the current run is also the start of a block
                     sym_freqs[sym]+=broken_run_len;
-                    eff_runs += INT_CEIL(broken_run_len, b_size);
-                    runs_in_block += INT_CEIL(broken_run_len, b_size);
+                    eff_runs++;
+                    runs_in_block++;
                 }
 
                 if(runs_in_block>=max_runs_per_block){
@@ -249,25 +250,27 @@ struct simple_rl_bwt{
                     eff_runs += n_mini_blocks;//each mini blocks adds at most one extra run to the BWT
                 }
 
-                //break rules into blocks as long as they are bigger than the block size
+                //break rules into blocks as long as they are bigger than b_size
                 broken_run_len = (acc_block+len)-b_size;
                 while(broken_run_len>b_size){
-                    eff_runs += INT_CEIL(b_size, b_size);
+                    eff_runs ++;
                     sym_freqs[sym]+=b_size;
                     broken_run_len-=b_size;
                 }
 
+                assert(broken_run_len<b_size);
                 //insert the header and first run in the next block
                 acc_block = broken_run_len;
                 sym_freqs[sym] += broken_run_len;
-                eff_runs += INT_CEIL(broken_run_len, b_size);
-                runs_in_block= INT_CEIL(broken_run_len, b_size);
+                eff_runs++;
+                runs_in_block++;
             }else{
                 //the run fits the block size
+                assert(len<b_size);
                 sym_freqs[sym]+=len;
                 acc_block+=len;
-                eff_runs+= INT_CEIL(len, b_size);
-                runs_in_block+= INT_CEIL(len, b_size);
+                eff_runs++;
+                runs_in_block++;
             }
         }
 
@@ -286,6 +289,7 @@ struct simple_rl_bwt{
             }
             u++;
         }
+        assert(alphabet<=sigma);
 
         sym_inv_map.resize(alphabet);
         sym_map.resize(sym_inv_map.back()+1);
@@ -319,8 +323,8 @@ struct simple_rl_bwt{
         bwt.stream = (size_t *) malloc(bwt.stream_size*sizeof(size_t));
         data_pointer = (uint8_t *)bwt.stream;
 
-        size_t bwt_pos = 64;//I pad the stream with 64 to avoid corner cases in the scan of a block
-        size_t idx_block=0;
+        size_t bwt_pos = 64;//I pad the BWT stream with 64 bits to avoid corner cases in the scan of a block
+        size_t idx_block = 0;
 
         std::vector<size_t> acc_ranks(alphabet, 0);
 
@@ -331,7 +335,7 @@ struct simple_rl_bwt{
         std::vector<std::pair<uint8_t, uint16_t>> block_runs;
         block_runs.reserve(b_size);
 
-        for(size_t k=0;k<n_runs;k++){
+        for(size_t k=0;k<n_runs;k++) {
 
             bwt_buff.read_run(k, sym, len);
             sym = sym_map[sym];
@@ -343,11 +347,7 @@ struct simple_rl_bwt{
                 if(broken_run_len>0){//corner case : the current run is also the start of a block
                     acc_ranks[sym] += broken_run_len;
                     assert(acc_block+broken_run_len==b_size);
-                    while(broken_run_len>b_size){
-                        block_runs.emplace_back(sym, broken_run_len);
-                        broken_run_len-=b_size;
-                    }
-                    if(broken_run_len>0) block_runs.emplace_back(sym, broken_run_len);
+                    block_runs.emplace_back(sym, broken_run_len);
                 }
 
                 if(block_runs.size()>=max_runs_per_block){
@@ -376,7 +376,7 @@ struct simple_rl_bwt{
                     block_pointers[idx_block++] = bwt_pos;
                     insert_block_header(acc_ranks, b_header_widths, b_header_bits, bwt_pos);
 
-                    //mark as not sub sampled
+                    //mark the block as not sub sampled
                     bwt.write(bwt_pos, bwt_pos+8-1, 0);
                     bwt_pos+=8;
 
@@ -387,14 +387,7 @@ struct simple_rl_bwt{
 
                     acc_ranks[sym]+=b_size;
                     broken_run_len-=b_size;
-
-                    //break the run to fit the max run len
-                    len = b_size;
-                    while(len>b_size){
-                        insert_run(sym, b_size, bwt_pos);
-                        len-=b_size;
-                    }
-                    if(len>0) insert_run(sym, b_size, bwt_pos);
+                    insert_run(sym, b_size, bwt_pos);
                 }
 
                 //insert the block header
@@ -403,28 +396,15 @@ struct simple_rl_bwt{
                 insert_block_header(acc_ranks, b_header_widths, b_header_bits, bwt_pos);
 
                 //insert the first run
+                assert(broken_run_len<b_size);
                 acc_ranks[sym] += broken_run_len;
                 acc_block = broken_run_len;
-
-                //break the run if it exceeds the max run len
-                while(broken_run_len>b_size){
-                    block_runs.emplace_back(sym, b_size);
-                    broken_run_len-=b_size;
-                }
-                if(broken_run_len>0) block_runs.emplace_back(sym, broken_run_len);
-
+                block_runs.emplace_back(sym, broken_run_len);
             }else{//the run fits the block size
+                assert(len<=b_size);
                 acc_ranks[sym]+=len;
                 acc_block+=len;
-
-                //break the run if it exceeds the max run len
-                while(len>b_size){
-                    block_runs.emplace_back(sym, b_size);
-                    len-=b_size;
-                }
-                if(len>0){
-                    block_runs.emplace_back(sym, len);
-                }
+                block_runs.emplace_back(sym, len);
             }
         }
 
@@ -450,8 +430,7 @@ struct simple_rl_bwt{
             }
         }
 
-        //appending the full ranks at the end of the encoding
-        // to scan the blocks backwards
+        //appending the full ranks at the end of the BWT stream to scan the blocks backwards
         assert(idx_block == n_blocks);
         block_pointers[idx_block] = bwt_pos;
         insert_block_header(acc_ranks, b_header_widths, b_header_bits, bwt_pos);
@@ -1260,10 +1239,13 @@ struct simple_rl_bwt{
     }
 
     void stats() const {
+        std::cout<<"Number of symbols:            "<<n_symbols<<std::endl;
         std::cout<<"Number of runs before:        "<<orig_n_runs<<std::endl;
         std::cout<<"Number of runs now:           "<<tot_runs<<" ("<<100*((double(tot_runs)/double(orig_n_runs))-1)<<"% increase)"<<std::endl;
         std::cout<<"Number of blocks:             "<<blocks()<<std::endl;
+        std::cout<<"Block size:                   "<<b_size<<std::endl;
         std::cout<<"Block space overhead:         "<<double(INT_CEIL(blocks()*b_header_bits, 8))/1000000<<" Mb"<<std::endl;
+        std::cout<<"Mini block size:              "<<mb_size<<std::endl;
         std::cout<<"% of blocks with mini blocks: "<<100*(double(n_sampled_blocks)/double(blocks()))<<"%"<<std::endl;
         std::cout<<"Total number of mini blocks:  "<<mini_blocks()<<std::endl;
         std::cout<<"Mini blocks space overhead:   "<<double(n_sampled_blocks*mb_header_bytes)/1000000<<" Mb"<<std::endl;
