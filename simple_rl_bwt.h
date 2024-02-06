@@ -21,7 +21,7 @@ struct simple_rl_bwt{
 
     static const size_t max_runs_per_block = 128; //threshold to split a block into mini blocks
     static constexpr size_t max_run_len = 2048;//max value we can encode in 11 bits
-    static const size_t n_mini_blocks = INT_CEIL(b_size, mb_size);//number of mini blocks of a block
+    static constexpr size_t n_mini_blocks = INT_CEIL(b_size, mb_size);//number of mini blocks of a block
     static constexpr uint8_t mb_header_widths[16] = {0, 12, 24, 36, 48, 60, 72, 84, 96,
                                                      108, 120, 132, 144, 156, 168, 180};//the cumulative bits used by the mini block rank samples
 
@@ -829,9 +829,9 @@ struct simple_rl_bwt{
             }
 
             if(mini_block<(n_mini_blocks-1)){
-                size_t i_b_start = block_pointers[block];
+                //size_t b_start = block_pointers[block];
                 for(size_t u=0;u<alphabet;u++){
-                    ranks[u]  = bwt.read(i_b_start + b_header_widths[u], i_b_start + b_header_widths[u+1] -1);
+                    ranks[u]  = bwt.read(block_pointers[block] + b_header_widths[u], block_pointers[block] + b_header_widths[u+1] -1);
                     ranks[u] += bwt.read(next_mb_mt_start + mb_header_widths[u], next_mb_mt_start + mb_header_widths[u+1]-1);
                     ranks[u] -= b_freq[u];
                 }
@@ -850,9 +850,9 @@ struct simple_rl_bwt{
                 f_scan<false, true>(idx, tmp_idx, bwt_ptr, b_freq, symbol);
             }
 
-            size_t b_start = block_pointers[block];
+            //size_t b_start = block_pointers[block];
             for(size_t u=0;u<alphabet;u++){
-                ranks[u] = bwt.read(b_start + b_header_widths[u], b_start + b_header_widths[u+1] -1);
+                ranks[u] = bwt.read(block_pointers[block] + b_header_widths[u], block_pointers[block] + b_header_widths[u+1] -1);
                 ranks[u]+= bwt.read(mb_start + mb_header_widths[u], mb_start + mb_header_widths[u+1] -1);
                 ranks[u]+= b_freq[u];
             }
@@ -1064,6 +1064,114 @@ struct simple_rl_bwt{
         }
     }
 
+    [[nodiscard]] inline size_t select(size_t rank, sym_type symbol) const {
+        assert(rank>0);
+
+        size_t select_ans=0;
+        symbol = sym_map[symbol];
+        auto n_blocks = (long int)blocks();
+
+        long int l =0, r = n_blocks-1, m;
+        size_t tmp_a, tmp_b;
+
+        while(l<=r){
+            m = l + ((r - l)>>1);
+
+            tmp_a = bwt.read(block_pointers[m] + b_header_widths[symbol],
+                             block_pointers[m] + b_header_widths[symbol+1] -1);
+            tmp_b = bwt.read(block_pointers[m+1] + b_header_widths[symbol],
+                             block_pointers[m+1] + b_header_widths[symbol+1] -1);
+
+            if(tmp_a<rank && rank<=tmp_b) break;
+
+            int mask = (tmp_a<rank == 0) - 1;
+            l = (l & ~mask) | ((m + 1) & mask);
+            r = ((m - 1) & ~mask) | (r & mask);
+        }
+
+        //corner case: 'symbol' has less than 'rank' occurrences
+        if(l>r) return n_symbols;
+
+        size_t block_pos =  block_pointers[m]+b_header_bits;
+        auto *bwt_ptr = data_pointer + (block_pos>>3);
+        bool has_mini_blocks = *bwt_ptr;
+        block_pos+=8;
+        bwt_ptr++;
+        select_ans += m<<12;
+
+        rank-=tmp_a;
+
+        if(has_mini_blocks) {
+
+            auto n_m_blocks = (long int) (m<int64_t(blocks()-1)? n_mini_blocks : INT_CEIL((n_symbols-select_ans), mb_size));
+
+            l = 0, r = n_m_blocks-1;
+            size_t mb_start_a, mb_start_b;
+
+            while(l<=r){
+                m = l + ((r - l)>>1);
+
+                mb_start_a = block_pos + m*(mb_header_widths[alphabet+1]+1);
+                tmp_a = bwt.read(mb_start_a + mb_header_widths[symbol], mb_start_a + mb_header_widths[symbol+1] -1);
+
+                mb_start_b = block_pos + (m+1)*(mb_header_widths[alphabet+1]+1);
+                tmp_b = bwt.read(mb_start_b + mb_header_widths[symbol], mb_start_b + mb_header_widths[symbol+1] -1);
+
+                if(tmp_a<rank && rank<=tmp_b) break;
+
+                int mask = (tmp_a<rank == 0) - 1;
+                l = (l & ~mask) | ((m + 1) & mask);
+                r = ((m - 1) & ~mask) | (r & mask);
+            }
+
+            //read the mini block position within the block and the mini block encoding
+            size_t mini_block_pos = bwt.read(mb_start_a + mb_header_widths[alphabet],
+                                             mb_start_a + mb_header_widths[alphabet+1]);
+
+            bool one_byte_encoding = !(mini_block_pos & 4096);
+            mini_block_pos &= 4095;//clear the bit indicating the mini block encoding
+            bwt_ptr+= mb_header_bytes + mini_block_pos;
+            select_ans += m<<mb_width;
+
+            rank-=tmp_a;
+
+            uint16_t b_freq[16]={0};
+            if(one_byte_encoding){
+                uint8_t  len;
+                while(b_freq[symbol]<rank){
+                    len = (*bwt_ptr>>4)+1;
+                    b_freq[*bwt_ptr & 15]+=len;
+                    select_ans+=len;
+                    bwt_ptr++;
+                }
+            }else{
+                bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
+                auto *run = (uint16_t *) bwt_ptr;
+                uint16_t len;
+                while(b_freq[symbol]<rank){
+                    len = (*run>>4) + 1;
+                    b_freq[*run & 15]+=len;
+                    select_ans+=len;
+                    run++;
+                }
+            }
+            select_ans-=b_freq[symbol]-rank+1;
+        }else{
+            bwt_ptr+=reinterpret_cast<uintptr_t>(bwt_ptr) & 1;//move to the next two-byte-aligned position
+            auto *run = (uint16_t *) bwt_ptr;
+            uint16_t b_freq[16]={0};
+            uint16_t len;
+            while(b_freq[symbol]<rank){
+                len = (*run>>4) + 1;
+                b_freq[*run & 15]+=len;
+                select_ans+=len;
+                run++;
+            }
+            select_ans-=b_freq[symbol]-rank+1;
+        }
+        return select_ans;
+    }
+
     inline sym_type operator[](size_t idx) const {
 
         sym_type symbol;
@@ -1147,15 +1255,15 @@ struct simple_rl_bwt{
         std::cout<<"BWT space usage:              "<<double(bwt.stream_size*sizeof(size_t))/1000000<<" Mb"<<std::endl;
     }
 
-    [[nodiscard]] size_t size() const {
+    [[nodiscard]] inline size_t size() const {
         return n_symbols;
     }
 
-    [[nodiscard]] size_t mini_blocks() const {
+    [[nodiscard]] inline size_t mini_blocks() const {
         return n_sampled_blocks*n_mini_blocks;
     }
 
-    [[nodiscard]] size_t blocks() const {
+    [[nodiscard]] inline size_t blocks() const {
         return INT_CEIL(n_symbols, b_size);
     }
 

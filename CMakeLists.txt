@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.27)
+cmake_minimum_required(VERSION 3.21)
 project(simple_rl_bwt_2024)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -12,7 +12,7 @@ add_executable(simple_rl_bwt_2024
 
 target_compile_options(simple_rl_bwt_2024
         PUBLIC
-        -Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function
+        -Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function -Winline
         -O3 -funroll-loops -fomit-frame-pointer -ffast-math
 )
 
