@@ -3,7 +3,7 @@
 #include "fm_index.h"
 #include "sdsl/wavelet_trees.hpp"
 
-void test_inverse_select(fm_index& fmi, simple_rl_bwt& srlbwt){
+void test_inverse_select(fm_index& fmi, simple_rl_bwt<>& srlbwt){
     unsigned long my_time=0, their_time=0;
     std::cout<<"Testing inverse select"<<std::endl;
     size_t samp_size = (fmi.size()*10)/100;
@@ -33,7 +33,7 @@ void test_inverse_select(fm_index& fmi, simple_rl_bwt& srlbwt){
     std::cout<<"their average time: "<<double(their_time)/double(samp_size)<<" nano seconds "<<std::endl;
 }
 
-void test_access(fm_index& fmi, simple_rl_bwt& srlbwt){
+void test_access(fm_index& fmi, simple_rl_bwt<>& srlbwt){
     unsigned long my_time=0, their_time=0;
     std::cout<<"Testing access"<<std::endl;
     size_t samp_size = (fmi.size()*10)/100;
@@ -63,7 +63,7 @@ void test_access(fm_index& fmi, simple_rl_bwt& srlbwt){
     std::cout<<"their average time: "<<double(their_time)/double(samp_size)<<" nano seconds "<<std::endl;
 }
 
-void test_rank(fm_index& fmi, simple_rl_bwt& srlbwt){
+void test_rank(fm_index& fmi, simple_rl_bwt<>& srlbwt){
 
     std::cout<<"Testing rank"<<std::endl;
 
@@ -96,7 +96,7 @@ void test_rank(fm_index& fmi, simple_rl_bwt& srlbwt){
     std::cout<<"their average time: "<<double(their_time)/double(samp_size)<<" nano seconds "<<std::endl;
 }
 
-void test_select(fm_index& fmi, simple_rl_bwt& srlbwt){
+void test_select(fm_index& fmi, simple_rl_bwt<>& srlbwt){
 
     std::cout<<"Testing select"<<std::endl;
 
@@ -135,7 +135,7 @@ void test_select(fm_index& fmi, simple_rl_bwt& srlbwt){
     std::cout<<"their average time: "<<double(their_time)/double(samp_size)<<" nano seconds "<<std::endl;
 }
 
-void test_interval_symbols(fm_index& fmi, simple_rl_bwt& srlbwt){
+void test_interval_symbols(fm_index& fmi, simple_rl_bwt<>& srlbwt){
 
     std::cout<<"Testing interval symbols "<<std::endl;
 
@@ -218,7 +218,7 @@ int main() {
     std::string file="/Users/ddiaz/CLionProjects/ryu/cmake-build-debug/ryu.idx.cbAMY2/rl_bwt_WQA";
 
     std::cout<<"Building my rl BWT"<<std::endl;
-    simple_rl_bwt bwt(file);
+    simple_rl_bwt<> bwt(file);
     std::string output_file="resulting_bwt";
     size_t written_bytes = store_to_file(output_file, bwt);
     std::cout<<"It uses "<<written_bytes<<" bytes "<<std::endl;
