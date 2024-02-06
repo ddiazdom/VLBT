@@ -17,13 +17,13 @@ struct simple_rl_bwt{
 
     static const size_t b_size = 4096; //block size
     static const size_t mb_size = 512; //mini block size
-    static constexpr uint8_t mb_width = 9; //log2(mb_size)
+    static const uint8_t mb_width = 9; //log2(mb_size)
 
     static const size_t max_runs_per_block = 128; //threshold to split a block into mini blocks
-    static constexpr size_t max_run_len = 2048;//max value we can encode in 11 bits
-    static constexpr size_t n_mini_blocks = INT_CEIL(b_size, mb_size);//number of mini blocks of a block
-    static constexpr uint8_t mb_header_widths[16] = {0, 12, 24, 36, 48, 60, 72, 84, 96,
-                                                     108, 120, 132, 144, 156, 168, 180};//the cumulative bits used by the mini block rank samples
+    static const constexpr size_t max_run_len = 2048;//max value we can encode in 16-ceil(log(sigma)) bits
+    static const constexpr size_t n_mini_blocks = INT_CEIL(b_size, mb_size);//number of mini blocks of a block
+    static const constexpr uint8_t mb_header_widths[16] = {0, 12, 24, 36, 48, 60, 72, 84, 96,
+                                                           108, 120, 132, 144, 156, 168, 180};//the cumulative bits used by the mini block rank samples
 
     size_t alphabet=0; //text alphabet
     size_t b_header_bits=0; //number of bits used by the block header
@@ -305,7 +305,7 @@ struct simple_rl_bwt{
         bwt.stream = (size_t *) malloc(bwt.stream_size*sizeof(size_t));
         data_pointer = (uint8_t *)bwt.stream;
 
-        size_t bwt_pos = 0;
+        size_t bwt_pos = 64;//I pad the stream with 64 to avoid corner cases in the scan of a block
         size_t idx_block=0;
 
         std::vector<size_t> acc_ranks(alphabet, 0);
@@ -438,10 +438,12 @@ struct simple_rl_bwt{
 
         //appending the full ranks at the end of the encoding
         // to scan the blocks backwards
+        assert(idx_block == n_blocks);
         block_pointers[idx_block] = bwt_pos;
         insert_block_header(acc_ranks, b_header_widths, b_header_bits, bwt_pos);
 
-        assert(idx_block == n_blocks);
+        bwt_pos+=64;//I pad the BWT stream with 64 bits to avoid corner cases in the scan of a (mini) block
+
         assert(bwt_pos<=bwt_size_bits);
 
         //shrink to fit
@@ -604,7 +606,6 @@ struct simple_rl_bwt{
         }
     }
 
-    //TODO pad the BWT stream with zeroes
     template<bool one_byte_encoding, bool perform_count>
     static inline void b_scan(size_t idx, size_t tmp_idx, uint8_t * bwt_ptr, uint16_t* b_freq,
                               uint8_t& symbol){
