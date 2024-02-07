@@ -114,7 +114,7 @@ void build_my_bwt(std::string& input_file, std::string& output_file){
 int main(int argc, char** argv){
 
     if(argc!=4){
-        std::cout<<"usage: ./build_wt_dts plain_bwt.rl_bwt alphabet output_file"<<std::endl;
+        std::cout<<"usage: ./build_bwt_dts plain_bwt.rl_bwt alphabet output_file"<<std::endl;
         exit(1);
     }
 

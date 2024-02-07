@@ -311,7 +311,7 @@ void run_measurements(std::string& input_file){
 int main(int argc,  char** argv) {
 
     if(argc!=3){
-        std::cout<<"usage: ./test_bwts prefix alphabet"<<std::endl;
+        std::cout<<"usage: ./test_bwt_dts prefix alphabet"<<std::endl;
         exit(1);
     }
 

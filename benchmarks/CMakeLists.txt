@@ -5,13 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/Modules")
 
-message(${CMAKE_MODULE_PATH})
-
 find_package(LibSDSL REQUIRED)
 
 include_directories(SYSTEM ${LIBSDSL_INCLUDE_DIRS}  ${CMAKE_CURRENT_SOURCE_DIR}/fb_wt/wt-fbb-0.1.0)
 
-add_executable(test_bwt_dts test_bwts.cpp ../cdt_common.hpp ../cdt_common.cpp)
+add_executable(test_bwt_dts test_bwt_dts.cpp ../cdt_common.hpp ../cdt_common.cpp)
 target_compile_options(test_bwt_dts
         PUBLIC
         -Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function #-Winline
