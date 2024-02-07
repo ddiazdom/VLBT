@@ -1083,7 +1083,7 @@ struct simple_rl_bwt{
 
             if(tmp_a<rank && rank<=tmp_b) break;
 
-            int mask = (tmp_a<rank == 0) - 1;
+            int mask = ((tmp_a<rank) == 0) - 1;
             l = (l & ~mask) | ((m + 1) & mask);
             r = ((m - 1) & ~mask) | (r & mask);
         }
@@ -1105,7 +1105,7 @@ struct simple_rl_bwt{
             auto n_m_blocks = (long int) (m<int64_t(blocks()-1)? n_mini_blocks : INT_CEIL((n_symbols-select_ans), mb_size));
 
             l = 0, r = n_m_blocks-1;
-            size_t mb_start_a, mb_start_b;
+            size_t mb_start_a=0, mb_start_b;
 
             while(l<=r){
                 m = l + ((r - l)>>1);
@@ -1118,7 +1118,7 @@ struct simple_rl_bwt{
 
                 if(tmp_a<rank && rank<=tmp_b) break;
 
-                int mask = (tmp_a<rank == 0) - 1;
+                int mask = ((tmp_a<rank) == 0) - 1;
                 l = (l & ~mask) | ((m + 1) & mask);
                 r = ((m - 1) & ~mask) | (r & mask);
             }
@@ -1173,7 +1173,7 @@ struct simple_rl_bwt{
 
     inline sym_type operator[](size_t idx) const {
 
-        sym_type symbol;
+        sym_type symbol=0;
         size_t block = idx>>b_bits;
         size_t block_pos = block_pointers[block];
         block_pos += b_header_bits;
