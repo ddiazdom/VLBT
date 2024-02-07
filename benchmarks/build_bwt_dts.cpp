@@ -14,12 +14,37 @@
 #include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 #include "../simple_rl_bwt.h"
 
+template<class time_t>
+std::string report_time(time_t start, time_t end, size_t padding){
+    auto dur = end - start;
+    auto h = std::chrono::duration_cast<std::chrono::hours>(dur);
+    auto m = std::chrono::duration_cast<std::chrono::minutes>(dur -= h);
+    auto s = std::chrono::duration_cast<std::chrono::seconds>(dur -= m);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dur -= s);
+    std::stringstream time;
+
+    for(size_t i=0;i<padding;i++) std::cout<<" ";
+    if(h.count()>0){
+        time <<"build_time (hh:mm:ss.ms): "<<std::setfill('0')<<std::setw(2)<<h.count()<<":"<<std::setfill('0')<<std::setw(2)<<m.count()<<":"<<std::setfill('0')<<std::setw(2)<<s.count()<<"."<<ms.count();
+    }else if(m.count()>0){
+        time <<"build_time (mm:ss.ms): "<<std::setfill('0')<<std::setw(2)<<size_t(m.count())<<":"<<std::setfill('0')<<std::setw(2)<<s.count()<<"."<<ms.count();
+    }else if(s.count()>0){
+        time <<"build_time (ss.ms): "<<std::setfill('0')<<std::setw(2)<<size_t(s.count())<<"."<<ms.count();
+    }else{
+        time <<"build_time (ms): "<<ms.count();
+    }
+
+    return time.str();
+}
+
 #define build_dt(dt, suffix) \
 {                            \
-std::cout<<"Building "<<suffix<<std::endl;\
-dt instance;\
+dt instance;                 \
+auto t1 = std::chrono::high_resolution_clock::now();\
 sdsl::construct(instance, plain_input_file, 1);\
+auto t2 = std::chrono::high_resolution_clock::now();\
 sdsl::store_to_file(instance, output_file+"."+suffix); \
+std::cout<<suffix<<" "<<report_time(t1, t2, 0)<<",  space_usage:"<<float(sdsl::size_in_bytes(instance)*8)/float(instance.size())<<" bps"<<std::endl;\
 }\
 
 /*
@@ -77,15 +102,27 @@ void rl2plain(std::string& rl_file, std::string& output_plain_file){
     ofs.close();
 }
 
+template<uint8_t sigma>
+void build_my_bwt(std::string& input_file, std::string& output_file){
+    auto t1 = std::chrono::high_resolution_clock::now();
+    simple_rl_bwt<sigma> my_bwt(input_file);
+    auto t2 = std::chrono::high_resolution_clock::now();
+    size_t written_bytes = store_to_file(output_file+".my_simple_bwt", my_bwt);
+    std::cout<<"fbrl-bwt "<<report_time(t1, t2, 0)<<",  space_usage:"<<float(written_bytes*8)/float(my_bwt.size())<<" bps"<<std::endl;
+}
+
 int main(int argc, char** argv){
 
-    if(argc!=3){
-        std::cout<<"usage: ./build_wt_dts plain_bwt.rl_bwt output_file"<<std::endl;
+    if(argc!=4){
+        std::cout<<"usage: ./build_wt_dts plain_bwt.rl_bwt alphabet output_file"<<std::endl;
         exit(1);
     }
 
     std::string input_file = std::string(argv[1]);
-    std::string output_file = std::string(argv[2]);
+    char *pend;
+    long int alphabet = strtol(argv[2], &pend, 10);
+    assert(alphabet>2 && alphabet<=16);
+    std::string output_file = std::string(argv[3]);
 
     std::string plain_input_file = "tmp_plain.txt";
     rl2plain(input_file, plain_input_file);
@@ -93,7 +130,33 @@ int main(int argc, char** argv){
     std::cout<<"Creating wavelet trees for "<<input_file<<std::endl;
     TESTED_DTS
 
-    std::cout<<"Creating my bwt "<<input_file<<std::endl;
-    simple_rl_bwt<5> my_bwt(input_file);
-    store_to_file(output_file+".my_simple_bwt", my_bwt);
+    if(alphabet==3){
+        build_my_bwt<3>(input_file, output_file);
+    }else if(alphabet==4){
+        build_my_bwt<4>(input_file, output_file);
+    }else if(alphabet==5){
+        build_my_bwt<5>(input_file, output_file);
+    }else if(alphabet==6){
+        build_my_bwt<6>(input_file, output_file);
+    }else if(alphabet==7){
+        build_my_bwt<7>(input_file, output_file);
+    }else if(alphabet==8){
+        build_my_bwt<8>(input_file, output_file);
+    }else if(alphabet==9){
+        build_my_bwt<9>(input_file, output_file);
+    }else if(alphabet==10){
+        build_my_bwt<10>(input_file, output_file);
+    }else if(alphabet==11){
+        build_my_bwt<11>(input_file, output_file);
+    }else if(alphabet==12){
+        build_my_bwt<12>(input_file, output_file);
+    }else if(alphabet==13){
+        build_my_bwt<13>(input_file, output_file);
+    }else if(alphabet==14){
+        build_my_bwt<14>(input_file, output_file);
+    }else if(alphabet==15){
+        build_my_bwt<15>(input_file, output_file);
+    }else if(alphabet==16){
+        build_my_bwt<16>(input_file, output_file);
+    }
 }
