@@ -80,7 +80,7 @@ void rl2plain(std::string& rl_file, std::string& output_plain_file){
 int main(int argc, char** argv){
 
     if(argc!=3){
-        std::cout<<"usage: ./build-wt-huff-bwt plain_bwt.txt output_file"<<std::endl;
+        std::cout<<"usage: ./build_wt_dts plain_bwt.rl_bwt output_file"<<std::endl;
         exit(1);
     }
 

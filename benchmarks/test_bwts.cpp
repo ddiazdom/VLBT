@@ -5,7 +5,7 @@
 #include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 #include <vector>
 
-std::vector<std::string> wt_dt = {"my_simple_bwt", "wt_huff_bv", "wt_rlmn", "wt_fbb_il"};
+std::vector<std::string> wt_dt = {"my_simple_bwt", "wt_huff_bv", "wt_rlmn", "wt_fbb_hyb"};
 
 #define LOAD(dt, var, file_name) \
 dt var;\
@@ -40,7 +40,7 @@ void test_inverse_select(std::string& input_file){
     MY_LOAD(srlbwt, input_file+"."+wt_dt[0]);
     LOAD(sdsl::wt_huff<>, wt_huff, input_file+"."+wt_dt[1])
     LOAD(sdsl::wt_rlmn<>, wt_rlmn, input_file+"."+wt_dt[2])
-    LOAD(wt_fbb<sdsl::bit_vector_il<>>, wt_fbb_il, input_file+"."+wt_dt[3])
+    LOAD(wt_fbb<sdsl::hyb_vector<>>, wt_fbb_hyb, input_file+"."+wt_dt[3])
 
     size_t samp_size = (srlbwt.size()*10)/100;
 
@@ -51,7 +51,7 @@ void test_inverse_select(std::string& input_file){
         MEASURE(srlbwt.inverse_select(j), times[0], answers[0]);
         MEASURE(wt_huff.inverse_select(j), times[1], answers[1]);
         MEASURE(wt_rlmn.inverse_select(j), times[2], answers[2]);
-        MEASURE(wt_fbb_il.inverse_select(j), times[3], answers[3]);
+        MEASURE(wt_fbb_hyb.inverse_select(j), times[3], answers[3]);
 
         size_t n_eqs=0;
         for(size_t k=1;k<4;k++){
@@ -80,7 +80,7 @@ void test_access(std::string& input_file){
     MY_LOAD(srlbwt, input_file+"."+wt_dt[0]);
     LOAD(sdsl::wt_huff<>, wt_huff, input_file+"."+wt_dt[1])
     LOAD(sdsl::wt_rlmn<>, wt_rlmn, input_file+"."+wt_dt[2])
-    LOAD(wt_fbb<sdsl::bit_vector_il<>>, wt_fbb_il, input_file+"."+wt_dt[3])
+    LOAD(wt_fbb<sdsl::hyb_vector<>>, wt_fbb_hyb, input_file+"."+wt_dt[3])
 
     size_t samp_size = (srlbwt.size()*10)/100;
 
@@ -91,7 +91,7 @@ void test_access(std::string& input_file){
         MEASURE(srlbwt[j], times[0], answers[0]);
         MEASURE(wt_huff[j], times[1], answers[1]);
         MEASURE(wt_rlmn[j], times[2], answers[2]);
-        MEASURE(wt_fbb_il[j], times[3], answers[3]);
+        MEASURE(wt_fbb_hyb[j], times[3], answers[3]);
 
         size_t n_eqs=0;
         for(size_t k=1;k<4;k++){
@@ -119,7 +119,7 @@ void test_rank(std::string& input_file){
     MY_LOAD(srlbwt, input_file+"."+wt_dt[0]);
     LOAD(sdsl::wt_huff<>, wt_huff, input_file+"."+wt_dt[1])
     LOAD(sdsl::wt_rlmn<>, wt_rlmn, input_file+"."+wt_dt[2])
-    LOAD(wt_fbb<sdsl::bit_vector_il<>>, wt_fbb_il, input_file+"."+wt_dt[3])
+    LOAD(wt_fbb<sdsl::hyb_vector<>>, wt_fbb_hyb, input_file+"."+wt_dt[3])
 
     size_t samp_size = (srlbwt.size()*10)/100;
 
@@ -131,7 +131,7 @@ void test_rank(std::string& input_file){
         MEASURE(srlbwt.rank(u, srlbwt.sym_inv_map[s]), times[0], answers[0]);
         MEASURE(wt_huff.rank(u, srlbwt.sym_inv_map[s]), times[1], answers[1]);
         MEASURE(wt_rlmn.rank(u, srlbwt.sym_inv_map[s]), times[2], answers[2]);
-        MEASURE(wt_fbb_il.rank(u, srlbwt.sym_inv_map[s]), times[3], answers[3]);
+        MEASURE(wt_fbb_hyb.rank(u, srlbwt.sym_inv_map[s]), times[3], answers[3]);
 
         size_t n_eqs=0;
         for(size_t k=1;k<4;k++){
@@ -160,7 +160,7 @@ void test_select(std::string& input_file){
     MY_LOAD(srlbwt, input_file+"."+wt_dt[0]);
     LOAD(sdsl::wt_huff<>, wt_huff, input_file+"."+wt_dt[1])
     LOAD(sdsl::wt_rlmn<>, wt_rlmn, input_file+"."+wt_dt[2])
-    LOAD(wt_fbb<sdsl::bit_vector_il<>>, wt_fbb_il, input_file+"."+wt_dt[3])
+    LOAD(wt_fbb<sdsl::hyb_vector<>>, wt_fbb_il, input_file+"."+wt_dt[3])
 
     //get the max rank of each symbol to avoid failed asserts
     size_t rank_answers[16] ={0};
@@ -194,7 +194,7 @@ void test_select(std::string& input_file){
 
     std::cout<<"select ";
     for(size_t i=0;i<wt_dt.size();i++){
-        if(wt_dt[i]=="wt_fbb_il"){
+        if(wt_dt[i]=="wt_fbb_hyb"){
             std::cout<<"- ";
         }else{
             std::cout<<times[i]/double(samp_size)<<" ";
