@@ -18,7 +18,7 @@ target_compile_options(test_bwt_dts
 #target_include_directories(test_bwts PUBLIC ${LIBSDSL_INCLUDE_DIRS})
 target_link_libraries(test_bwt_dts LINK_PUBLIC ${LIBSDSL_LIBRARIES})
 
-#build wavelet-tree data structures
+#build BWT data structures
 add_executable(build_bwt_dts build_bwt_dts.cpp ../cdt_common.hpp ../cdt_common.cpp)
 target_compile_options(build_bwt_dts
         PUBLIC

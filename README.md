@@ -46,7 +46,7 @@ data structures used the compiler flags ''.
 
 The size of this collection is 342.02 MB and has r=9547033 equal-symbols runs in its BCR BWT (n/r=35.8249). The alphabet
 is 9 as the equal-symbol runs of length >1 in the text (not in the BWT) were transformed into metasymbols. The '*'
-symbol denotes the best performance.
+character denotes the best performance in the tables above.
 
 |                               | fb_rl   | wt_huff_bv | wt_rlmn | wt_fbb_hyb | 
 |-------------------------------|---------|------------|---------|------------|
@@ -65,3 +65,5 @@ were chosen at random. Data structures with a "-" symbol do not implement that q
 | inverse select   | *361.209 | 602.398    | 1135.21 | 817.013    |
 | access           | *275.389 | 598.574    | 549.113 | 738.682    |
 | rank             | *358.273 | 695.783    | 954.587 | 625.148    |
+
+## Citation

@@ -109,6 +109,7 @@ void build_my_bwt(std::string& input_file, std::string& output_file){
     auto t2 = std::chrono::high_resolution_clock::now();
     size_t written_bytes = store_to_file(output_file+".my_simple_bwt", my_bwt);
     std::cout<<"fbrl-bwt "<<report_time(t1, t2, 0)<<",  space_usage:"<<float(written_bytes*8)/float(my_bwt.size())<<" bps"<<std::endl;
+    my_bwt.stats();
 }
 
 int main(int argc, char** argv){
@@ -124,11 +125,11 @@ int main(int argc, char** argv){
     assert(alphabet>2 && alphabet<=16);
     std::string output_file = std::string(argv[3]);
 
-    std::string plain_input_file = "tmp_plain.txt";
-    rl2plain(input_file, plain_input_file);
+    //std::string plain_input_file = "tmp_plain.txt";
+    //rl2plain(input_file, plain_input_file);
 
-    std::cout<<"Creating wavelet trees for "<<input_file<<std::endl;
-    TESTED_DTS
+    //std::cout<<"Creating wavelet trees for "<<input_file<<std::endl;
+    //TESTED_DTS
 
     if(alphabet==3){
         build_my_bwt<3>(input_file, output_file);
