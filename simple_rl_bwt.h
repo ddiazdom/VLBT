@@ -342,6 +342,15 @@ struct simple_rl_bwt{
         std::vector<std::pair<uint8_t, uint16_t>> block_runs;
         block_runs.reserve(b_size);
 
+        //TODO test
+        size_t last_symbol=500;
+        size_t n_blocks_in_sb=1;
+        size_t super_block=0;
+        size_t sb_counter=0;
+        size_t sb_threshold=16;
+        size_t blocks_in_super_blocks=0;
+        //
+
         for(size_t k=0;k<n_runs;k++) {
 
             bwt_buff.read_run(k, sym, len);
@@ -362,6 +371,9 @@ struct simple_rl_bwt{
                     bwt.write(bwt_pos, bwt_pos+8-1, 1);
                     bwt_pos+=8;
                     subsample_block(block_runs, bwt_pos);
+
+                    sb_counter=0;
+                    last_symbol=500;
                 }else{
                     //mark the block as not subsampled (i.e., it does not have mini blocks)
                     bwt.write(bwt_pos, bwt_pos+8-1, 0);
@@ -375,6 +387,25 @@ struct simple_rl_bwt{
                     for(auto const& run : block_runs){
                         insert_run(run.first, run.second, bwt_pos);
                     }
+
+
+                    //TODO testing
+                    size_t n_r = block_runs.size();
+                    n_r-=last_symbol==block_runs[0].first;
+                    if(sb_counter+n_r>sb_threshold){
+                        if(n_blocks_in_sb>1){
+                            super_block++;
+                            blocks_in_super_blocks+=n_blocks_in_sb;
+                        }
+                        n_blocks_in_sb=1;
+                        sb_counter=block_runs.size();
+                    }else{
+                        n_blocks_in_sb++;
+                        sb_counter+=n_r;
+                    }
+                    last_symbol=block_runs.back().first;
+                    //
+
                 }
 
                 //break rules into blocks as long as they are bigger than the block size
@@ -414,6 +445,9 @@ struct simple_rl_bwt{
                 block_runs.emplace_back(sym, len);
             }
         }
+
+        std::cout<<"We have "<<super_block<<" super blocks and "<<blocks_in_super_blocks<<" blocks in super blocks "<<std::endl;
+        std::cout<<"Space reduction :"<<(blocks_in_super_blocks-super_block)*b_header_bits<<" bits"<<std::endl;
 
         //insert the last run
         assert(acc_block<=b_size);

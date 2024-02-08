@@ -114,7 +114,7 @@ void test_access(std::string& input_file){
 }
 
 template<uint8_t alphabet>
-void test_rank(std::string& input_file){
+void test_rank(std::string& input_file) {
 
     std::vector<double> times(wt_dt.size(), 0);
     std::vector<size_t> answers(wt_dt.size(), 0);
