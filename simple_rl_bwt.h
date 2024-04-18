@@ -21,7 +21,8 @@ struct simple_rl_bwt{
 
     static_assert(sigma>2 && sigma<=16);
 
-    typedef uint8_t sym_type;
+    typedef uint64_t size_type;
+    typedef uint8_t value_type;
 
     //all these variables are set at compiling time
     static constexpr const uint8_t sigma_bits = s_width(sigma-1);//number of bits that the alphabet requires
@@ -135,7 +136,6 @@ struct simple_rl_bwt{
                     // so we have to update the pointer in the header if it is not two-byte aligned
                     bool two_byte_unaligned = reinterpret_cast<uintptr_t>(&data_pointer[bwt_pos>>3]) & 1;
                     if(two_byte_unaligned){
-                        //std::cout<<int(b_bits)<<" "<<runs_byte_pos<<" "<<bwt.read(mb_metadata_offset-b_bits, mb_metadata_offset-1)<<std::endl;
                         assert(runs_byte_pos==bwt.read(mb_metadata_offset-b_bits, mb_metadata_offset-1));
                         bwt_pos+=8;
                         runs_byte_pos++;
@@ -196,10 +196,12 @@ struct simple_rl_bwt{
             for(auto& mini_run : sub_block_runs){
                 while(mini_run.second>max_len_one_byte_enc){
                     runs_byte_pos+=insert_mini_run(mini_run.first, max_len_one_byte_enc, bwt_pos);
+                    b_sym_freqs[mini_run.first]+= max_len_one_byte_enc;
                     mini_run.second-=max_len_one_byte_enc;
                 }
                 if(mini_run.second>0){
                     runs_byte_pos+=insert_mini_run(mini_run.first, mini_run.second, bwt_pos);
+                    b_sym_freqs[mini_run.first]+= mini_run.second;
                 }
             }
         }else{
@@ -215,12 +217,22 @@ struct simple_rl_bwt{
 
             for(auto const& mini_run : sub_block_runs) {
                 runs_byte_pos+=insert_run(mini_run.first, mini_run.second, bwt_pos);
+                b_sym_freqs[mini_run.first]+= mini_run.second;
             }
         }
+        mb_metadata_offset++;
+
+
+        //this is a small corner case: when the last block has mini blocks but the block is < b_size.
+        //this means the block has less mini blocks. This situation is a problem to scan. So we add a
+        // fake extra mini header
+        //if((mb_metadata_offset-block_start)<(mb_header_bytes*8)){
+        //    b_sym_freqs[alphabet] = runs_byte_pos;
+        //    insert_block_header(b_sym_freqs, mb_rank_widths, mb_header_widths[alphabet+1], mb_metadata_offset);
+        //}
 
         //a small assert to check everything is in order
-        mb_metadata_offset++;
-        assert((mb_metadata_offset-block_start)<=(mb_header_bytes*8));
+        assert((mb_metadata_offset-block_start)==(mb_header_bytes*8));
     }
 
     inline void insert_block_header(std::vector<size_t>& sym_freq, std::vector<uint16_t>& rank_widths, size_t h_width, size_t& bwt_pos) {
@@ -282,6 +294,7 @@ struct simple_rl_bwt{
         }
 
         size_t n_syms = 0, u=0;
+        size_t max_freq=0, most_freq_sym=0;
         sym_map.resize(256);
         sym_inv_map.resize(256);
         b_header_widths.resize(256);
@@ -291,11 +304,17 @@ struct simple_rl_bwt{
                 b_header_widths[alphabet] = sym_width(sym_freq);
                 sym_map[u] = alphabet;
                 sym_inv_map[alphabet] = u;
-                alphabet++;
                 n_symbols+=sym_freq;
+                if(sym_freq>max_freq){
+                    max_freq = sym_freq;
+                    most_freq_sym = alphabet;
+                }
+                alphabet++;
             }
             u++;
         }
+        //this step is for a corner case
+        b_header_widths[most_freq_sym] = sym_width(max_freq+b_size);
         assert(alphabet<=sigma);
 
         sym_inv_map.resize(alphabet);
@@ -408,7 +427,6 @@ struct simple_rl_bwt{
                     last_symbol=block_runs.back().first;
                      */
                     //
-
                 }
 
                 //break rules into blocks as long as they are bigger than the block size
@@ -454,6 +472,13 @@ struct simple_rl_bwt{
 
         //insert the last run
         assert(acc_block<=b_size);
+
+        //I added a fake run so all the blocks have the same length
+        if(acc_block<b_size){
+            acc_ranks[most_freq_sym] += b_size-acc_block;
+            block_runs.emplace_back(most_freq_sym, b_size-acc_block);
+        }
+
         if(block_runs.size()>max_runs_per_block){
             //mark the block as subsampled (i.e., it has mini blocks)
             bwt.write(bwt_pos, bwt_pos+8-1, 1);
@@ -487,9 +512,21 @@ struct simple_rl_bwt{
         bwt.stream_size = INT_CEIL(bwt_pos, (sizeof(size_t)*8));
         bwt.stream = (size_t *) realloc(bwt.stream, bwt.stream_size*sizeof(size_t));
         data_pointer = (uint8_t *)bwt.stream;
+
+        //todo testing
+        //std::vector<value_type> cs(6,0);
+        //size_type k;
+        //std::vector<size_type> rank_c_i(6,0);
+        //std::vector<size_type> rank_c_j(6, 0);
+        //interval_symbols(8756, 23065, k, cs, rank_c_i, rank_c_j);
+        //
+        //select(31837, 10);
+
     }
 
-    [[nodiscard]] inline std::pair<size_t, sym_type> inverse_select(size_t idx) const  {
+    [[nodiscard]] inline std::pair<size_t, value_type> inverse_select(size_t idx) const  {
+
+        assert(idx<n_symbols);
 
         uint16_t b_freq[sigma] = {0};
         uint8_t symbol;
@@ -703,7 +740,9 @@ struct simple_rl_bwt{
         }
     }
 
-    [[nodiscard]] inline size_t rank(size_t idx, sym_type symbol) const {
+    [[nodiscard]] inline size_t rank(size_t idx, value_type symbol) const {
+
+        assert(idx<=n_symbols);
 
         uint16_t b_freq[sigma] = {0};
         uint8_t q_symbol = sym_map[symbol];
@@ -799,9 +838,9 @@ struct simple_rl_bwt{
 
     inline void count_in_block(size_t tmp_idx, size_t idx, size_t block_pos,
                                size_t block, uint8_t* bwt_ptr,
-                               std::vector<size_t>& ranks) const {
+                               std::vector<size_type>& ranks) const {
 
-        sym_type symbol;
+        value_type symbol;
         uint16_t b_freq[sigma]={0};
 
         if((idx-tmp_idx)>(b_size>>1)) {
@@ -830,9 +869,9 @@ struct simple_rl_bwt{
 
     inline void count_in_mini_block(size_t tmp_idx, size_t idx, size_t block_pos,
                                     size_t block, uint8_t* bwt_ptr,
-                                    std::vector<size_t>& ranks) const {
+                                    std::vector<size_type>& ranks) const {
 
-        sym_type symbol;
+        value_type symbol;
         uint16_t b_freq[sigma]={0};
 
         size_t mini_block = (idx-tmp_idx) >> mb_bits;
@@ -898,10 +937,10 @@ struct simple_rl_bwt{
         }
     }
 
-    inline void interval_symbols(size_t i, size_t j, size_t& k,
-                                 std::vector<sym_type>& cs,
-                                 std::vector<size_t>& rank_c_i,
-                                 std::vector<size_t>& rank_c_j)  {
+    inline void interval_symbols(size_t i, size_t j, size_type& k,
+                                 std::vector<value_type>& cs,
+                                 std::vector<size_type>& rank_c_i,
+                                 std::vector<size_type>& rank_c_j)  const {
 
         size_t i_block = i>>b_bits;
         size_t i_block_pos = block_pointers[i_block]+b_header_bits;
@@ -1103,7 +1142,7 @@ struct simple_rl_bwt{
         }
     }
 
-    [[nodiscard]] inline size_t select(size_t rank, sym_type symbol) const {
+    [[nodiscard]] inline size_t select(size_t rank, value_type symbol) const {
         assert(rank>0);
 
         size_t select_ans=0;
@@ -1211,9 +1250,9 @@ struct simple_rl_bwt{
         return select_ans;
     }
 
-    inline sym_type operator[](size_t idx) const {
+    inline value_type operator[](size_t idx) const {
 
-        sym_type symbol=0;
+        value_type symbol=0;
         size_t block = idx>>b_bits;
         size_t block_pos = block_pointers[block];
         block_pos += b_header_bits;
@@ -1279,7 +1318,6 @@ struct simple_rl_bwt{
                 f_scan<false, false>(idx, tmp_idx, bwt_ptr, nullptr, symbol);
             }
         }
-
         return sym_inv_map[symbol];
     }
 
@@ -1310,7 +1348,7 @@ struct simple_rl_bwt{
         return INT_CEIL(n_symbols, b_size);
     }
 
-    size_t serialize(std::ofstream & ofs){
+    size_t serialize(std::ostream & ofs) const {
         size_t written_bytes = 0;
         written_bytes += serialize_elm(ofs, alphabet);
         written_bytes += serialize_elm(ofs, b_header_bits);
@@ -1329,7 +1367,25 @@ struct simple_rl_bwt{
         return  written_bytes;
     }
 
-    void load(std::ifstream & ifs){
+    simple_rl_bwt& swap(simple_rl_bwt& other){
+        std::swap(alphabet, other.alphabet);
+        std::swap(b_header_bits, other.b_header_bits);
+        std::swap(n_symbols, other.n_symbols);
+        std::swap(mb_header_bytes, other.mb_header_bytes);
+        std::swap(tot_runs, other.tot_runs);
+        std::swap(orig_n_runs, other.orig_n_runs);
+        std::swap(n_sampled_blocks, other.n_sampled_blocks);
+        std::swap(data_pointer, other.data_pointer);
+
+        sym_map.swap(other.sym_map);
+        sym_inv_map.swap(other.sym_inv_map);
+        b_header_widths.swap(other.b_header_widths);
+        block_pointers.swap(other.block_pointers);
+        bwt.swap(other.bwt);
+        return *this;
+    }
+
+    void load(std::istream & ifs){
         load_elm(ifs, alphabet);
         load_elm(ifs, b_header_bits);
         load_elm(ifs, n_symbols);

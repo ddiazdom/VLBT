@@ -45,9 +45,10 @@ void test_inverse_select(std::string& input_file){
 
     size_t samp_size = (srlbwt.size()*10)/100;
 
-    for(size_t i=0;i<samp_size;i++){
+    //for(size_t i=0;i<samp_size;i++){
+    for(size_t j=0;j<srlbwt.size();j++){
 
-        size_t j = rand() % srlbwt.size();
+        //size_t j = rand() % srlbwt.size();
 
         MEASURE(srlbwt.inverse_select(j), times[0], answers[0]);
         MEASURE(wt_huff.inverse_select(j), times[1], answers[1]);
@@ -60,7 +61,7 @@ void test_inverse_select(std::string& input_file){
         }
 
         if(n_eqs<(wt_dt.size()-1)){
-            std::cout<<"? pos:"<<i<<","<<" -> rank:"<<answers[0].first<<" sym:"<<int(answers[0].second)<<" -> rank:"
+            std::cout<<"? pos:"<<j<<","<<" -> rank:"<<answers[0].first<<" sym:"<<int(answers[0].second)<<" -> rank:"
                       <<answers[1].first<<" sym:"<<answers[1].second<<std::endl;
         }
         assert(n_eqs==(wt_dt.size()-1));
@@ -87,6 +88,7 @@ void test_access(std::string& input_file){
     size_t samp_size = (srlbwt.size()*10)/100;
 
     for(size_t i=0;i<samp_size;i++){
+    //for(size_t j=0;j<srlbwt.size();j++){
 
         size_t j = rand() % srlbwt.size();
 
@@ -127,6 +129,7 @@ void test_rank(std::string& input_file) {
     size_t samp_size = (srlbwt.size()*10)/100;
 
     for(size_t i=0;i<samp_size;i++){
+    //for(size_t u=0;u<samp_size;u++){
 
         size_t u = rand() % srlbwt.size();
         uint8_t s = rand() % srlbwt.alphabet;
@@ -156,7 +159,7 @@ void test_rank(std::string& input_file) {
 }
 
 template<uint8_t alphabet>
-void test_select(std::string& input_file){
+void test_select(std::string& input_file) {
 
     std::vector<double> times(wt_dt.size(), 0);
     std::vector<size_t> answers(wt_dt.size(), 0);
@@ -171,6 +174,7 @@ void test_select(std::string& input_file){
     for(size_t i=0;i<srlbwt.alphabet;i++){
         rank_answers[i] = wt_huff.rank(wt_huff.size(), srlbwt.sym_inv_map[i]);
     }
+
 
     size_t samp_size = (srlbwt.size()*10)/100;
 
@@ -252,7 +256,7 @@ void test_interval_symbols(std::string& input_file){
 
     typedef sdsl::wt_huff<>::size_type size_type;
     int_symbol_data<size_type> their_answer;
-    int_symbol_data<size_t> my_answer;
+    int_symbol_data<uint64_t> my_answer;
 
     MY_LOAD(srlbwt, input_file+"."+wt_dt[0], alphabet);
     LOAD(sdsl::wt_huff<>, wt_huff, input_file+"."+wt_dt[1])
@@ -261,11 +265,12 @@ void test_interval_symbols(std::string& input_file){
 
     for(size_t i=0;i<samp_size;i++){
 
-        size_t a = rand() % srlbwt.size()-1;
-        size_t b = rand() % srlbwt.size()-1;
+        size_t a = rand() % (srlbwt.size()-1);
+        size_t b = rand() % (srlbwt.size()-1);
 
         if(a>b) std::swap(a, b);
         if(a==b) b++;
+        assert(a<srlbwt.size() && b<=srlbwt.size());
 
         MEASURE_VOID_OUT(srlbwt.interval_symbols(a, b, my_answer.k, my_answer.cs, my_answer.rank_c_i, my_answer.rank_c_j), times[0])
         MEASURE_VOID_OUT(wt_huff.interval_symbols(a, b, their_answer.k, their_answer.cs, their_answer.rank_c_i, their_answer.rank_c_j), times[1])
@@ -277,12 +282,13 @@ void test_interval_symbols(std::string& input_file){
             if(my_answer.cs[k]!=their_answer.cs[k] ||
                my_answer.rank_c_i[k]!=their_answer.rank_c_i[k] ||
                my_answer.rank_c_j[k]!=their_answer.rank_c_j[k]){
+                std::cout<<"range : "<<a<<", "<<b<<std::endl;
 
                 std::cout<<"My results: "<<std::endl;
                 my_answer.print();
                 std::cout<<" "<<std::endl;
                 std::cout<<"their results: "<<std::endl;
-                my_answer.print();
+                their_answer.print();
                 exit(1);
             }
         }
@@ -301,9 +307,9 @@ void test_interval_symbols(std::string& input_file){
 
 template<uint8_t alphabet>
 void run_measurements(std::string& input_file){
-    test_interval_symbols<alphabet>(input_file);
-    test_select<alphabet>(input_file);
     test_inverse_select<alphabet>(input_file);
+    test_select<alphabet>(input_file);
+    test_interval_symbols<alphabet>(input_file);
     test_access<alphabet>(input_file);
     test_rank<alphabet>(input_file);
 }
@@ -355,7 +361,6 @@ int main(int argc,  char** argv) {
     }else if(alphabet==16){
         run_measurements<16>(input_file);
     }
-
 
     return 0;
 }

@@ -26,7 +26,6 @@ target_compile_options(build_bwt_dts
         -O3 -funroll-loops -fomit-frame-pointer -ffast-math
 )
 
-#target_include_directories(build_wt_dts SYSTEM ${LIBSDSL_INCLUDE_DIRS}  ${CMAKE_CURRENT_SOURCE_DIR}/fb_wt/wt-fbb-0.1.0)
 target_link_libraries(build_bwt_dts LINK_PUBLIC ${LIBSDSL_LIBRARIES})
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")

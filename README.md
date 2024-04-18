@@ -19,7 +19,7 @@ m (also a parameter), also storing precomputed rank answers for the mini block.
 The BWT runs of each block (or mini block) use one or two bytes, depending on the block content. The maximum length a
 byte can encode is defined by the BWT alphabet. For instance, an alphabet=16 requires 4 bits, so one byte can encode
 runs of length up to 16 symbols (because we have 8-4 bits (2^4=16) available in the byte). For two-byte cells,
-we can encode run lengths up to 4096 (log2(4096)=16-4=12). Notices that the alphabet also sets a cap on the maximum
+we can encode run lengths up to 4096 (log2(4096)=16-4=12). Notice that the alphabet also sets a cap on the maximum
 block size b we can choose. The smaller the alphabet, the longer are the runs we can fit in one byte and the longer are
 the blocks we can set. On the other hand, by choosing a low value for s, say 128, the blocks tend to have fewer but
 longer runs, so we always use two bytes for the blocks. Mini blocks are built over fragmented blocks (i.e., they contain
