@@ -4,6 +4,8 @@
 
 #include <iostream>
 #include <ostream>
+#include <cxxabi.h>
+#include <memory>
 
 #include <sdsl/wt_huff.hpp>
 #include <sdsl/construct.hpp>
@@ -12,7 +14,8 @@
 #include <sdsl/wt_int.hpp>
 #include <sdsl/wt_rlmn.hpp>
 #include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
-#include "../simple_rl_bwt.h"
+#include "../rlbwt_small_alpha.h"
+#include "../rlbwt_dybl.h"
 
 template<class time_t>
 std::string report_time(time_t start, time_t end, size_t padding){
@@ -102,13 +105,19 @@ void rl2plain(std::string& rl_file, std::string& output_plain_file){
     ofs.close();
 }
 
-template<uint8_t sigma>
+template<class bwt_type>
 void build_my_bwt(std::string& input_file, std::string& output_file){
+
     auto t1 = std::chrono::high_resolution_clock::now();
-    simple_rl_bwt<sigma> my_bwt(input_file);
+    bwt_type my_bwt(input_file);
     auto t2 = std::chrono::high_resolution_clock::now();
     size_t written_bytes = store_to_file(output_file+".my_simple_bwt", my_bwt);
-    std::cout<<"fbrl-bwt "<<report_time(t1, t2, 0)<<",  space_usage:"<<float(written_bytes*8)/float(my_bwt.size())<<" bps"<<std::endl;
+
+    int status;
+    const char * dt_name = typeid(bwt_type).name();
+    char* dem_name = abi::__cxa_demangle(dt_name, nullptr, nullptr, &status);
+
+    std::cout<<dem_name<<"  build_time:"<<report_time(t1, t2, 0)<<",  space_usage:"<<float(written_bytes*8)/float(my_bwt.size())<<" bps"<<std::endl;
 
     //todo testing
     /*std::vector<uint8_t> cs(6,0);
@@ -117,7 +126,7 @@ void build_my_bwt(std::string& input_file, std::string& output_file){
     std::vector<uint64_t> rank_c_j(6, 0);
     my_bwt.interval_symbols(8756, 23065, k, cs, rank_c_i, rank_c_j);
 
-    simple_rl_bwt<sigma> tmp_bwt;
+    rlbwt_small_alpha<sigma> tmp_bwt;
     load_from_file(output_file+".my_simple_bwt", tmp_bwt);
     std::vector<uint8_t> cs2(6,0);
     uint64_t k2;
@@ -127,7 +136,6 @@ void build_my_bwt(std::string& input_file, std::string& output_file){
     tmp_bwt.interval_symbols(8756, 23065, k2, cs2, rank_c_i2, rank_c_j2);*/
     //
     my_bwt.stats();
-
 }
 
 int main(int argc, char** argv){
@@ -143,39 +151,59 @@ int main(int argc, char** argv){
     assert(alphabet>2 && alphabet<=16);
     std::string output_file = std::string(argv[3]);
 
-    std::string plain_input_file = "tmp_plain.txt";
-    rl2plain(input_file, plain_input_file);
+    rlbwt_dybl<1024, 2, 256> bwt;
+    build_dybl<rlbwt_dybl<1024, 2, 256>>(bwt, input_file, IFORMAT::GRL_BWT);
 
+    /*std::string plain_input_file = "tmp_plain.txt";
+    rl2plain(input_file, plain_input_file);
     std::cout<<"Creating wavelet trees for "<<input_file<<std::endl;
     TESTED_DTS
 
-    if(alphabet==3){
-        build_my_bwt<3>(input_file, output_file);
-    }else if(alphabet==4){
-        build_my_bwt<4>(input_file, output_file);
-    }else if(alphabet==5){
-        build_my_bwt<5>(input_file, output_file);
-    }else if(alphabet==6){
-        build_my_bwt<6>(input_file, output_file);
-    }else if(alphabet==7){
-        build_my_bwt<7>(input_file, output_file);
-    }else if(alphabet==8){
-        build_my_bwt<8>(input_file, output_file);
-    }else if(alphabet==9){
-        build_my_bwt<9>(input_file, output_file);
-    }else if(alphabet==10){
-        build_my_bwt<10>(input_file, output_file);
-    }else if(alphabet==11){
-        build_my_bwt<11>(input_file, output_file);
-    }else if(alphabet==12){
-        build_my_bwt<12>(input_file, output_file);
-    }else if(alphabet==13){
-        build_my_bwt<13>(input_file, output_file);
-    }else if(alphabet==14){
-        build_my_bwt<14>(input_file, output_file);
-    }else if(alphabet==15){
-        build_my_bwt<15>(input_file, output_file);
-    }else if(alphabet==16){
-        build_my_bwt<16>(input_file, output_file);
-    }
+    switch (alphabet) {
+        case 3:
+            build_my_bwt<rlbwt_small_alpha<3>>(input_file, output_file);
+            break;
+        case 4:
+            build_my_bwt<rlbwt_small_alpha<4>>(input_file, output_file);
+            break;
+        case 5:
+            build_my_bwt<rlbwt_small_alpha<5>>(input_file, output_file);
+            break;
+        case 6:
+            build_my_bwt<rlbwt_small_alpha<6>>(input_file, output_file);
+            break;
+        case 7:
+            build_my_bwt<rlbwt_small_alpha<7>>(input_file, output_file);
+            break;
+        case 8:
+            build_my_bwt<rlbwt_small_alpha<8>>(input_file, output_file);
+            break;
+        case 9:
+            build_my_bwt<rlbwt_small_alpha<9>>(input_file, output_file);
+            break;
+        case 10:
+            build_my_bwt<rlbwt_small_alpha<10>>(input_file, output_file);
+            break;
+        case 11:
+            build_my_bwt<rlbwt_small_alpha<11>>(input_file, output_file);
+            break;
+        case 12:
+            build_my_bwt<rlbwt_small_alpha<12>>(input_file, output_file);
+            break;
+        case 13:
+            build_my_bwt<rlbwt_small_alpha<13>>(input_file, output_file);
+            break;
+        case 14:
+            build_my_bwt<rlbwt_small_alpha<14>>(input_file, output_file);
+            break;
+        case 15:
+            build_my_bwt<rlbwt_small_alpha<15>>(input_file, output_file);
+            break;
+        case 16:
+            build_my_bwt<rlbwt_small_alpha<16>>(input_file, output_file);
+            break;
+        default:
+            std::cout<<"Alphabet size not supported"<<std::endl;
+            exit(1);
+    }*/
 }

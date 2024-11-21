@@ -17,7 +17,7 @@ constexpr uint8_t s_width(unsigned long val) {
 }
 
 template<uint8_t sigma=16, size_t max_runs_per_block=128>
-struct simple_rl_bwt{
+struct rlbwt_small_alpha{
 
     static_assert(sigma>2 && sigma<=16);
 
@@ -242,9 +242,9 @@ struct simple_rl_bwt{
         bwt_pos+=h_width;
     }
 
-    simple_rl_bwt() = default;
+    rlbwt_small_alpha() = default;
 
-    explicit simple_rl_bwt(std::string& plain_rl_bwt) {
+    explicit rlbwt_small_alpha(std::string& plain_rl_bwt) {
 
         bwt_buff_reader bwt_buff(plain_rl_bwt);
         size_t n_runs = bwt_buff.size();
@@ -1367,7 +1367,7 @@ struct simple_rl_bwt{
         return  written_bytes;
     }
 
-    simple_rl_bwt& swap(simple_rl_bwt& other){
+    rlbwt_small_alpha& swap(rlbwt_small_alpha& other){
         std::swap(alphabet, other.alphabet);
         std::swap(b_header_bits, other.b_header_bits);
         std::swap(n_symbols, other.n_symbols);

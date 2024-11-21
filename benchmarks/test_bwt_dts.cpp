@@ -1,5 +1,5 @@
 #include <iostream>
-#include "../simple_rl_bwt.h"
+#include "../rlbwt_small_alpha.h"
 #include "sdsl/wavelet_trees.hpp"
 #include "sdsl/wt_algorithm.hpp"
 #include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
@@ -13,7 +13,7 @@ sdsl::load_from_file(var, file_name); \
 
 
 #define MY_LOAD(var, file_name, alphabet) \
-simple_rl_bwt<alphabet> var;\
+rlbwt_small_alpha<alphabet> var;\
 load_from_file(file_name, var); \
 
 #define MEASURE(query, time_answer, query_answer) \

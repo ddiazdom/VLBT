@@ -8,8 +8,6 @@
 #include <iostream>
 #include <fstream>
 
-#define BUFFER_SIZE 8388608
-
 uint8_t sym_width(unsigned long val);
 
 size_t next_power_of_two(unsigned long val);

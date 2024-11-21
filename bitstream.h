@@ -8,8 +8,9 @@
 #include<iostream>
 #include <limits>
 #include <vector>
-#include "macros.h"
 #include "cdt_common.hpp"
+
+#define INT_CEIL(a,b) (a>0? 1+(a-1)/b : 0)
 
 template<class word_t,
          uint8_t max_dist=std::numeric_limits<word_t>::digits>
