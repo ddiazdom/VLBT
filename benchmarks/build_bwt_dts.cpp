@@ -151,9 +151,11 @@ int main(int argc, char** argv){
     assert(alphabet>2 && alphabet<=16);
     std::string output_file = std::string(argv[3]);
 
-    rlbwt_dybl<1024, 2, 256> bwt;
-    build_dybl<rlbwt_dybl<1024, 2, 256>>(bwt, input_file, IFORMAT::GRL_BWT);
+    using bwt_type = rlbwt_dybl<4096, 64, 4>;
+    bwt_type bwt;
+    build_dybl<bwt_type>(bwt, input_file, INPUT_FORMAT::GRL_BWT);
 
+    build_my_bwt<rlbwt_small_alpha<16>>(input_file, output_file);
     /*std::string plain_input_file = "tmp_plain.txt";
     rl2plain(input_file, plain_input_file);
     std::cout<<"Creating wavelet trees for "<<input_file<<std::endl;
