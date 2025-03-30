@@ -55,6 +55,56 @@ struct rl_node {//state of the compression
         }
     }
 
+    inline void process_block_seq() {
+
+        if(bk_id==1){//only one block in the sequence and it exceeds the limit of runs
+            create_int_node(active_blocks[0]);//recursive partitioning
+            active_blocks[0].clear();
+            bk_id=0;
+            acc_runs=0;
+        } else {//multiple blocks in the block sequence
+
+            create_leaf(bk_id-1);//we do not consider the last block in the sequence
+            active_blocks[0].swap(active_blocks[bk_id-1]);//move the last block to the beginning of the sequence
+            for(size_t i=1;i<bk_id;i++){//clear the other blocks in the sequence
+                active_blocks[i].clear();
+            }
+
+            //new block sequence
+            acc_runs = active_blocks[0].size();
+            bk_id=1;
+            if(active_blocks[0].size()>b_runs){//process the remaining block if it exceeds the limit of runs
+                create_int_node(active_blocks[0]);
+                active_blocks[0].clear();
+                bk_id=0;
+                acc_runs=0;
+            }
+        }
+    }
+
+    inline void finish_run_scan(){
+        //handle the last sequence of blocks
+        assert(bk_len<=b_size);
+        acc_runs+=active_blocks[bk_id].size();
+        bk_id+=!active_blocks[bk_id].empty();
+
+        if(acc_runs>b_runs){//the last block sequence has more than the maximum number of allowed runs
+            process_block_seq();
+        }
+
+        assert(acc_runs<=b_runs);
+        if(acc_runs>0){//the block sequence still has some runs left
+            create_leaf(bk_id);
+            for(size_t i=0;i<bk_id;i++){//clear the other blocks in the sequence
+                active_blocks[i].clear();
+            }
+            bk_id=0;
+            acc_runs=0;
+        }
+        bk_len=0;
+        assert(aligned<8>(node_n_bits));
+    }
+
     inline void process_run(const size_t& sym, size_t& len) {
 
         while(len>0){
@@ -77,30 +127,7 @@ struct rl_node {//state of the compression
 
                 //we compete a new block sequence
                 if(acc_runs>b_runs){
-
-                    if(bk_id==1){//only one block in the sequence and it exceeds the limit of runs
-                        create_subtree(active_blocks[0]);//recursive partitioning
-                        active_blocks[0].clear();
-                        bk_id=0;
-                        acc_runs=0;
-                    } else {//multiple blocks in the block sequence
-                        create_leaf(bk_id-1);//we do not consider the last block in the sequence
-                        active_blocks[0].swap(active_blocks[bk_id-1]);//move the last block to the beginning of the sequence
-                        for(size_t i=1;i<bk_id;i++){//clear the other blocks in the sequence
-                            active_blocks[i].clear();
-                        }
-
-                        //new block sequence
-                        acc_runs = active_blocks[0].size();
-                        bk_id=1;
-
-                        if(active_blocks[0].size()>b_runs){//process the remaining block if it exceeds the limit of runs
-                            create_subtree(active_blocks[0]);
-                            active_blocks[0].clear();
-                            bk_id=0;
-                            acc_runs=0;
-                        }
-                    }
+                    process_block_seq();
                 }
                 len -=split_run_len;
                 bk_len=0;
@@ -109,34 +136,6 @@ struct rl_node {//state of the compression
     }
 
     inline void finish_int_node(){
-
-        //handle the last sequence of blocks
-        assert(bk_len<=b_size);
-        acc_runs+=active_blocks[bk_id].size();
-        bk_id+=!active_blocks[bk_id].empty();
-
-        if(bk_len==0 && acc_runs==0) return;
-
-        if(acc_runs<=b_runs){//the last block sequence has less than the maximum number of allowed runs
-            create_leaf(bk_id);
-        }else{//the last block sequence exceeds the maximum number of allowed runs
-
-            if(bk_id==1){//there is only one block in the sequence, and it exceeds the limit of runs. Break it recursively
-                create_subtree(active_blocks[0]);
-            } else {//multiple blocks in the sequence, and the sum of their runs exceed the maximum number of runs
-
-                //we do not consider the last block in the sequence
-                create_leaf(bk_id-1);
-
-                //handle the last block
-                if(active_blocks[bk_id-1].size()>b_runs){
-                    create_subtree(active_blocks[bk_id-1]);
-                }else{
-                    active_blocks[0].swap(active_blocks[bk_id-1]);
-                    create_leaf(1);
-                }
-            }
-        }
 
         //children information
         for(size_t i=0;i<n_children;i++){
@@ -210,42 +209,13 @@ struct rl_node {//state of the compression
         node_n_bits = INT_CEIL(node_n_bits, 8)*8;
     }
 
-    inline void finish_root() {
-
-        //handle the last sequence of blocks
-        assert(bk_len<=b_size);
-        acc_runs+=active_blocks[bk_id].size();
-        bk_id+=!active_blocks[bk_id].empty();
-
-        if(bk_len==0 && acc_runs==0) return;
-
-        if(acc_runs<=b_runs){//the last block sequence has less than the maximum number of allowed runs
-            create_leaf(bk_id);
-        }else{//the last block sequence exceeds the maximum number of allowed runs
-
-            if(bk_id==1){//there is only one block in the sequence, and it exceeds the limit of runs. Break it recursively
-                create_subtree(active_blocks[0]);
-            } else {//multiple blocks in the sequence, and the sum of their runs exceed the maximum number of runs
-
-                //we do not consider the last block in the sequence
-                // because it is the one exceeding the number of runs
-                create_leaf(bk_id-1);
-
-                //handle the last block
-                if(active_blocks[bk_id-1].size()>b_runs){
-                    create_subtree(active_blocks[bk_id-1]);
-                }else{
-                    active_blocks[0].swap(active_blocks[bk_id-1]);
-                    create_leaf(1);
-                }
-            }
-        }
-
-        assert(node_n_bits==(INT_CEIL(node_n_bits, 8)*8));
+    inline void finish_forest() {
 
         //pointer information
+        //TODO
         size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
-        std::cout<<"Total n_blocks "<<n_blocks<<" versus "<<n_children<<std::endl;
+        std::cout<<"Total n_blocks n/b:"<<n_blocks<<" versus effective n_blocks: "<<n_children<<std::endl;
+        //
 
         //headers with the rank information
         size_t header_bits = n_children*bwt_rep.sigma_bits;
@@ -262,7 +232,7 @@ struct rl_node {//state of the compression
     inline void create_leaf(size_t n_blocks) {
 
         assert(n_blocks>0);
-        assert(node_n_bits==(INT_CEIL(node_n_bits, 8)*8));
+        assert(aligned<8>(node_n_bits));
 
         size_t sym, len, n_runs=0, longest_run=0;
         for(size_t j=0;j<(active_blocks[0].size()-1);j++){
@@ -379,12 +349,13 @@ struct rl_node {//state of the compression
         block_ptr[n_children++] = node_n_bits/8;
     }
 
-    inline void create_subtree(block_type& block) {
+    inline void create_int_node(block_type& block) {
 
-        assert(node_n_bits==(INT_CEIL(node_n_bits, 8)*8));//check it is byte-aligned
+        assert(aligned<8>(node_n_bits));//check it is byte-aligned
         for(auto & run : block){
             next_node->process_run(run.first, run.second);
         }
+        next_node->finish_run_scan();
         next_node->finish_int_node();
 
         //add the rank information of the active child node (next_node) to the parent's rank information block_ranks[n_children]
@@ -396,6 +367,7 @@ struct rl_node {//state of the compression
         //the pointer to the active child node (next_node) should be aligned
         node_n_bits+=next_node->node_n_bits;
         block_ptr[n_children++]=(node_n_bits/8);
+
         //effective alphabet of the area under this node
         for(size_t i=0;i<next_node->sigma_buff.size();i++){
             sigma_buff[i] = next_node->sigma_buff[i];
@@ -406,17 +378,12 @@ struct rl_node {//state of the compression
     }
 
     inline void reset(){
-        for(size_t i=0;i<bk_id;i++){
-            active_blocks[i].clear();
-        }
-
         for(unsigned long long & rank : block_ranks[0]){
             rank = 0;
         }
-
-        bk_len = 0;
-        bk_id = 0;
-        acc_runs = 0;
+        /*for(auto && bit : sigma_buff){
+            bit=false;
+        }*/
         n_children = 0;
         node_n_bits = 0;
     }
@@ -424,9 +391,6 @@ struct rl_node {//state of the compression
 
 template<class bwt_dt_type>
 void build_from_grlbwt(bwt_dt_type& bwt_rep, std::string& bwt_file){
-
-    size_t b_runs = bwt_dt_type::max_block_runs;
-    size_t b_size = bwt_dt_type::block_size;
 
     bwt_buff_reader bwt_buff(bwt_file);
     size_t n_runs = bwt_buff.size();
@@ -472,6 +436,7 @@ void build_from_grlbwt(bwt_dt_type& bwt_rep, std::string& bwt_file){
 
     std::vector<rl_node<bwt_dt_type>> tmp_nodes;
     tmp_nodes.reserve(bwt_rep.levels+1);
+    size_t b_size = bwt_dt_type::block_size;
     for(size_t i=0;i<=bwt_rep.levels;i++){
         tmp_nodes.push_back(rl_node(i, b_size, bwt_rep));
         b_size/=bwt_dt_type::scale_factor;
@@ -481,11 +446,14 @@ void build_from_grlbwt(bwt_dt_type& bwt_rep, std::string& bwt_file){
     }
     tmp_nodes[bwt_rep.levels].packed_alphabet.resize(bwt_rep.sigma);
 
+    //compute the forest
     for(size_t i=0;i<n_runs;i++){
         bwt_buff.read_run(i, sym, len);
         tmp_nodes[0].process_run(sym_map[sym], len);
     }
-    tmp_nodes[0].finish_root();
+    tmp_nodes[0].finish_run_scan();
+    tmp_nodes[0].finish_forest();
+    //
 
     std::cout<<bwt_rep.orig_runs<<" "<<bwt_rep.eff_runs<<" -> "<<float(bwt_rep.orig_runs)/float(bwt_rep.eff_runs)<<std::endl;
     for(size_t s=0;s<sigma;s++){
