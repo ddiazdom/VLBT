@@ -22,19 +22,24 @@ struct rl_node {//state of the compression
     size_t bk_id=0;//id of the active block
     size_t acc_runs=0;//sum of the runs in the active blocks
     size_t n_children=0;//number of children of this node
-    size_t node_n_bits=0;//number of bits required for the subtree
+    size_t node_sigma=0;//number of symbols under the parent node
+    size_t node_n_bits=0;//number of bits required for the subtree rooted under this node
+    size_t child_rank=0;//which child is this node of its parent (from left to right)
+    bool lm_branch=false;//is this node in the leftmost branch of its tree
+    bool rm_branch=false;//is this node in the rightmost branch of its tree
 
     const size_t lvl;//level of the subtree
-    const size_t b_size;
+    const size_t b_size;//block size for the level
     const size_t s_factor = bwt_dt_type::scale_factor;//shrinking factor for further subdivision
     const size_t b_runs = bwt_dt_type::max_block_runs;//maximum number of runs in a sequence of blocks
 
-    rl_node *next_node = nullptr;
+    rl_node *tmp_node = nullptr;
 
     bwt_dt_type& bwt_rep;//data structure encoding the representation
     std::vector<block_type> active_blocks;//run-length compressed blocks conforming a tree node
-    std::vector<bool> sigma_buff;//buffer to compute the leaf's effective alphabet
-    std::vector<std::vector<uint64_t>> block_ranks;//rank information we store in the header of every internal node
+    std::vector<bool> node_sigma_bv;//buffer to compute the leaf's effective alphabet
+    std::vector<bool> succ_pred_info;// bits indicating successor/predecessor info for each symbol in the alphabet
+    std::vector<uint64_t> block_ranks;//rank information we store in the header of every internal node
     std::vector<uint8_t> packed_alphabet;//leaf's packed alphabet
     std::vector<uint64_t> block_ptr;//pointers to the node's children
 
@@ -43,15 +48,16 @@ struct rl_node {//state of the compression
                      b_size(_b_size),
                      bwt_rep(_bwt_rep),
                      active_blocks(b_runs),
-                     sigma_buff(bwt_rep.sigma, false),
-                     packed_alphabet(bwt_rep.sigma, 0) {
+                     node_sigma_bv(bwt_rep.sigma, false),
+                     succ_pred_info(bwt_rep.sigma, false),
+                     packed_alphabet(bwt_rep.sigma, 0),
+                     block_ranks(bwt_rep.sigma, 0){
         if(lvl==0){
-            size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);
-            block_ptr.resize(n_blocks);
-            block_ranks = std::vector<std::vector<uint64_t>>(n_blocks+1, std::vector<uint64_t>(bwt_rep.sigma, 0));
-        }else{
+            //number of trees in the forst
+            block_ptr.resize(INT_CEIL(bwt_rep.tot_syms, b_size));
+            node_sigma = bwt_rep.sigma;
+        } else{
             block_ptr.resize(s_factor);
-            block_ranks = std::vector<std::vector<uint64_t>>(s_factor+1, std::vector<uint64_t>(bwt_rep.sigma, 0));
         }
     }
 
@@ -83,6 +89,7 @@ struct rl_node {//state of the compression
     }
 
     inline void finish_run_scan(){
+
         //handle the last sequence of blocks
         assert(bk_len<=b_size);
         acc_runs+=active_blocks[bk_id].size();
@@ -115,7 +122,6 @@ struct rl_node {//state of the compression
                 active_blocks[bk_id].emplace_back(sym, len);
                 len=0;
             } else {// we complete a new block
-
                 //last run of the active block
                 size_t split_run_len = b_size-bk_len;
                 active_blocks[bk_id].emplace_back(sym, split_run_len);
@@ -135,65 +141,56 @@ struct rl_node {//state of the compression
         }
     }
 
-    inline void finish_int_node(){
+    inline void finish_int_node(size_t parent_sigma, std::vector<uint64_t>& parent_ranks){
+
+        //TODO
+        //1 bit to indicate it is a internal node
+        //s bits to indicate which children were collapsed
+        //parent_sigma bits to indicate the effective alphabet of the node with respect to the alphabet of its parent
+        //the rank information for the node
+        //n_children*node_sigma to indicate successor/predecessor sibling for each symbol
+        //n_children pointers to the children
 
         //children information
         for(size_t i=0;i<n_children;i++){
             //TODO add the pointers
         }
 
-        //get the effective alphabet of the block
-        std::vector<bool> eff_b_alph(bwt_rep.sigma, false);
-        std::vector<std::vector<bool>> child_alpha(n_children, std::vector<bool>(bwt_rep.sigma, false));
-        bool symbol_exists;
-        for(size_t c=0;c<n_children;c++){
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                if(c==0){
-                    symbol_exists = (block_ranks[c][s]>0);
-                }else{
-                    symbol_exists = (block_ranks[c-1][s]!=block_ranks[c][s]);
-                }
-                eff_b_alph[s]=eff_b_alph[s] | symbol_exists;
-                child_alpha[c][s]=symbol_exists;
+        for(auto && s : node_sigma_bv){
+            if(s){
+                //TODO add the rank information for the symbols within block
             }
         }
-        //
-        size_t p_sigma=0;
-        for(auto const& bit : eff_b_alph){
-            p_sigma+=bit;
-        }
-
-        //get the effective alphabet of the child
-        size_t alt_header=p_sigma+p_sigma*n_children;
-        for(size_t c=0;c<n_children;c++) {
-            //TODO add the rank information
-            //size_t n_empty=0;
-            size_t c_sigma=0;
-            //std::cout<<c<<" -> ";
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                /*if(c==0){
-                    n_empty+=block_ranks[c][s]==0;
-                }else{
-                    n_empty+=block_ranks[c-1][s]==block_ranks[c][s];
-                }*/
-                //std::cout<<""<<s<<"="<<block_ranks[c][s]<<" ";
-                c_sigma+=child_alpha[c][s];
-            }
-            alt_header+=c_sigma*sym_width(b_size*s_factor);
-            //std::cout<<n_empty<<", "<<e<<", "<<l<<" | ";
-        }
-        //std::cout<<""<<std::endl;
 
         for(size_t i=0;i<n_children;i++){
             //TODO add the stream of each children
         }
 
-        //bwt_ep.sigma*sym_width(b_size*s_factor) bits to store the rank info of every child
-        //(n_children*sigma_bits) bits for the children's rank information
-        //size_t sigma_bits = bwt_rep.sigma*sym_width(b_size*s_factor);
-        //std::cout<<sigma_bits<<" "<<alt_header<<std::endl;
-        //size_t header_bits = (n_children*sigma_bits);
-        size_t header_bits = alt_header;
+        size_t header_bits=1;//to indicate it is an internal node
+
+        //parent_sigma bits denote which symbols of the parent are in the node
+        header_bits += parent_sigma;
+
+        assert(lvl>0);
+        if(lvl==1) {
+            //TODO fix this
+            //global rank information
+            header_bits += node_sigma*sym_width(bwt_rep.tot_syms);
+            //global predecessor/successor information
+            header_bits += (parent_sigma-node_sigma) * sym_width(INT_CEIL(bwt_rep.tot_syms, b_size))*2;
+
+            //TODO remove later (just testing)
+            bwt_rep.tree_rank_header_overhead+=node_sigma*sym_width(bwt_rep.tot_syms);
+            bwt_rep.tree_su_pr_header_overhead+=(parent_sigma-node_sigma) * sym_width(INT_CEIL(bwt_rep.tot_syms, b_size))*2;
+            //
+        } else {
+            //bsize*s_factor is the block size of the parent
+            //(node_sigma * sym_widths(b_size*s_factor)) for the ranks of the symbols under the node
+            header_bits += node_sigma*sym_width(b_size*s_factor);
+        }
+
+        //these bits store the successor/predecessor information for each symbol in each child of the node
+        header_bits+= node_sigma*n_children;
 
         //s_factor bits to indicate which children are collapsed
         header_bits += s_factor;
@@ -203,10 +200,12 @@ struct rl_node {//state of the compression
 
         //pt_bits*n_children are the pointers
         header_bits += pt_bits + (pt_bits*n_children);
+        //byte align *this internal node
+        header_bits = INT_CEIL(header_bits, 8)*8;
+
         node_n_bits+=header_bits;
 
-        //byte align *this internal node
-        node_n_bits = INT_CEIL(node_n_bits, 8)*8;
+        bwt_rep.header_overhead+=header_bits;
     }
 
     inline void finish_forest() {
@@ -214,19 +213,153 @@ struct rl_node {//state of the compression
         //pointer information
         //TODO
         size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
-        std::cout<<"Total n_blocks n/b:"<<n_blocks<<" versus effective n_blocks: "<<n_children<<std::endl;
         //
 
         //headers with the rank information
-        size_t header_bits = n_children*bwt_rep.sigma_bits;
         //pt_bits indicates how many bits we use to encode pointers:
         //bits_node/8 is the pointer and b_runs indicate collapsed blocks
         size_t pt_bits = sym_width(node_n_bits/8) + sym_width(b_runs-1);
-        header_bits+= pt_bits + (pt_bits*n_blocks);
-        node_n_bits+=header_bits;
-
+        size_t header_bits= pt_bits + (pt_bits*n_blocks);
         //byte align *this internal node
-        node_n_bits = INT_CEIL(node_n_bits, 8)*8;
+        header_bits = INT_CEIL(header_bits, 8)*8;
+
+        node_n_bits+=header_bits;
+        bwt_rep.header_overhead+=header_bits;
+    }
+
+
+    inline void create_leaf_int(std::vector<block_type>& blocks, size_t n_blocks, size_t parent_sigma){
+        assert(node_n_bits==0);
+
+        size_t sym, len, n_runs=0, longest_run=0;
+        for(size_t j=0;j<(blocks[0].size()-1);j++){
+            sym = blocks[0][j].first;
+            len = blocks[0][j].second;
+
+            node_sigma_bv[sym]=true;
+            assert(sym<bwt_rep.sigma);
+            if(len>longest_run) longest_run = len;
+            block_ranks[sym]+=len;
+        }
+
+        n_runs+=blocks[0].size()-1;
+        for(size_t i=1;i<n_blocks;i++){
+
+            //read the rightmost run of the previous block
+            sym = blocks[i-1].back().first;
+            len = blocks[i-1].back().second;
+
+            //collapse the run with the first run of the current block if they have the same symbol
+            if(sym==blocks[i][0].first){
+                //collapse the runs as they are the same
+                blocks[i][0].second +=len;
+                blocks[i-1].pop_back();
+            } else {
+                //otherwise process the last run of the previous block as an independent run
+                node_sigma_bv[sym] = true;
+                assert(sym<bwt_rep.sigma);
+                if(len>longest_run) longest_run = len;
+                block_ranks[sym]+=len;
+                n_runs++;
+            }
+
+            for(size_t j=0;j<(blocks[i].size()-1);j++){
+                sym = blocks[i][j].first;
+                len = blocks[i][j].second;
+                node_sigma_bv[sym]=true;
+                if(len>longest_run) longest_run = len;
+                block_ranks[sym]+=len;
+            }
+            n_runs+=blocks[i].size()-1;
+        }
+
+        //process the last run
+        sym = blocks[n_blocks-1].back().first;
+        len = blocks[n_blocks-1].back().second;
+
+        node_sigma_bv[sym]=true;
+        assert(sym<bwt_rep.sigma);
+        if(len>longest_run) longest_run = len;
+        block_ranks[sym]+=len;
+        n_runs++;
+
+        //compute the block's alphabet size
+        size_t tmp_s=0;
+        node_sigma=0;
+        for(auto && s : node_sigma_bv){
+            packed_alphabet[tmp_s++]=node_sigma;
+            node_sigma+=s;
+        }
+
+        for(size_t i=0;i<n_blocks;i++){
+            for(auto & run : blocks[i]){
+                //pack the run symbol
+                run.first = packed_alphabet[run.first];
+                //TODO store the run
+            }
+        }
+
+        size_t header_bits=1;//to indicate this node is a leaf
+        header_bits+=3;//to indicate the encoding of the run
+        header_bits+=parent_sigma;//to indicate the leaf's effective alphabet
+
+        if(lvl==1){
+            //TODO fix
+            //global rank information (i.e., previous trees)
+            header_bits+= sym_width(bwt_rep.tot_syms)*node_sigma;
+            //global predecessor/successor information
+            header_bits+= (parent_sigma-node_sigma) * sym_width(INT_CEIL(bwt_rep.tot_syms, b_size))*2;
+
+            //TODO remove later (just testing)
+            bwt_rep.tree_rank_header_overhead+=sym_width(bwt_rep.tot_syms)*node_sigma;
+            bwt_rep.tree_su_pr_header_overhead+=(parent_sigma-node_sigma) * sym_width(INT_CEIL(bwt_rep.tot_syms, b_size))*2;
+            //
+        } else {
+            //local rank information (i.e., previous siblings)
+            header_bits += sym_width(b_size*s_factor)*node_sigma;
+        }
+
+        //the runs are byte-aligned
+        header_bits = INT_CEIL(header_bits, 8)*8;
+        node_n_bits = header_bits;
+
+        assert(n_runs<=bwt_dt_type::max_block_runs);
+        size_t max_bytes_per_run = INT_CEIL((sym_width(node_sigma)+sym_width(longest_run)), 8);
+        //TODO testing
+        size_t leaf_enc=0;
+        if(max_bytes_per_run==2){
+            size_t bytes_per_run;
+            size_t tmp[3]={0};
+            for(size_t i=0;i<n_blocks;i++){
+                for(auto & run : blocks[i]){
+                    bytes_per_run = INT_CEIL((sym_width(run.first)+sym_width(run.second)), 8);
+                    tmp[bytes_per_run]++;
+                }
+            }
+            assert((tmp[1]+tmp[2])==n_runs);
+            size_t vbyte_total = tmp[1] + tmp[2]*2 + INT_CEIL(n_runs, 8);
+            //byte encoding for the runs of this leaf
+            if(vbyte_total<(max_bytes_per_run*n_runs)){
+                node_n_bits += vbyte_total*8;
+                bwt_rep.runs_overhead+= vbyte_total*8;
+            }else{
+                node_n_bits += max_bytes_per_run*n_runs*8;
+                bwt_rep.runs_overhead+= max_bytes_per_run*n_runs*8;
+                leaf_enc=max_bytes_per_run;
+            }
+        } else {
+            node_n_bits += max_bytes_per_run*n_runs*8;
+            bwt_rep.runs_overhead+= max_bytes_per_run*n_runs*8;
+            leaf_enc=max_bytes_per_run;
+        }
+        //
+
+        //gather some statistics
+        bwt_rep.header_overhead+=header_bits;
+        bwt_rep.eff_runs += n_runs;
+        bwt_rep.r_freq[n_runs]++;
+        bwt_rep.lvl_freq[lvl-1]++;//lvl=0 is the forest, so it doesn't count. lvl=1 is a root of a tree
+        bwt_rep.leaf_enc_freq[leaf_enc]++;
     }
 
     inline void create_leaf(size_t n_blocks) {
@@ -234,160 +367,164 @@ struct rl_node {//state of the compression
         assert(n_blocks>0);
         assert(aligned<8>(node_n_bits));
 
-        size_t sym, len, n_runs=0, longest_run=0;
-        for(size_t j=0;j<(active_blocks[0].size()-1);j++){
-            sym = active_blocks[0][j].first;
-            len = active_blocks[0][j].second;
+        tmp_node->create_leaf_int(active_blocks, n_blocks, node_sigma);
 
-            sigma_buff[sym]=true;
-            assert(sym<bwt_rep.sigma);
-            if(len>longest_run) longest_run = len;
-            block_ranks[n_children][sym]+=len;
-        }
-        n_runs+=active_blocks[0].size()-1;
-
-        for(size_t i=1;i<n_blocks;i++){
-
-            //read the rightmost run of the previous block
-            sym = active_blocks[i-1].back().first;
-            len = active_blocks[i-1].back().second;
-
-            //collapse the run with the first run of the current block if they have the same symbol
-            if(sym==active_blocks[i][0].first){
-                //collapse the runs as they are the same
-                active_blocks[i][0].second +=len;
-                active_blocks[i-1].pop_back();
-            } else {
-                //otherwise process the last run of the previous block as an independent run
-                sigma_buff[sym] = true;
-                assert(sym<bwt_rep.sigma);
-                if(len>longest_run) longest_run = len;
-                block_ranks[n_children][sym]+=len;
-                n_runs++;
-            }
-
-            for(size_t j=0;j<(active_blocks[i].size()-1);j++){
-                sym = active_blocks[i][j].first;
-                len = active_blocks[i][j].second;
-                sigma_buff[sym]=true;
-                if(len>longest_run) longest_run = len;
-                block_ranks[n_children][sym]+=len;
-            }
-            n_runs+=active_blocks[i].size()-1;
-        }
-
-        //process the last run
-        sym = active_blocks[n_blocks-1].back().first;
-        len = active_blocks[n_blocks-1].back().second;
-
-        sigma_buff[sym]=true;
-        assert(sym<bwt_rep.sigma);
-        if(len>longest_run) longest_run = len;
-        block_ranks[n_children][sym]+=len;
-        n_runs++;
-
-        //compute the block's alphabet size
-        size_t b_sigma=0, tmp_s=0;
-        for(auto && bit : sigma_buff){
-            packed_alphabet[tmp_s++]=b_sigma;
-            b_sigma+=bit;
-            bit=false;
-        }
-
-        for(size_t i=0;i<n_blocks;i++){
-            for(auto & run : active_blocks[i]){
-                //pack the run symbol
-                run.first = packed_alphabet[run.first];
-                //TODO store the run
-            }
-        }
-
-        //add the ranks within the block to the parent node
+        //add the rank information of the active child node (next_node) to the
+        // parent's rank information
         for(size_t s=0;s<bwt_rep.sigma;s++){
-            block_ranks[n_children+1][s]=block_ranks[n_children][s];
+            block_ranks[s]+=tmp_node->block_ranks[s];
         }
 
-        size_t bytes_per_run = INT_CEIL((sym_width(b_sigma)+sym_width(longest_run)), 8);
-        bwt_rep.eff_runs += n_runs;
-        assert(n_runs<=bwt_dt_type::max_block_runs);
-
-        //TODO testing
-        size_t vbyte_total=0;
-        if(bytes_per_run==2){
-            size_t tmp[4]={0};
-            for(size_t i=0;i<n_blocks;i++){
-                for(auto & run : active_blocks[i]){
-                    bytes_per_run = INT_CEIL((sym_width(run.first)+sym_width(run.second)), 8);
-                    tmp[bytes_per_run]++;
+        //add successor/predecessor information
+        if(lvl>0){//lvl=0 is the forest, so it doesn't include this information
+            //compute successor/predecessor info for the parent node
+            size_t s_comp=0;
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                if(node_sigma_bv[s]){
+                    succ_pred_info[n_children*s_comp]=tmp_node->block_ranks[s]>0;
+                    s_comp++;
                 }
             }
-            vbyte_total = tmp[1] + tmp[2]*2 + INT_CEIL(n_runs, 8);
-        }
-        //
-
-        bwt_rep.r_freq[n_runs]++;
-        bwt_rep.lvl_freq[lvl]++;
-        bwt_rep.sigma_freq[bytes_per_run]++;
-
-        // leaf header
-        // sigma bits encode the block's effective alphabet,
-        // 3 bits indicate the number of bytes that the block uses to encode its runs
-        // 1 bit indicates that this is a leaf
-        node_n_bits += bwt_rep.sigma+4;
-        //the runs are byte-aligned
-        node_n_bits = INT_CEIL(node_n_bits, 8)*8;
-
-        //bits encoding the actual runs
-        if(vbyte_total<(bytes_per_run*n_runs)){
-            node_n_bits += vbyte_total*8;
-        }else{
-            node_n_bits += bytes_per_run*n_runs*8;
+            assert(s_comp==node_sigma);
+            if(lvl==1){
+                //TODO add successor/predecessor pointer to other trees
+            }
         }
 
         //the leaf pointer should be byte-aligned
         //notice the pointer points to the end of the block.
+        node_n_bits+=tmp_node->node_n_bits;
         block_ptr[n_children++] = node_n_bits/8;
+
+        tmp_node->reset();
+    }
+
+    inline void get_node_alphabet(const block_type& block){
+        //compute the alphabet of the block first.
+        // We need it beforehand
+        for(auto & run : block){
+           node_sigma_bv[run.first] = true;
+        }
+        node_sigma = 0;
+        for(auto const& bit : node_sigma_bv){
+            node_sigma+=bit;
+        }
     }
 
     inline void create_int_node(block_type& block) {
 
         assert(aligned<8>(node_n_bits));//check it is byte-aligned
-        for(auto & run : block){
-            next_node->process_run(run.first, run.second);
-        }
-        next_node->finish_run_scan();
-        next_node->finish_int_node();
 
-        //add the rank information of the active child node (next_node) to the parent's rank information block_ranks[n_children]
+        tmp_node->get_node_alphabet(block);
+        for(auto & run : block){
+            tmp_node->process_run(run.first, run.second);
+        }
+        tmp_node->finish_run_scan();
+        tmp_node->finish_int_node(node_sigma, block_ranks);
+
+        //add the rank information of the active child node (next_node) to the
+        // parent's rank information
         for(size_t s=0;s<bwt_rep.sigma;s++){
-            block_ranks[n_children][s] += next_node->block_ranks[next_node->n_children][s];
-            block_ranks[n_children+1][s] = block_ranks[n_children][s];
+            block_ranks[s] += tmp_node->block_ranks[s];
+        }
+
+        //add successor/predecessor information (lvl=0 is the forest, so it does not count)
+        if(lvl>0){
+            size_t s_comp=0;
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                if(node_sigma_bv[s]){
+                    succ_pred_info[n_children*s_comp]=tmp_node->block_ranks[s]>0;
+                    s_comp++;
+                }
+            }
+            assert(s_comp==node_sigma);
+            if(lvl==1){
+                //TODO add successor/predecessor pointer to other trees
+            }
         }
 
         //the pointer to the active child node (next_node) should be aligned
-        node_n_bits+=next_node->node_n_bits;
+        node_n_bits+=tmp_node->node_n_bits;
         block_ptr[n_children++]=(node_n_bits/8);
 
-        //effective alphabet of the area under this node
-        for(size_t i=0;i<next_node->sigma_buff.size();i++){
-            sigma_buff[i] = next_node->sigma_buff[i];
-        }
-
-        bwt_rep.children_freq[next_node->n_children]++;
-        next_node->reset();
+        bwt_rep.children_freq[tmp_node->n_children]++;
+        tmp_node->reset();
     }
 
     inline void reset(){
-        for(unsigned long long & rank : block_ranks[0]){
-            rank = 0;
-        }
-        /*for(auto && bit : sigma_buff){
-            bit=false;
-        }*/
+        //TODO replace these loops with a memset
+        for(unsigned long long & rank : block_ranks) rank = 0;
+        for(auto && s : node_sigma_bv) s=false;
+        //
         n_children = 0;
         node_n_bits = 0;
+        node_sigma = 0;
     }
 };
+
+template<class bwt_dt_type>
+void forest_stats(bwt_dt_type& bwt_rep,  std::vector<rl_node<bwt_dt_type>>& tmp_nodes){
+
+    for(size_t s=0;s<bwt_rep.sigma;s++){
+        std::cout<<"\tsymbol "<<s<<", rank: "<<tmp_nodes[0].block_ranks[s]<<std::endl;
+    }
+
+    std::cout<<"Number_of_runs_in_a_leaf dist: "<<std::endl;
+    assert(bwt_rep.r_freq[0]==0);
+    for(size_t r=1;r<=bwt_dt_type::max_block_runs;r++){
+        std::cout<<"\t"<<r<<" : "<<bwt_rep.r_freq[r]<<std::endl;
+    }
+    std::cout<<"Total number of runs versus original number of runs: "<<bwt_rep.eff_runs<<" / "<<bwt_rep.orig_runs<<std::endl;
+    std::cout<<"Increase in the number of runs "<<(double(bwt_rep.eff_runs)/double(bwt_rep.orig_runs)-1)*100<<"%"<<std::endl;
+
+    std::cout<<"Tree_depth dist: "<<bwt_rep.levels<<std::endl;
+    size_t tot_leaves=0;
+    for(size_t i=0;i<20;i++){
+        tot_leaves+=bwt_rep.lvl_freq[i];
+    }
+    for(size_t i=0;i<20;i++){
+        if(bwt_rep.lvl_freq[i]>0){
+            std::cout<<"\t"<<i<<": "<<double(bwt_rep.lvl_freq[i])/double(tot_leaves)<<std::endl;
+        }
+    }
+
+    std::cout<<"Leaf_encoding dist: "<<std::endl;
+    for(size_t i=0;i<20;i++){
+        if(bwt_rep.leaf_enc_freq[i]!=0){
+            if(i>0){
+                std::cout<<"\tFixed "<<i<<" bytes:\t\t\t\t"<<double(bwt_rep.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+            }else{
+                std::cout<<"\tVariable-length 1/2 bytes: "<<double(bwt_rep.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+            }
+        }
+    }
+
+    std::cout<<"Number_of_children dist: "<<std::endl;
+    size_t del_nodes=0, tot_nodes=0;
+    for(size_t i=0;i<20;i++){
+        if(bwt_rep.children_freq[i]!=0){
+            std::cout<<"\t"<<i<<": "<<bwt_rep.children_freq[i]<<std::endl;
+            del_nodes+=(bwt_rep.scale_factor-i)*bwt_rep.children_freq[i];
+            tot_nodes+=bwt_rep.children_freq[i];
+        }
+    }
+
+    size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, bwt_rep.block_size);//original number of blocks in the first level of the tree
+    std::cout<<"Effective number of trees versus full number of trees (n/b): "<<tmp_nodes[0].n_children<<" / "<<n_blocks<<std::endl;
+    std::cout<<"Percentage of removed trees: "<<(1-double(tmp_nodes[0].n_children)/double(n_blocks))*100<<"% "<<std::endl;
+
+    tot_nodes*=bwt_rep.scale_factor;
+    tot_nodes+=n_blocks;
+    del_nodes=n_blocks-tmp_nodes[0].n_children;
+
+    std::cout<<"Percentage of removed nodes: "<<(double(del_nodes)/double(tot_nodes))*100<<"% "<<std::endl;
+    std::cout<<"Written bytes in the data structure: "<<INT_CEIL(tmp_nodes[0].node_n_bits, 8)<<std::endl;
+    std::cout<<"Headers' contribution to the final space: "<<(double(bwt_rep.header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    std::cout<<"Runs' contribution to the final space: "<<(double(bwt_rep.runs_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    std::cout<<"Tree rank headers' contribution to the final space: "<<(double(bwt_rep.tree_rank_header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    std::cout<<"Tree succ/pred headers' contribution to the final space: "<<(double(bwt_rep.tree_su_pr_header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    assert(bwt_rep.header_overhead+bwt_rep.runs_overhead==tmp_nodes[0].node_n_bits);
+}
 
 template<class bwt_dt_type>
 void build_from_grlbwt(bwt_dt_type& bwt_rep, std::string& bwt_file){
@@ -442,9 +579,8 @@ void build_from_grlbwt(bwt_dt_type& bwt_rep, std::string& bwt_file){
         b_size/=bwt_dt_type::scale_factor;
     }
     for(size_t i=0;i<bwt_rep.levels;i++){
-        tmp_nodes[i].next_node = &tmp_nodes[i+1];
+        tmp_nodes[i].tmp_node = &tmp_nodes[i+1];
     }
-    tmp_nodes[bwt_rep.levels].packed_alphabet.resize(bwt_rep.sigma);
 
     //compute the forest
     for(size_t i=0;i<n_runs;i++){
@@ -455,39 +591,7 @@ void build_from_grlbwt(bwt_dt_type& bwt_rep, std::string& bwt_file){
     tmp_nodes[0].finish_forest();
     //
 
-    std::cout<<bwt_rep.orig_runs<<" "<<bwt_rep.eff_runs<<" -> "<<float(bwt_rep.orig_runs)/float(bwt_rep.eff_runs)<<std::endl;
-    for(size_t s=0;s<sigma;s++){
-        std::cout<<s<<" "<<tmp_nodes[0].block_ranks[tmp_nodes[0].n_children][s]<<std::endl;
-    }
-    for(size_t r=0;r<=bwt_dt_type::max_block_runs;r++){
-        std::cout<<r<<" : "<<bwt_rep.r_freq[r]<<std::endl;
-    }
-    std::cout<<"Number of tree levels: "<<bwt_rep.levels<<std::endl;
-    size_t tot_leaves=0;
-    for(size_t i=0;i<20;i++){
-        tot_leaves+=bwt_rep.lvl_freq[i];
-    }
-
-    for(size_t i=0;i<20;i++){
-        if(bwt_rep.lvl_freq[i]>0){
-            std::cout<<i<<" -> "<<double(bwt_rep.lvl_freq[i])/double(tot_leaves)<<std::endl;
-        }
-    }
-
-    std::cout<<"Bytes per run in a block"<<std::endl;
-    for(size_t i=0;i<20;i++){
-        if(bwt_rep.sigma_freq[i]!=0){
-            std::cout<<"bytes: "<<i<<" "<<double(bwt_rep.sigma_freq[i])/double(tot_leaves)<<std::endl;
-        }
-    }
-
-    std::cout<<"Children freq"<<std::endl;
-    for(size_t i=0;i<20;i++){
-        if(bwt_rep.children_freq[i]!=0){
-            std::cout<<"n_children: "<<i<<" "<<bwt_rep.children_freq[i]<<std::endl;
-        }
-    }
-    std::cout<<"Written bytes in the data structure "<<INT_CEIL(tmp_nodes[0].node_n_bits, 8)<<std::endl;
+    forest_stats(bwt_rep, tmp_nodes);
 }
 
 template<class bwt_dt_type>
@@ -538,8 +642,12 @@ struct rlbwt_vlb {
     //TODO I will not use this information in the future
     uint64_t r_freq[b_runs+1]={0};//number of runs in a leaf
     uint64_t lvl_freq[20]={0};//the height of each leaf
-    uint64_t sigma_freq[20]={0};//the alphabet of each leaf
+    uint64_t leaf_enc_freq[20]={0};//encoding of each leaf
     uint64_t children_freq[100]={0};//children frequency = how many nodes with 1,2,...,x children
+    uint64_t header_overhead=0;//number of bits used by the headers of the nodes
+    uint64_t runs_overhead=0;
+    uint64_t tree_rank_header_overhead=0;
+    uint64_t tree_su_pr_header_overhead=0;
 
     rlbwt_vlb():levels(size_t(ceil(log(b_size)/log(s_factor)) - ceil(log(b_runs)/log(s_factor)))+1){
         // logarithm function to calculate value
