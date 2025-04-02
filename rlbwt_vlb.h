@@ -43,6 +43,11 @@ struct rl_node {//state of the compression
     std::vector<uint8_t> packed_alphabet;//leaf's packed alphabet
     std::vector<uint64_t> block_ptr;//pointers to the node's children
 
+
+    //TODO remove later
+    std::vector<std::vector<uint64_t>> tree_sigma_dist;
+    //
+
     explicit rl_node(size_t _lvl, size_t _b_size, bwt_dt_type& _bwt_rep):
                      lvl(_lvl),
                      b_size(_b_size),
@@ -56,6 +61,9 @@ struct rl_node {//state of the compression
             //number of trees in the forst
             block_ptr.resize(INT_CEIL(bwt_rep.tot_syms, b_size));
             node_sigma = bwt_rep.sigma;
+            //TODO remove later
+            tree_sigma_dist.resize(bwt_rep.sigma);
+            //
         } else{
             block_ptr.resize(s_factor);
         }
@@ -95,11 +103,11 @@ struct rl_node {//state of the compression
         acc_runs+=active_blocks[bk_id].size();
         bk_id+=!active_blocks[bk_id].empty();
 
-        if(acc_runs>b_runs){//the last block sequence has more than the maximum number of allowed runs
+        if(acc_runs>=b_runs){//the last block sequence has more than the maximum number of allowed runs
             process_block_seq();
         }
 
-        assert(acc_runs<=b_runs);
+        assert(acc_runs<b_runs);
         if(acc_runs>0){//the block sequence still has some runs left
             create_leaf(bk_id);
             for(size_t i=0;i<bk_id;i++){//clear the other blocks in the sequence
@@ -132,7 +140,7 @@ struct rl_node {//state of the compression
                 bk_id++;
 
                 //we compete a new block sequence
-                if(acc_runs>b_runs){
+                if(acc_runs>=b_runs){
                     process_block_seq();
                 }
                 len -=split_run_len;
@@ -222,6 +230,15 @@ struct rl_node {//state of the compression
         size_t header_bits= pt_bits + (pt_bits*n_blocks);
         //byte align *this internal node
         header_bits = INT_CEIL(header_bits, 8)*8;
+
+        for(size_t s=0;s<bwt_rep.sigma;s++){
+            std::cout<<"symbol "<<s<<" appearing in "<<tree_sigma_dist[s].size()<<" trees width diffs: ";
+            for(size_t j=1;j<std::min<size_t>(tree_sigma_dist[s].size(), 100);j++){
+                std::cout<<tree_sigma_dist[s][j]-tree_sigma_dist[s][j-1]<<" ";
+            }
+            std::cout<<""<<std::endl;
+        }
+
 
         node_n_bits+=header_bits;
         bwt_rep.header_overhead+=header_bits;
@@ -381,6 +398,7 @@ struct rl_node {//state of the compression
             size_t s_comp=0;
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 if(node_sigma_bv[s]){
+                    //TODO fix this because it is not correct
                     succ_pred_info[n_children*s_comp]=tmp_node->block_ranks[s]>0;
                     s_comp++;
                 }
@@ -389,6 +407,14 @@ struct rl_node {//state of the compression
             if(lvl==1){
                 //TODO add successor/predecessor pointer to other trees
             }
+        }else{
+            //TODO remove later, just testing
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                if(tmp_node->node_sigma_bv[s]){
+                    tree_sigma_dist[s].push_back(n_children);
+                }
+            }
+            //
         }
 
         //the leaf pointer should be byte-aligned
@@ -433,6 +459,7 @@ struct rl_node {//state of the compression
             size_t s_comp=0;
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 if(node_sigma_bv[s]){
+                    //TODO fix this because it is not correct
                     succ_pred_info[n_children*s_comp]=tmp_node->block_ranks[s]>0;
                     s_comp++;
                 }
@@ -441,6 +468,14 @@ struct rl_node {//state of the compression
             if(lvl==1){
                 //TODO add successor/predecessor pointer to other trees
             }
+        }else{
+            //TODO remove later, just testing
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                if(tmp_node->node_sigma_bv[s]){
+                    tree_sigma_dist[s].push_back(n_children);
+                }
+            }
+            //
         }
 
         //the pointer to the active child node (next_node) should be aligned
@@ -519,6 +554,7 @@ void forest_stats(bwt_dt_type& bwt_rep,  std::vector<rl_node<bwt_dt_type>>& tmp_
 
     std::cout<<"Percentage of removed nodes: "<<(double(del_nodes)/double(tot_nodes))*100<<"% "<<std::endl;
     std::cout<<"Written bytes in the data structure: "<<INT_CEIL(tmp_nodes[0].node_n_bits, 8)<<std::endl;
+    std::cout<<"Written bytes without the tree's succ/pred info: "<<INT_CEIL((tmp_nodes[0].node_n_bits-bwt_rep.tree_su_pr_header_overhead), 8)<<std::endl;
     std::cout<<"Headers' contribution to the final space: "<<(double(bwt_rep.header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
     std::cout<<"Runs' contribution to the final space: "<<(double(bwt_rep.runs_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
     std::cout<<"Tree rank headers' contribution to the final space: "<<(double(bwt_rep.tree_rank_header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
