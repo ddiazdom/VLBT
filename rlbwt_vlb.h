@@ -24,9 +24,10 @@ struct rl_node {//state of the compression
     size_t n_children=0;//number of children of this node
     size_t node_sigma=0;//number of symbols under the parent node
     size_t node_n_bits=0;//number of bits required for the subtree rooted under this node
-    size_t child_rank=0;//which child is this node of its parent (from left to right)
-    bool lm_branch=false;//is this node in the leftmost branch of its tree
-    bool rm_branch=false;//is this node in the rightmost branch of its tree
+    size_t consumed_syms=0;//number of symbols scanned
+
+    bool lm_tree_branch=true;//is this node in the leftmost branch of its tree
+    bool rm_tree_branch=true;//is this node in the rightmost branch of its tree
 
     const size_t lvl;//level of the subtree
     const size_t b_size;//block size for the level
@@ -38,11 +39,10 @@ struct rl_node {//state of the compression
     bwt_dt_type& bwt_rep;//data structure encoding the representation
     std::vector<block_type> active_blocks;//run-length compressed blocks conforming a tree node
     std::vector<bool> node_sigma_bv;//buffer to compute the leaf's effective alphabet
-    std::vector<bool> succ_pred_info;// bits indicating successor/predecessor info for each symbol in the alphabet
+    std::vector<std::vector<bool>> succ_pred_info;// bits indicating successor/predecessor info for each symbol in the alphabet
     std::vector<uint64_t> block_ranks;//rank information we store in the header of every internal node
     std::vector<uint8_t> packed_alphabet;//leaf's packed alphabet
     std::vector<uint64_t> block_ptr;//pointers to the node's children
-
 
     //TODO remove later
     std::vector<std::vector<uint64_t>> tree_sigma_dist;
@@ -54,7 +54,7 @@ struct rl_node {//state of the compression
                      bwt_rep(_bwt_rep),
                      active_blocks(b_runs),
                      node_sigma_bv(bwt_rep.sigma, false),
-                     succ_pred_info(bwt_rep.sigma, false),
+                     succ_pred_info(bwt_rep.sigma, std::vector<bool>(s_factor, false)),
                      packed_alphabet(bwt_rep.sigma, 0),
                      block_ranks(bwt_rep.sigma, 0){
         if(lvl==0){
@@ -135,7 +135,6 @@ struct rl_node {//state of the compression
                 active_blocks[bk_id].emplace_back(sym, split_run_len);
                 bk_len+=split_run_len;
                 assert(split_run_len>0 && bk_len==b_size);
-
                 acc_runs+=active_blocks[bk_id].size();
                 bk_id++;
 
@@ -231,14 +230,33 @@ struct rl_node {//state of the compression
         //byte align *this internal node
         header_bits = INT_CEIL(header_bits, 8)*8;
 
+        std::vector<uint64_t> counts(10001);
+        size_t tot=0;
         for(size_t s=0;s<bwt_rep.sigma;s++){
             std::cout<<"symbol "<<s<<" appearing in "<<tree_sigma_dist[s].size()<<" trees width diffs: ";
             for(size_t j=1;j<std::min<size_t>(tree_sigma_dist[s].size(), 100);j++){
-                std::cout<<tree_sigma_dist[s][j]-tree_sigma_dist[s][j-1]<<" ";
+                size_t diff = tree_sigma_dist[s][j]-tree_sigma_dist[s][j-1];
+                if(j<100){
+                    std::cout<<tree_sigma_dist[s][j]-tree_sigma_dist[s][j-1]<<" ";
+                }
+                counts[std::min<size_t>(diff, 10000)]++;
+                tot++;
             }
             std::cout<<""<<std::endl;
         }
 
+        double acc=0;
+        for(size_t i=0;i<10000;i++){
+            double fr = double(counts[i])/double(tot);
+            acc+=fr;
+            if(counts[i]!=0){
+                std::cout<<"Dist "<<i<<" "<<fr<<" "<<acc<<std::endl;
+            }
+        }
+
+        double fr = double(counts[10000])/double(tot);
+        acc+=fr;
+        std::cout<<"Dist +999 "<<fr<<" "<<acc<<std::endl;
 
         node_n_bits+=header_bits;
         bwt_rep.header_overhead+=header_bits;
@@ -246,8 +264,8 @@ struct rl_node {//state of the compression
 
 
     inline void create_leaf_int(std::vector<block_type>& blocks, size_t n_blocks, size_t parent_sigma){
-        assert(node_n_bits==0);
 
+        assert(node_n_bits==0);
         size_t sym, len, n_runs=0, longest_run=0;
         for(size_t j=0;j<(blocks[0].size()-1);j++){
             sym = blocks[0][j].first;
@@ -384,6 +402,14 @@ struct rl_node {//state of the compression
         assert(n_blocks>0);
         assert(aligned<8>(node_n_bits));
 
+        bool lm_child = consumed_syms==0;
+        bool rm_child = ((consumed_syms+(b_size*n_blocks))==(b_size*s_factor));
+
+        //std::cout<<lm_child<<"/"<<rm_child<<" / "<<b_size<<" / "<<b_size*s_factor<<" / "<<n_children<<std::endl;
+
+        tmp_node->lm_tree_branch = lm_tree_branch && lm_child;
+        tmp_node->rm_tree_branch = rm_tree_branch && rm_child;
+
         tmp_node->create_leaf_int(active_blocks, n_blocks, node_sigma);
 
         //add the rank information of the active child node (next_node) to the
@@ -392,6 +418,15 @@ struct rl_node {//state of the compression
             block_ranks[s]+=tmp_node->block_ranks[s];
         }
 
+        if(lm_tree_branch){
+            //
+        }
+
+        if(rm_tree_branch){
+            //
+        }
+
+
         //add successor/predecessor information
         if(lvl>0){//lvl=0 is the forest, so it doesn't include this information
             //compute successor/predecessor info for the parent node
@@ -399,11 +434,12 @@ struct rl_node {//state of the compression
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 if(node_sigma_bv[s]){
                     //TODO fix this because it is not correct
-                    succ_pred_info[n_children*s_comp]=tmp_node->block_ranks[s]>0;
-                    s_comp++;
+                    succ_pred_info[s_comp++][n_children]=tmp_node->block_ranks[s]>0;
+                    assert((tmp_node->block_ranks[s]>0) == tmp_node->node_sigma_bv[s]);
                 }
             }
             assert(s_comp==node_sigma);
+
             if(lvl==1){
                 //TODO add successor/predecessor pointer to other trees
             }
@@ -423,6 +459,7 @@ struct rl_node {//state of the compression
         block_ptr[n_children++] = node_n_bits/8;
 
         tmp_node->reset();
+        consumed_syms+=b_size*n_blocks;
     }
 
     inline void get_node_alphabet(const block_type& block){
@@ -441,6 +478,14 @@ struct rl_node {//state of the compression
 
         assert(aligned<8>(node_n_bits));//check it is byte-aligned
 
+        bool lm_child = consumed_syms == 0;
+        bool rm_child = ((consumed_syms+b_size)==(b_size*s_factor));
+
+        tmp_node->lm_tree_branch = lm_tree_branch && lm_child;
+        tmp_node->rm_tree_branch = rm_tree_branch && rm_child;
+
+        //std::cout<<lm_child<<"/"<<rm_child<<" -> "<<b_size<<" / "<<b_size*s_factor<<" / "<<n_children<<std::endl;
+
         tmp_node->get_node_alphabet(block);
         for(auto & run : block){
             tmp_node->process_run(run.first, run.second);
@@ -454,21 +499,28 @@ struct rl_node {//state of the compression
             block_ranks[s] += tmp_node->block_ranks[s];
         }
 
+        if(lm_tree_branch){
+            //
+        }
+
+        if(rm_tree_branch){
+            //
+        }
+
         //add successor/predecessor information (lvl=0 is the forest, so it does not count)
-        if(lvl>0){
+        if(lvl>0) {
             size_t s_comp=0;
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 if(node_sigma_bv[s]){
-                    //TODO fix this because it is not correct
-                    succ_pred_info[n_children*s_comp]=tmp_node->block_ranks[s]>0;
-                    s_comp++;
+                    succ_pred_info[s_comp++][n_children]=tmp_node->block_ranks[s]>0;
+                    assert((tmp_node->block_ranks[s]>0) == tmp_node->node_sigma_bv[s]);
                 }
             }
             assert(s_comp==node_sigma);
             if(lvl==1){
                 //TODO add successor/predecessor pointer to other trees
             }
-        }else{
+        } else {
             //TODO remove later, just testing
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 if(tmp_node->node_sigma_bv[s]){
@@ -483,17 +535,27 @@ struct rl_node {//state of the compression
         block_ptr[n_children++]=(node_n_bits/8);
 
         bwt_rep.children_freq[tmp_node->n_children]++;
+
         tmp_node->reset();
+        consumed_syms+=b_size;
     }
 
     inline void reset(){
         //TODO replace these loops with a memset
         for(unsigned long long & rank : block_ranks) rank = 0;
         for(auto && s : node_sigma_bv) s=false;
+        for(size_t s=0;s<bwt_rep.sigma;s++){
+            for(size_t c=0;c<s_factor;c++){
+                succ_pred_info[s][c]= false;
+            }
+        }
         //
         n_children = 0;
         node_n_bits = 0;
         node_sigma = 0;
+        consumed_syms = 0;
+        lm_tree_branch = lvl==1;//lvl=1 means the root of the tree
+        lm_tree_branch = lvl==1;
     }
 };
 
@@ -560,6 +622,8 @@ void forest_stats(bwt_dt_type& bwt_rep,  std::vector<rl_node<bwt_dt_type>>& tmp_
     std::cout<<"Tree rank headers' contribution to the final space: "<<(double(bwt_rep.tree_rank_header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
     std::cout<<"Tree succ/pred headers' contribution to the final space: "<<(double(bwt_rep.tree_su_pr_header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
     assert(bwt_rep.header_overhead+bwt_rep.runs_overhead==tmp_nodes[0].node_n_bits);
+    std::cout<<"space_usage:"<<float(tmp_nodes[0].node_n_bits)/float(bwt_rep.tot_syms)<<" bps"<<std::endl;\
+
 }
 
 template<class bwt_dt_type>
@@ -688,8 +752,8 @@ struct rlbwt_vlb {
     rlbwt_vlb():levels(size_t(ceil(log(b_size)/log(s_factor)) - ceil(log(b_runs)/log(s_factor)))+1){
         // logarithm function to calculate value
         float lg = log(b_size) / log(s_factor);
-        float lg2 = log(b_runs) / log(s_factor);
         assert(lg==floor(lg));
+        float lg2 = log(b_runs) / log(s_factor);
         assert(lg2==floor(lg2));
     }
 
