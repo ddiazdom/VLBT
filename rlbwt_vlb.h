@@ -15,6 +15,11 @@ enum INPUT_FORMAT{
    PLAIN=2
 };
 
+enum node_type {
+    INTERNAL,
+    LEAF
+};
+
 template<class bwt_dt_type>
 struct rl_node {//state of the compression
 
@@ -36,10 +41,13 @@ struct rl_node {//state of the compression
 
     rl_node *tmp_node = nullptr;
 
-    bwt_dt_type& bwt_rep;//data structure encoding the representation
-    std::vector<block_type> active_blocks;//run-length compressed blocks conforming a tree node
-    std::vector<bool> node_sigma_bv;//buffer to compute the leaf's effective alphabet
-    std::vector<std::vector<bool>> succ_pred_info;// bits indicating successor/predecessor info for each symbol in the alphabet
+    bwt_dt_type& bwt_rep; //data structure encoding the representation
+    std::vector<block_type> active_blocks; //run-length compressed blocks conforming a tree node
+    std::vector<bool> node_sigma_bv; //buffer to compute the leaf's effective alphabet
+    std::vector<std::vector<bool>> succ_pred_info; //bits indicating successor/predecessor info for each symbol in the alphabet
+    std::vector<bool> pred_tree;
+    std::vector<bool> succ_tree;
+
     std::vector<uint64_t> block_ranks;//rank information we store in the header of every internal node
     std::vector<uint8_t> packed_alphabet;//leaf's packed alphabet
     std::vector<uint64_t> block_ptr;//pointers to the node's children
@@ -72,13 +80,13 @@ struct rl_node {//state of the compression
     inline void process_block_seq() {
 
         if(bk_id==1){//only one block in the sequence and it exceeds the limit of runs
-            create_int_node(active_blocks[0]);//recursive partitioning
+            create_node<INTERNAL>(1);//recursive partitioning
             active_blocks[0].clear();
             bk_id=0;
             acc_runs=0;
         } else {//multiple blocks in the block sequence
 
-            create_leaf(bk_id-1);//we do not consider the last block in the sequence
+            create_node<LEAF>(bk_id-1);//we do not consider the last block in the sequence
             active_blocks[0].swap(active_blocks[bk_id-1]);//move the last block to the beginning of the sequence
             for(size_t i=1;i<bk_id;i++){//clear the other blocks in the sequence
                 active_blocks[i].clear();
@@ -88,7 +96,7 @@ struct rl_node {//state of the compression
             acc_runs = active_blocks[0].size();
             bk_id=1;
             if(active_blocks[0].size()>b_runs){//process the remaining block if it exceeds the limit of runs
-                create_int_node(active_blocks[0]);
+                create_node<INTERNAL>(1);
                 active_blocks[0].clear();
                 bk_id=0;
                 acc_runs=0;
@@ -109,7 +117,7 @@ struct rl_node {//state of the compression
 
         assert(acc_runs<b_runs);
         if(acc_runs>0){//the block sequence still has some runs left
-            create_leaf(bk_id);
+            create_node<LEAF>(bk_id);
             for(size_t i=0;i<bk_id;i++){//clear the other blocks in the sequence
                 active_blocks[i].clear();
             }
@@ -263,7 +271,7 @@ struct rl_node {//state of the compression
     }
 
 
-    inline void create_leaf_int(std::vector<block_type>& blocks, size_t n_blocks, size_t parent_sigma){
+    inline void create_leaf(std::vector<block_type>& blocks, size_t n_blocks, size_t parent_sigma){
 
         assert(node_n_bits==0);
         size_t sym, len, n_runs=0, longest_run=0;
@@ -397,71 +405,6 @@ struct rl_node {//state of the compression
         bwt_rep.leaf_enc_freq[leaf_enc]++;
     }
 
-    inline void create_leaf(size_t n_blocks) {
-
-        assert(n_blocks>0);
-        assert(aligned<8>(node_n_bits));
-
-        bool lm_child = consumed_syms==0;
-        bool rm_child = ((consumed_syms+(b_size*n_blocks))==(b_size*s_factor));
-
-        //std::cout<<lm_child<<"/"<<rm_child<<" / "<<b_size<<" / "<<b_size*s_factor<<" / "<<n_children<<std::endl;
-
-        tmp_node->lm_tree_branch = lm_tree_branch && lm_child;
-        tmp_node->rm_tree_branch = rm_tree_branch && rm_child;
-
-        tmp_node->create_leaf_int(active_blocks, n_blocks, node_sigma);
-
-        //add the rank information of the active child node (next_node) to the
-        // parent's rank information
-        for(size_t s=0;s<bwt_rep.sigma;s++){
-            block_ranks[s]+=tmp_node->block_ranks[s];
-        }
-
-        if(lm_tree_branch){
-            //
-        }
-
-        if(rm_tree_branch){
-            //
-        }
-
-
-        //add successor/predecessor information
-        if(lvl>0){//lvl=0 is the forest, so it doesn't include this information
-            //compute successor/predecessor info for the parent node
-            size_t s_comp=0;
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                if(node_sigma_bv[s]){
-                    //TODO fix this because it is not correct
-                    succ_pred_info[s_comp++][n_children]=tmp_node->block_ranks[s]>0;
-                    assert((tmp_node->block_ranks[s]>0) == tmp_node->node_sigma_bv[s]);
-                }
-            }
-            assert(s_comp==node_sigma);
-
-            if(lvl==1){
-                //TODO add successor/predecessor pointer to other trees
-            }
-        }else{
-            //TODO remove later, just testing
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                if(tmp_node->node_sigma_bv[s]){
-                    tree_sigma_dist[s].push_back(n_children);
-                }
-            }
-            //
-        }
-
-        //the leaf pointer should be byte-aligned
-        //notice the pointer points to the end of the block.
-        node_n_bits+=tmp_node->node_n_bits;
-        block_ptr[n_children++] = node_n_bits/8;
-
-        tmp_node->reset();
-        consumed_syms+=b_size*n_blocks;
-    }
-
     inline void get_node_alphabet(const block_type& block){
         //compute the alphabet of the block first.
         // We need it beforehand
@@ -474,24 +417,34 @@ struct rl_node {//state of the compression
         }
     }
 
-    inline void create_int_node(block_type& block) {
+    template<node_type type>
+    inline void create_node(size_t n_blocks){
 
         assert(aligned<8>(node_n_bits));//check it is byte-aligned
 
+        size_t b_syms = b_size*n_blocks;
         bool lm_child = consumed_syms == 0;
-        bool rm_child = ((consumed_syms+b_size)==(b_size*s_factor));
+        bool rm_child = (consumed_syms+ b_syms)==(b_size*s_factor);
 
         tmp_node->lm_tree_branch = lm_tree_branch && lm_child;
         tmp_node->rm_tree_branch = rm_tree_branch && rm_child;
 
         //std::cout<<lm_child<<"/"<<rm_child<<" -> "<<b_size<<" / "<<b_size*s_factor<<" / "<<n_children<<std::endl;
 
-        tmp_node->get_node_alphabet(block);
-        for(auto & run : block){
-            tmp_node->process_run(run.first, run.second);
+        if constexpr (type==INTERNAL){
+            assert(n_blocks==1);
+            tmp_node->get_node_alphabet(active_blocks[0]);
+            for(auto & run : active_blocks[0]){
+                tmp_node->process_run(run.first, run.second);
+            }
+            tmp_node->finish_run_scan();
+            tmp_node->finish_int_node(node_sigma, block_ranks);
+
+            bwt_rep.children_freq[tmp_node->n_children]++;
+        }else{
+            assert(n_blocks>=1);
+            tmp_node->create_leaf(active_blocks, n_blocks, node_sigma);
         }
-        tmp_node->finish_run_scan();
-        tmp_node->finish_int_node(node_sigma, block_ranks);
 
         //add the rank information of the active child node (next_node) to the
         // parent's rank information
@@ -507,8 +460,8 @@ struct rl_node {//state of the compression
             //
         }
 
-        //add successor/predecessor information (lvl=0 is the forest, so it does not count)
-        if(lvl>0) {
+        //add successor/predecessor information
+        if(lvl>0){ //lvl=0 is the forest, so it does not count
             size_t s_comp=0;
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 if(node_sigma_bv[s]){
@@ -533,11 +486,8 @@ struct rl_node {//state of the compression
         //the pointer to the active child node (next_node) should be aligned
         node_n_bits+=tmp_node->node_n_bits;
         block_ptr[n_children++]=(node_n_bits/8);
-
-        bwt_rep.children_freq[tmp_node->n_children]++;
-
+        consumed_syms+=b_syms;
         tmp_node->reset();
-        consumed_syms+=b_size;
     }
 
     inline void reset(){
