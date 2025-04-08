@@ -64,7 +64,9 @@ struct rl_node {//state of the compression
                      node_sigma_bv(bwt_rep.sigma, false),
                      succ_pred_info(bwt_rep.sigma, std::vector<bool>(s_factor, false)),
                      packed_alphabet(bwt_rep.sigma, 0),
-                     block_ranks(bwt_rep.sigma, 0){
+                     block_ranks(bwt_rep.sigma, 0),
+                     pred_tree(bwt_rep.sigma, true),
+                     succ_tree(bwt_rep.sigma, true){
         if(lvl==0){
             //number of trees in the forst
             block_ptr.resize(INT_CEIL(bwt_rep.tot_syms, b_size));
@@ -221,6 +223,20 @@ struct rl_node {//state of the compression
         node_n_bits+=header_bits;
 
         bwt_rep.header_overhead+=header_bits;
+
+        //get the symbols that need predecessor/successor information to other trees
+        if(lm_tree_branch){
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                pred_tree[s] = pred_tree[s] & node_sigma_bv[s];
+            }
+        }
+
+        if(rm_tree_branch){
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                succ_tree[s] = succ_tree[s] & node_sigma_bv[s];
+            }
+        }
+        //
     }
 
     inline void finish_forest() {
@@ -370,17 +386,39 @@ struct rl_node {//state of the compression
         size_t max_bytes_per_run = INT_CEIL((sym_width(node_sigma)+sym_width(longest_run)), 8);
         //TODO testing
         size_t leaf_enc=0;
-        if(max_bytes_per_run==2){
+        if(max_bytes_per_run>1){
             size_t bytes_per_run;
-            size_t tmp[3]={0};
+            size_t tmp[9]={0};
             for(size_t i=0;i<n_blocks;i++){
                 for(auto & run : blocks[i]){
                     bytes_per_run = INT_CEIL((sym_width(run.first)+sym_width(run.second)), 8);
                     tmp[bytes_per_run]++;
                 }
             }
-            assert((tmp[1]+tmp[2])==n_runs);
-            size_t vbyte_total = tmp[1] + tmp[2]*2 + INT_CEIL(n_runs, 8);
+
+            size_t vbyte_total;
+            switch (max_bytes_per_run) {
+                case 2:
+                    assert((tmp[1]+tmp[2])==n_runs);
+                    vbyte_total = tmp[1] + tmp[2]*2 + INT_CEIL(n_runs, 8);
+                    break;
+                case 3:
+                    assert((tmp[1]+tmp[2]+tmp[3])==n_runs);
+                    vbyte_total = tmp[1] + tmp[2]*2 + tmp[3]*3 + INT_CEIL(n_runs, 4);
+                    break;
+                case 4:
+                    assert((tmp[1]+tmp[2]+tmp[3]+tmp[4])==n_runs);
+                    vbyte_total = tmp[1] + tmp[2]*2 + tmp[3]*3 + tmp[4]*4 + INT_CEIL(n_runs, 4);
+                    break;
+                case 5:
+                    assert((tmp[1]+tmp[2]+tmp[3]+tmp[4]+tmp[5])==n_runs);
+                    vbyte_total = tmp[1] + tmp[2]*2 + tmp[3]*3 + tmp[4]*4 + tmp[5]*5 + INT_CEIL(n_runs, 2);
+                    break;
+                default:
+                    std::cout<<"error: the number of bytes for a run exceed the limit of 5 bytes"<<std::endl;
+                    exit(1);
+            }
+
             //byte encoding for the runs of this leaf
             if(vbyte_total<(max_bytes_per_run*n_runs)){
                 node_n_bits += vbyte_total*8;
@@ -396,6 +434,14 @@ struct rl_node {//state of the compression
             leaf_enc=max_bytes_per_run;
         }
         //
+
+        if(lm_tree_branch){
+            pred_tree = node_sigma_bv;
+        }
+
+        if(rm_tree_branch){
+            succ_tree = node_sigma_bv;
+        }
 
         //gather some statistics
         bwt_rep.header_overhead+=header_bits;
@@ -417,19 +463,17 @@ struct rl_node {//state of the compression
         }
     }
 
-    template<node_type type>
+    template<node_type type>//internal or leaf
     inline void create_node(size_t n_blocks){
 
         assert(aligned<8>(node_n_bits));//check it is byte-aligned
 
         size_t b_syms = b_size*n_blocks;
         bool lm_child = consumed_syms == 0;
-        bool rm_child = (consumed_syms+ b_syms)==(b_size*s_factor);
+        bool rm_child = lvl==0 || (consumed_syms+ b_syms)==(b_size*s_factor);
 
         tmp_node->lm_tree_branch = lm_tree_branch && lm_child;
         tmp_node->rm_tree_branch = rm_tree_branch && rm_child;
-
-        //std::cout<<lm_child<<"/"<<rm_child<<" -> "<<b_size<<" / "<<b_size*s_factor<<" / "<<n_children<<std::endl;
 
         if constexpr (type==INTERNAL){
             assert(n_blocks==1);
@@ -446,21 +490,22 @@ struct rl_node {//state of the compression
             tmp_node->create_leaf(active_blocks, n_blocks, node_sigma);
         }
 
+        std::cout<<lm_child<<"/"<<rm_child<<", lm_branch:"<<lm_tree_branch<<", rm_branch:"<<rm_tree_branch<<", b_size:"<<b_size<<", parent_bsize:"<<b_size*s_factor<<", child_rank:"<<n_children<<" node_sigma:"<<int(tmp_node->node_sigma)<<" level:"<<int(lvl)<<" alphabet:(";
+        for(size_t s=0;s<bwt_rep.sigma;s++){
+            if(tmp_node->node_sigma_bv[s]){
+                std::cout<<s<<", ";
+            }
+        }
+        std::cout<<") lm_branch:"<<tmp_node->lm_tree_branch<<" rm_branch:"<<tmp_node->rm_tree_branch<<" 9?"<<tmp_node->pred_tree[9]<<std::endl;
+
         //add the rank information of the active child node (next_node) to the
         // parent's rank information
         for(size_t s=0;s<bwt_rep.sigma;s++){
             block_ranks[s] += tmp_node->block_ranks[s];
         }
 
-        if(lm_tree_branch){
-            //
-        }
 
-        if(rm_tree_branch){
-            //
-        }
-
-        //add successor/predecessor information
+        //add successor/predecessor information within the same tree
         if(lvl>0){ //lvl=0 is the forest, so it does not count
             size_t s_comp=0;
             for(size_t s=0;s<bwt_rep.sigma;s++){
@@ -470,9 +515,6 @@ struct rl_node {//state of the compression
                 }
             }
             assert(s_comp==node_sigma);
-            if(lvl==1){
-                //TODO add successor/predecessor pointer to other trees
-            }
         } else {
             //TODO remove later, just testing
             for(size_t s=0;s<bwt_rep.sigma;s++){
@@ -481,6 +523,24 @@ struct rl_node {//state of the compression
                 }
             }
             //
+            //TODO add successor/predecessor pointer to other trees
+            std::cout<<" alphabet: ";
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                std::cout<<s<<":"<<tmp_node->node_sigma_bv[s]<<" ";
+            }
+            std::cout<<""<<std::endl;
+
+            std::cout<<" pred:     ";
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                std::cout<<s<<":"<<tmp_node->pred_tree[s]<<" ";
+            }
+            std::cout<<" "<<std::endl;
+
+            std::cout<<" succ:     ";
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                std::cout<<s<<":"<<tmp_node->succ_tree[s]<<" ";
+            }
+            std::cout<<"\n"<<std::endl;
         }
 
         //the pointer to the active child node (next_node) should be aligned
@@ -494,6 +554,8 @@ struct rl_node {//state of the compression
         //TODO replace these loops with a memset
         for(unsigned long long & rank : block_ranks) rank = 0;
         for(auto && s : node_sigma_bv) s=false;
+        for(auto && s : pred_tree) s=true;
+        for(auto && s : succ_tree) s=true;
         for(size_t s=0;s<bwt_rep.sigma;s++){
             for(size_t c=0;c<s_factor;c++){
                 succ_pred_info[s][c]= false;
@@ -504,8 +566,8 @@ struct rl_node {//state of the compression
         node_n_bits = 0;
         node_sigma = 0;
         consumed_syms = 0;
-        lm_tree_branch = lvl==1;//lvl=1 means the root of the tree
-        lm_tree_branch = lvl==1;
+        lm_tree_branch = lvl==0;//lvl=1 means the root of the tree
+        lm_tree_branch = lvl==0;
     }
 };
 
