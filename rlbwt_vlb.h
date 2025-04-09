@@ -122,7 +122,6 @@ struct rl_node {//state of the compression
     }
 
     inline void finish_run_scan(){
-
         //handle the last sequence of blocks
         assert(bk_len<=b_size);
         acc_runs+=active_blocks[bk_id].size();
@@ -243,46 +242,51 @@ struct rl_node {//state of the compression
 
         //compute symbols that are in few trees
         std::vector<bool> low_freq_syms(bwt_rep.sigma, false);
+        std::vector<std::pair<uint64_t, int64_t>> active_pred(bwt_rep.sigma, {0, -1});
+        std::vector<std::pair<uint64_t, int64_t>> active_succ(bwt_rep.sigma, {0, 0});
+
         for(size_t s=0;s<bwt_rep.sigma;s++){
             double per =  double(sigma_trees[s].size())/double(n_children);
             //symbol present in <=1% of the trees
             low_freq_syms[s]= per<=0.01;
+            sigma_trees[s].push_back(n_children);
+            active_succ[s] = {0, sigma_trees[s][0]};
         }
 
         std::cout<<"Computing ext. succ/pred info"<<std::endl;
         size_t acc_bits=0;
-        for(uint64_t b=0;b<n_children;b++){
-
-            if((b%100000)==0){
-                std::cout<<b<<"/"<<n_children<<std::endl;
-            }
-
+        for(int64_t b=0;b<n_children;b++){
             size_t max_dist=0, n_samp=0;
+
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 if(outer_pred_info[b][s] && !low_freq_syms[s]){
-                    int64_t outer_pred=sigma_trees[s].size()-1;
-                    while(outer_pred>=0 && sigma_trees[s][outer_pred]>=b){
-                        outer_pred--;
-                    }
-                    uint64_t p_tree = (outer_pred>=0? sigma_trees[s][outer_pred] : 0);
-                    uint64_t dist = b-p_tree;
-                    if(p_tree==n_children || dist>5){
+                    int64_t dist = b-active_pred[s].second;
+                    assert(dist>0 && dist<n_children);
+                    if(dist>5){
                         if(dist>max_dist) max_dist = dist;
                         //std::cout<<"block:"<<b<<", symbol:"<<s<<", pred_tree:"<<p_tree<<" "<<dist<<std::endl;
                         n_samp++;
                     }
                 }
+
+                if(sigma_trees[s][active_pred[s].first]==b){
+                    active_pred[s].first++;
+                    active_pred[s].second = b;
+                }
             }
+
             //std::cout<<" ----- "<<std::endl;
             for(size_t s=0;s<bwt_rep.sigma;s++){
+                if(active_succ[s].second==b){
+                    active_succ[s].first++;
+                    assert(active_succ[s].first<sigma_trees[s].size());
+                    active_succ[s].second = sigma_trees[s][active_succ[s].first];
+                }
+
                 if(outer_succ_info[b][s] && !low_freq_syms[s]){
-                    uint64_t outer_succ=0;
-                    while(outer_succ<sigma_trees[s].size() && sigma_trees[s][outer_succ]<=b){
-                        outer_succ++;
-                    }
-                    uint64_t s_tree = (outer_succ<sigma_trees[s].size()? sigma_trees[s][outer_succ] : n_children);
-                    uint64_t dist = s_tree-b;
-                    if(s_tree<0 || dist>5){
+                    int64_t dist = active_succ[s].second-b;
+                    assert(dist>0 && dist<n_children);
+                    if(dist>5){
                         if(dist>max_dist) max_dist = dist;
                         //std::cout<<"block:"<<b<<", symbol:"<<s<<", succ_tree:"<<s_tree<<" "<<dist<<std::endl;
                         n_samp++;
@@ -290,8 +294,7 @@ struct rl_node {//state of the compression
                 }
             }
             //std::cout<<"\n max_dist:"<<max_dist<<std::endl;
-
-            acc_bits+= n_samp* sym_width(max_dist);
+            acc_bits+= n_samp * sym_width(max_dist);
             acc_bits+= 2*bwt_rep.sigma;
             acc_bits+= sym_width(max_dist);
         }
