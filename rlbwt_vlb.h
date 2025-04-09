@@ -30,9 +30,14 @@ struct rl_node {//state of the compression
     size_t node_sigma=0;//number of symbols under the parent node
     size_t node_n_bits=0;//number of bits required for the subtree rooted under this node
     size_t consumed_syms=0;//number of symbols scanned
+    size_t child_rank=0;//this node is the child_rank of its parent
+    size_t cov_symbols=0;//how many symbols of the input BWT does this node cover
 
-    bool lm_tree_branch=true;//is this node in the leftmost branch of its tree
-    bool rm_tree_branch=true;//is this node in the rightmost branch of its tree
+    bool lm_tree_branch=true;//true if this node in the leftmost branch of its tree
+    bool rm_tree_branch=true;//true if this node in the rightmost branch of its tree
+    bool lm_child=false;//true if this node is the leftmost child of its parent
+    bool rm_child=false;//true if this node is the rightmost child of its parent
+    bool leaf=false;//true if the node is a leaf
 
     const size_t lvl;//level of the subtree
     const size_t b_size;//block size for the level
@@ -52,9 +57,15 @@ struct rl_node {//state of the compression
     std::vector<uint8_t> packed_alphabet;//leaf's packed alphabet
     std::vector<uint64_t> block_ptr;//pointers to the node's children
 
-    //TODO remove later
-    std::vector<std::vector<uint64_t>> tree_sigma_dist;
-    //
+    // each sigma_trees[s], with s \in \Sigma, is a strictly increasing
+    // sequence encoding the trees in the forest containing the symbol s
+    std::vector<std::vector<uint64_t>> sigma_trees;
+
+    //list of symbols of each tree (as a bitvector) that require outer predecessor information
+    std::vector<std::vector<bool>> outer_pred_info;
+
+    //list of the symbols of each tree (as a bitvector) that require outer successor information
+    std::vector<std::vector<bool>> outer_succ_info;
 
     explicit rl_node(size_t _lvl, size_t _b_size, bwt_dt_type& _bwt_rep):
                      lvl(_lvl),
@@ -69,11 +80,15 @@ struct rl_node {//state of the compression
                      succ_tree(bwt_rep.sigma, true){
         if(lvl==0){
             //number of trees in the forst
-            block_ptr.resize(INT_CEIL(bwt_rep.tot_syms, b_size));
+            size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);
+            block_ptr.resize(n_blocks);
             node_sigma = bwt_rep.sigma;
-            //TODO remove later
-            tree_sigma_dist.resize(bwt_rep.sigma);
-            //
+            sigma_trees.resize(bwt_rep.sigma);
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                sigma_trees[s].reserve(n_blocks);
+            }
+            outer_pred_info = std::vector<std::vector<bool>>(n_blocks, std::vector<bool>(bwt_rep.sigma, false));
+            outer_succ_info = std::vector<std::vector<bool>>(n_blocks, std::vector<bool>(bwt_rep.sigma, false));
         } else{
             block_ptr.resize(s_factor);
         }
@@ -221,54 +236,81 @@ struct rl_node {//state of the compression
         header_bits = INT_CEIL(header_bits, 8)*8;
 
         node_n_bits+=header_bits;
-
         bwt_rep.header_overhead+=header_bits;
-
-        //get the symbols that need predecessor/successor information to other trees
-        if(lm_tree_branch){
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                pred_tree[s] = pred_tree[s] & node_sigma_bv[s];
-            }
-        }
-
-        if(rm_tree_branch){
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                succ_tree[s] = succ_tree[s] & node_sigma_bv[s];
-            }
-        }
-        //
     }
 
-    inline void finish_forest() {
+    inline void compute_outer_succ_pred_info(){
 
-        //pointer information
-        //TODO
-        size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
-        //
+        //compute symbols that are in few trees
+        std::vector<bool> low_freq_syms(bwt_rep.sigma, false);
+        for(size_t s=0;s<bwt_rep.sigma;s++){
+            double per =  double(sigma_trees[s].size())/double(n_children);
+            //symbol present in <=1% of the trees
+            low_freq_syms[s]= per<=0.01;
+        }
 
-        //headers with the rank information
-        //pt_bits indicates how many bits we use to encode pointers:
-        //bits_node/8 is the pointer and b_runs indicate collapsed blocks
-        size_t pt_bits = sym_width(node_n_bits/8) + sym_width(b_runs-1);
-        size_t header_bits= pt_bits + (pt_bits*n_blocks);
-        //byte align *this internal node
-        header_bits = INT_CEIL(header_bits, 8)*8;
+        std::cout<<"Computing ext. succ/pred info"<<std::endl;
+        size_t acc_bits=0;
+        for(uint64_t b=0;b<n_children;b++){
 
-        std::vector<uint64_t> counts(10001);
+            if((b%100000)==0){
+                std::cout<<b<<"/"<<n_children<<std::endl;
+            }
+
+            size_t max_dist=0, n_samp=0;
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                if(outer_pred_info[b][s] && !low_freq_syms[s]){
+                    int64_t outer_pred=sigma_trees[s].size()-1;
+                    while(outer_pred>=0 && sigma_trees[s][outer_pred]>=b){
+                        outer_pred--;
+                    }
+                    uint64_t p_tree = (outer_pred>=0? sigma_trees[s][outer_pred] : 0);
+                    uint64_t dist = b-p_tree;
+                    if(p_tree==n_children || dist>5){
+                        if(dist>max_dist) max_dist = dist;
+                        //std::cout<<"block:"<<b<<", symbol:"<<s<<", pred_tree:"<<p_tree<<" "<<dist<<std::endl;
+                        n_samp++;
+                    }
+                }
+            }
+            //std::cout<<" ----- "<<std::endl;
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                if(outer_succ_info[b][s] && !low_freq_syms[s]){
+                    uint64_t outer_succ=0;
+                    while(outer_succ<sigma_trees[s].size() && sigma_trees[s][outer_succ]<=b){
+                        outer_succ++;
+                    }
+                    uint64_t s_tree = (outer_succ<sigma_trees[s].size()? sigma_trees[s][outer_succ] : n_children);
+                    uint64_t dist = s_tree-b;
+                    if(s_tree<0 || dist>5){
+                        if(dist>max_dist) max_dist = dist;
+                        //std::cout<<"block:"<<b<<", symbol:"<<s<<", succ_tree:"<<s_tree<<" "<<dist<<std::endl;
+                        n_samp++;
+                    }
+                }
+            }
+            //std::cout<<"\n max_dist:"<<max_dist<<std::endl;
+
+            acc_bits+= n_samp* sym_width(max_dist);
+            acc_bits+= 2*bwt_rep.sigma;
+            acc_bits+= sym_width(max_dist);
+        }
+        std::cout<<"They use approximately "<<INT_CEIL(acc_bits, 8)<<" bytes"<<std::endl;
+
+        /*std::vector<uint64_t> counts(10001);
         size_t tot=0;
         for(size_t s=0;s<bwt_rep.sigma;s++){
-            std::cout<<"symbol "<<s<<" appearing in "<<tree_sigma_dist[s].size()<<" trees width diffs: ";
-            for(size_t j=1;j<std::min<size_t>(tree_sigma_dist[s].size(), 100);j++){
-                size_t diff = tree_sigma_dist[s][j]-tree_sigma_dist[s][j-1];
+            std::cout<<"symbol "<<s<<" appearing in "<<sigma_trees[s].size()<<" trees width diffs: ";
+            for(size_t j=1;j<std::min<size_t>(sigma_trees[s].size(), 100);j++){
+                size_t diff = sigma_trees[s][j]-sigma_trees[s][j-1];
                 if(j<100){
-                    std::cout<<tree_sigma_dist[s][j]-tree_sigma_dist[s][j-1]<<" ";
+                    std::cout<<sigma_trees[s][j]-sigma_trees[s][j-1]<<" ";
                 }
                 counts[std::min<size_t>(diff, 10000)]++;
                 tot++;
             }
             std::cout<<""<<std::endl;
         }
-
         double acc=0;
         for(size_t i=0;i<10000;i++){
             double fr = double(counts[i])/double(tot);
@@ -277,10 +319,24 @@ struct rl_node {//state of the compression
                 std::cout<<"Dist "<<i<<" "<<fr<<" "<<acc<<std::endl;
             }
         }
-
         double fr = double(counts[10000])/double(tot);
         acc+=fr;
-        std::cout<<"Dist +999 "<<fr<<" "<<acc<<std::endl;
+        std::cout<<"Dist +999 "<<fr<<" "<<acc<<std::endl;*/
+    }
+
+    inline void finish_forest() {
+        compute_outer_succ_pred_info();
+        //pointer information
+        //TODO
+        size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
+        //
+        //headers with the rank information
+        //pt_bits indicates how many bits we use to encode pointers:
+        //bits_node/8 is the pointer and b_runs indicate collapsed blocks
+        size_t pt_bits = sym_width(node_n_bits/8) + sym_width(b_runs-1);
+        size_t header_bits= pt_bits + (pt_bits*n_blocks);
+        //byte align *this internal node
+        header_bits = INT_CEIL(header_bits, 8)*8;
 
         node_n_bits+=header_bits;
         bwt_rep.header_overhead+=header_bits;
@@ -384,6 +440,7 @@ struct rl_node {//state of the compression
 
         assert(n_runs<=bwt_dt_type::max_block_runs);
         size_t max_bytes_per_run = INT_CEIL((sym_width(node_sigma)+sym_width(longest_run)), 8);
+
         //TODO testing
         size_t leaf_enc=0;
         if(max_bytes_per_run>1){
@@ -463,17 +520,80 @@ struct rl_node {//state of the compression
         }
     }
 
+    void print_node_info(){
+
+        std::string pad = std::string(lvl+1, '\t');
+
+        std::cout<<pad<<(leaf? "leaf" :"internal_node")<<std::endl;
+        std::cout<<pad<<"lm_child:"<<lm_child<<std::endl;
+        std::cout<<pad<<"rm_child:"<<rm_child<<std::endl;
+        std::cout<<pad<<"covered_symbols:"<<cov_symbols<<std::endl;
+        std::cout<<pad<<"child_rank:"<<child_rank<<std::endl;
+        std::cout<<pad<<"node_sigma:"<<int(node_sigma)<<std::endl;
+        std::cout<<pad<<"level:"<<int(lvl)<<std::endl;
+        std::cout<<pad<<"alphabet:(";
+        size_t p=0;
+        for(size_t s=0;s<bwt_rep.sigma;s++){
+            if(node_sigma_bv[s]){
+                std::cout<<(p++>0 ? ", ":"")<<s;
+            }
+        }
+        std::cout<<")"<<std::endl;
+        std::cout<<pad<<"lm_branch:"<<lm_tree_branch<<std::endl;
+        std::cout<<pad<<"rm_branch:"<<rm_tree_branch<<std::endl;
+
+        if(!leaf){
+            std::cout<<pad<<"inner succ/prec info:";
+            size_t s_comp=0;
+            for(size_t s=0;s<node_sigma_bv.size();s++){
+                if(node_sigma_bv[s]){
+                    std::cout<<s<<"=(";
+                    for(size_t c=0;c<n_children;c++){
+                        std::cout<<(c>0 ? ", ":"")<<succ_pred_info[s_comp][c];
+                    }
+                    std::cout<<") ";
+                    s_comp++;
+                }
+            }
+            std::cout<<""<<std::endl;
+        }
+
+        if(lvl==1){
+            std::cout<<pad<<"outer pred:(";
+            p=0;
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                if(node_sigma_bv[s] && !pred_tree[s]){
+                    std::cout<<(p++>0 ? ", ":"")<<s;
+                }
+            }
+            std::cout<<")"<<std::endl;
+
+            std::cout<<pad<<"outer succ:(";
+            p=0;
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                if(node_sigma_bv[s] && !succ_tree[s]) {
+                    std::cout<<(p++>0 ?", ":"")<<s;
+                }
+            }
+            std::cout<<")"<<std::endl;
+        }
+        std::cout<<""<<std::endl;
+    }
+
     template<node_type type>//internal or leaf
     inline void create_node(size_t n_blocks){
 
         assert(aligned<8>(node_n_bits));//check it is byte-aligned
 
-        size_t b_syms = b_size*n_blocks;
-        bool lm_child = consumed_syms == 0;
-        bool rm_child = lvl==0 || (consumed_syms+ b_syms)==(b_size*s_factor);
-
-        tmp_node->lm_tree_branch = lm_tree_branch && lm_child;
-        tmp_node->rm_tree_branch = rm_tree_branch && rm_child;
+        //lvl=0 means the forest, and tmp_node is then the root v of a tree.
+        // Therefore, v is the leftmost and rightmost branches of the tree
+        tmp_node->cov_symbols = b_size*n_blocks;
+        tmp_node->lm_child = lvl==0 || consumed_syms == 0;
+        tmp_node->rm_child = lvl==0 || (consumed_syms+ tmp_node->cov_symbols)==(b_size*s_factor);
+        tmp_node->lm_tree_branch = lm_tree_branch && tmp_node->lm_child;
+        tmp_node->rm_tree_branch = rm_tree_branch && tmp_node->rm_child;
+        tmp_node->child_rank = n_children;
+        tmp_node->leaf = type==LEAF;
 
         if constexpr (type==INTERNAL){
             assert(n_blocks==1);
@@ -483,20 +603,11 @@ struct rl_node {//state of the compression
             }
             tmp_node->finish_run_scan();
             tmp_node->finish_int_node(node_sigma, block_ranks);
-
             bwt_rep.children_freq[tmp_node->n_children]++;
         }else{
             assert(n_blocks>=1);
             tmp_node->create_leaf(active_blocks, n_blocks, node_sigma);
         }
-
-        std::cout<<lm_child<<"/"<<rm_child<<", lm_branch:"<<lm_tree_branch<<", rm_branch:"<<rm_tree_branch<<", b_size:"<<b_size<<", parent_bsize:"<<b_size*s_factor<<", child_rank:"<<n_children<<" node_sigma:"<<int(tmp_node->node_sigma)<<" level:"<<int(lvl)<<" alphabet:(";
-        for(size_t s=0;s<bwt_rep.sigma;s++){
-            if(tmp_node->node_sigma_bv[s]){
-                std::cout<<s<<", ";
-            }
-        }
-        std::cout<<") lm_branch:"<<tmp_node->lm_tree_branch<<" rm_branch:"<<tmp_node->rm_tree_branch<<" 9?"<<tmp_node->pred_tree[9]<<std::endl;
 
         //add the rank information of the active child node (next_node) to the
         // parent's rank information
@@ -504,9 +615,24 @@ struct rl_node {//state of the compression
             block_ranks[s] += tmp_node->block_ranks[s];
         }
 
+        //get the symbols that need predecessor/successor information to other trees
+        if(tmp_node->lm_tree_branch){
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                pred_tree[s] = pred_tree[s] & tmp_node->pred_tree[s];
+            }
+        }
 
-        //add successor/predecessor information within the same tree
-        if(lvl>0){ //lvl=0 is the forest, so it does not count
+        if(tmp_node->rm_tree_branch){
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                succ_tree[s] = succ_tree[s] & tmp_node->succ_tree[s];
+            }
+        }
+        //
+
+        if(lvl>0){
+            //add successor/predecessor information for the current node within the same tree
+            //lvl=0 is the forest, so it does not count
+            assert(n_children<s_factor);
             size_t s_comp=0;
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 if(node_sigma_bv[s]){
@@ -516,52 +642,37 @@ struct rl_node {//state of the compression
             }
             assert(s_comp==node_sigma);
         } else {
-            //TODO remove later, just testing
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 if(tmp_node->node_sigma_bv[s]){
-                    tree_sigma_dist[s].push_back(n_children);
+                    sigma_trees[s].push_back(n_children);
                 }
-            }
-            //
-            //TODO add successor/predecessor pointer to other trees
-            std::cout<<" alphabet: ";
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                std::cout<<s<<":"<<tmp_node->node_sigma_bv[s]<<" ";
-            }
-            std::cout<<""<<std::endl;
+                //symbols within this tree requiring predecessor information to trees on the left side
+                outer_pred_info[n_children][s] = !tmp_node->node_sigma_bv[s] || !tmp_node->pred_tree[s];
 
-            std::cout<<" pred:     ";
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                std::cout<<s<<":"<<tmp_node->pred_tree[s]<<" ";
+                //symbols within this tree requiring successor information to trees on the right side
+                outer_succ_info[n_children][s] = !tmp_node->node_sigma_bv[s] || !tmp_node->succ_tree[s];
             }
-            std::cout<<" "<<std::endl;
-
-            std::cout<<" succ:     ";
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                std::cout<<s<<":"<<tmp_node->succ_tree[s]<<" ";
-            }
-            std::cout<<"\n"<<std::endl;
         }
+
+        //TODO remove
+        //tmp_node->print_node_info();
+        //
 
         //the pointer to the active child node (next_node) should be aligned
         node_n_bits+=tmp_node->node_n_bits;
         block_ptr[n_children++]=(node_n_bits/8);
-        consumed_syms+=b_syms;
+        consumed_syms+=tmp_node->cov_symbols;
         tmp_node->reset();
     }
 
     inline void reset(){
-        //TODO replace these loops with a memset
-        for(unsigned long long & rank : block_ranks) rank = 0;
-        for(auto && s : node_sigma_bv) s=false;
-        for(auto && s : pred_tree) s=true;
-        for(auto && s : succ_tree) s=true;
+        memset(block_ranks.data(), 0, block_ranks.size()*sizeof(uint64_t));
+        std::fill(node_sigma_bv.begin(), node_sigma_bv.end(), false);
+        std::fill(pred_tree.begin(), pred_tree.end(), true);
+        std::fill(succ_tree.begin(), succ_tree.end(), true);
         for(size_t s=0;s<bwt_rep.sigma;s++){
-            for(size_t c=0;c<s_factor;c++){
-                succ_pred_info[s][c]= false;
-            }
+            std::fill(succ_pred_info[s].begin(), succ_pred_info[s].end(), false);
         }
-        //
         n_children = 0;
         node_n_bits = 0;
         node_sigma = 0;
