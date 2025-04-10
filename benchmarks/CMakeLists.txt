@@ -27,7 +27,7 @@ add_executable(build_bwt_dts build_bwt_dts.cpp ../cdt_common.cpp)
 target_compile_options(build_bwt_dts
         PUBLIC
         #-Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function
-        #-O3 -funroll-loops -fomit-frame-pointer -ffast-math
+        -O3 -funroll-loops -fomit-frame-pointer -ffast-math
         #-O3 -funroll-loops -mavx2
 )
 target_link_libraries(build_bwt_dts LINK_PUBLIC ${LIBSDSL_LIBRARIES})
