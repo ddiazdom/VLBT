@@ -203,27 +203,24 @@ struct rl_node {//state of the compression
         header_bits += parent_sigma;
 
         assert(lvl>0);
+        //these bits store the rank information
         if(lvl==1) {
-            //TODO fix this
-            //global rank information
+            //the root of the tree
             header_bits += node_sigma*sym_width(bwt_rep.tot_syms);
-            //global predecessor/successor information
-            header_bits += (parent_sigma-node_sigma) * sym_width(INT_CEIL(bwt_rep.tot_syms, b_size))*2;
-
-            //TODO remove later (just testing)
-            bwt_rep.tree_rank_header_overhead+=node_sigma*sym_width(bwt_rep.tot_syms);
-            bwt_rep.tree_su_pr_header_overhead+=(parent_sigma-node_sigma) * sym_width(INT_CEIL(bwt_rep.tot_syms, b_size))*2;
-            //
+            bwt_rep.rank_overhead+=node_sigma*sym_width(bwt_rep.tot_syms);
         } else {
+            //for an internal node that is not the root
             //bsize*s_factor is the block size of the parent
-            //(node_sigma * sym_widths(b_size*s_factor)) for the ranks of the symbols under the node
-            header_bits += node_sigma*sym_width(b_size*s_factor);
+            header_bits += sym_width(b_size*s_factor)*node_sigma;
+            bwt_rep.rank_overhead+= sym_width(b_size*s_factor)*node_sigma;
         }
 
         //these bits store the successor/predecessor information for each symbol in each child of the node
         header_bits+= node_sigma*n_children;
+        bwt_rep.int_su_pr_overhead+= node_sigma*n_children;
 
         //s_factor bits to indicate which children are collapsed
+        assert(n_children<=s_factor);
         header_bits += s_factor;
 
         //pt_bits indicates how many bits we use to encode pointers;
@@ -240,21 +237,28 @@ struct rl_node {//state of the compression
 
     inline void compute_outer_succ_pred_info(){
 
+        assert(lvl==0);
+
         //compute symbols that are in few trees
         std::vector<bool> low_freq_syms(bwt_rep.sigma, false);
         std::vector<std::pair<uint64_t, int64_t>> active_pred(bwt_rep.sigma, {0, -1});
         std::vector<std::pair<uint64_t, int64_t>> active_succ(bwt_rep.sigma, {0, 0});
 
+        size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
+
+        size_t acc_bits=0;
         for(size_t s=0;s<bwt_rep.sigma;s++){
             double per =  double(sigma_trees[s].size())/double(n_children);
             //symbol present in <=1% of the trees
-            low_freq_syms[s]= per<=0.01;
+            if(per<=0.04){
+                acc_bits+= sigma_trees[s].size()* sym_width(n_blocks);
+            }
+            low_freq_syms[s]= per<=0.04;
             sigma_trees[s].push_back(n_children);
             active_succ[s] = {0, sigma_trees[s][0]};
         }
 
         std::cout<<"Computing ext. succ/pred info"<<std::endl;
-        size_t acc_bits=0;
         for(int64_t b=0;b<n_children;b++){
             size_t max_dist=0, n_samp=0;
 
@@ -298,8 +302,10 @@ struct rl_node {//state of the compression
             acc_bits+= 2*bwt_rep.sigma;
             acc_bits+= sym_width(max_dist);
         }
-        std::cout<<"They use approximately "<<INT_CEIL(acc_bits, 8)<<" bytes"<<std::endl;
-
+        bwt_rep.header_overhead+=acc_bits;
+        bwt_rep.ext_su_pr_overhead=acc_bits;
+        node_n_bits+=acc_bits;
+        //std::cout<<"They use approximately "<<INT_CEIL(acc_bits, 8)<<" bytes"<<std::endl;
         /*std::vector<uint64_t> counts(10001);
         size_t tot=0;
         for(size_t s=0;s<bwt_rep.sigma;s++){
@@ -340,7 +346,7 @@ struct rl_node {//state of the compression
         size_t header_bits= pt_bits + (pt_bits*n_blocks);
         //byte align *this internal node
         header_bits = INT_CEIL(header_bits, 8)*8;
-
+        bwt_rep.tree_pointers_overhead+=header_bits;
         node_n_bits+=header_bits;
         bwt_rep.header_overhead+=header_bits;
     }
@@ -349,14 +355,12 @@ struct rl_node {//state of the compression
     inline void create_leaf(std::vector<block_type>& blocks, size_t n_blocks, size_t parent_sigma){
 
         assert(node_n_bits==0);
-        size_t sym, len, n_runs=0, longest_run=0;
+        size_t sym, len, n_runs=0;//, longest_run=0;
         for(size_t j=0;j<(blocks[0].size()-1);j++){
             sym = blocks[0][j].first;
             len = blocks[0][j].second;
-
-            node_sigma_bv[sym]=true;
             assert(sym<bwt_rep.sigma);
-            if(len>longest_run) longest_run = len;
+            node_sigma_bv[sym]=true;
             block_ranks[sym]+=len;
         }
 
@@ -374,9 +378,8 @@ struct rl_node {//state of the compression
                 blocks[i-1].pop_back();
             } else {
                 //otherwise process the last run of the previous block as an independent run
-                node_sigma_bv[sym] = true;
                 assert(sym<bwt_rep.sigma);
-                if(len>longest_run) longest_run = len;
+                node_sigma_bv[sym] = true;
                 block_ranks[sym]+=len;
                 n_runs++;
             }
@@ -384,8 +387,8 @@ struct rl_node {//state of the compression
             for(size_t j=0;j<(blocks[i].size()-1);j++){
                 sym = blocks[i][j].first;
                 len = blocks[i][j].second;
+                assert(sym<bwt_rep.sigma);
                 node_sigma_bv[sym]=true;
-                if(len>longest_run) longest_run = len;
                 block_ranks[sym]+=len;
             }
             n_runs+=blocks[i].size()-1;
@@ -394,13 +397,12 @@ struct rl_node {//state of the compression
         //process the last run
         sym = blocks[n_blocks-1].back().first;
         len = blocks[n_blocks-1].back().second;
-
-        node_sigma_bv[sym]=true;
         assert(sym<bwt_rep.sigma);
-        if(len>longest_run) longest_run = len;
+        node_sigma_bv[sym]=true;
         block_ranks[sym]+=len;
         n_runs++;
 
+        assert(n_runs<=bwt_dt_type::max_block_runs);
         //compute the block's alphabet size
         size_t tmp_s=0;
         node_sigma=0;
@@ -409,91 +411,72 @@ struct rl_node {//state of the compression
             node_sigma+=s;
         }
 
+        size_t bfr_dist[9]={0};
+        size_t max_bytes=0, bytes;
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
-                //pack the run symbol
                 run.first = packed_alphabet[run.first];
-                //TODO store the run
+                bytes = INT_CEIL((sym_width(run.first+1)+sym_width(run.second)), 8);
+                bfr_dist[bytes]++;
+                if(bytes>max_bytes) max_bytes = bytes;
             }
+        }
+        assert(bfr_dist[0]==0);
+        size_t total_vbytes=0, max_vbytes=0;
+        for(size_t b=1;b<9;b++){
+            total_vbytes +=bfr_dist[b]*b;
+            if(bfr_dist[b]>0) max_vbytes = b;
+        }
+
+        //control bits for fast vbyte decompression
+        if(max_vbytes==2){
+            total_vbytes += INT_CEIL(n_runs, 8);
+        }else if(max_vbytes==3 || max_vbytes==4){
+            total_vbytes += INT_CEIL(n_runs, 4);
+        } else if(max_vbytes==5){
+            total_vbytes += INT_CEIL(n_runs, 2);
+        } else if(max_vbytes>5){
+            std::cout<<"error: the number of bytes for a run exceed the limit of 5 bytes"<<std::endl;
+            exit(1);
+        }
+
+        //encoding using a fixed number of bytes per run
+        size_t total_fbytes = max_bytes*n_runs;
+
+        //byte encoding for the runs of this leaf
+        size_t leaf_enc, run_bits;
+        if(total_vbytes<total_fbytes){
+            assert(max_vbytes>1);
+            run_bits = total_vbytes*8;
+            bwt_rep.runs_overhead += run_bits;
+            leaf_enc=5+max_vbytes;//+5 is to difference them from fix-length blocks
+        }else{
+            run_bits = total_fbytes*8;
+            bwt_rep.runs_overhead += run_bits;
+            leaf_enc=max_bytes;
         }
 
         size_t header_bits=1;//to indicate this node is a leaf
-        header_bits+=3;//to indicate the encoding of the run
+        header_bits+=4;//to indicate the encoding of the run
         header_bits+=parent_sigma;//to indicate the leaf's effective alphabet
 
+        assert(lvl>0);
+        //the rank information
         if(lvl==1){
-            //TODO fix
-            //global rank information (i.e., previous trees)
-            header_bits+= sym_width(bwt_rep.tot_syms)*node_sigma;
-            //global predecessor/successor information
-            header_bits+= (parent_sigma-node_sigma) * sym_width(INT_CEIL(bwt_rep.tot_syms, b_size))*2;
-
-            //TODO remove later (just testing)
-            bwt_rep.tree_rank_header_overhead+=sym_width(bwt_rep.tot_syms)*node_sigma;
-            bwt_rep.tree_su_pr_header_overhead+=(parent_sigma-node_sigma) * sym_width(INT_CEIL(bwt_rep.tot_syms, b_size))*2;
-            //
+            //the leaf is the root of the tree
+            //rank information: previous trees
+            header_bits+= node_sigma*sym_width(bwt_rep.tot_syms);
+            bwt_rep.rank_overhead+=node_sigma*sym_width(bwt_rep.tot_syms);
         } else {
-            //local rank information (i.e., previous siblings)
+            //the leaf is the child of an internal node
+            //rank information: previous siblings
             header_bits += sym_width(b_size*s_factor)*node_sigma;
+            bwt_rep.rank_overhead+= sym_width(b_size*s_factor)*node_sigma;
         }
 
         //the runs are byte-aligned
         header_bits = INT_CEIL(header_bits, 8)*8;
-        node_n_bits = header_bits;
-
-        assert(n_runs<=bwt_dt_type::max_block_runs);
-        size_t max_bytes_per_run = INT_CEIL((sym_width(node_sigma)+sym_width(longest_run)), 8);
-
-        //TODO testing
-        size_t leaf_enc=0;
-        if(max_bytes_per_run>1){
-            size_t bytes_per_run;
-            size_t tmp[9]={0};
-            for(size_t i=0;i<n_blocks;i++){
-                for(auto & run : blocks[i]){
-                    bytes_per_run = INT_CEIL((sym_width(run.first)+sym_width(run.second)), 8);
-                    tmp[bytes_per_run]++;
-                }
-            }
-
-            size_t vbyte_total;
-            switch (max_bytes_per_run) {
-                case 2:
-                    assert((tmp[1]+tmp[2])==n_runs);
-                    vbyte_total = tmp[1] + tmp[2]*2 + INT_CEIL(n_runs, 8);
-                    break;
-                case 3:
-                    assert((tmp[1]+tmp[2]+tmp[3])==n_runs);
-                    vbyte_total = tmp[1] + tmp[2]*2 + tmp[3]*3 + INT_CEIL(n_runs, 4);
-                    break;
-                case 4:
-                    assert((tmp[1]+tmp[2]+tmp[3]+tmp[4])==n_runs);
-                    vbyte_total = tmp[1] + tmp[2]*2 + tmp[3]*3 + tmp[4]*4 + INT_CEIL(n_runs, 4);
-                    break;
-                case 5:
-                    assert((tmp[1]+tmp[2]+tmp[3]+tmp[4]+tmp[5])==n_runs);
-                    vbyte_total = tmp[1] + tmp[2]*2 + tmp[3]*3 + tmp[4]*4 + tmp[5]*5 + INT_CEIL(n_runs, 2);
-                    break;
-                default:
-                    std::cout<<"error: the number of bytes for a run exceed the limit of 5 bytes"<<std::endl;
-                    exit(1);
-            }
-
-            //byte encoding for the runs of this leaf
-            if(vbyte_total<(max_bytes_per_run*n_runs)){
-                node_n_bits += vbyte_total*8;
-                bwt_rep.runs_overhead+= vbyte_total*8;
-            }else{
-                node_n_bits += max_bytes_per_run*n_runs*8;
-                bwt_rep.runs_overhead+= max_bytes_per_run*n_runs*8;
-                leaf_enc=max_bytes_per_run;
-            }
-        } else {
-            node_n_bits += max_bytes_per_run*n_runs*8;
-            bwt_rep.runs_overhead+= max_bytes_per_run*n_runs*8;
-            leaf_enc=max_bytes_per_run;
-        }
-        //
+        node_n_bits = header_bits+run_bits;
 
         if(lm_tree_branch){
             pred_tree = node_sigma_bv;
@@ -685,6 +668,10 @@ struct rl_node {//state of the compression
     }
 };
 
+struct stat_collector{
+
+};
+
 template<class bwt_dt_type>
 void forest_stats(bwt_dt_type& bwt_rep,  std::vector<rl_node<bwt_dt_type>>& tmp_nodes){
 
@@ -714,10 +701,10 @@ void forest_stats(bwt_dt_type& bwt_rep,  std::vector<rl_node<bwt_dt_type>>& tmp_
     std::cout<<"Leaf_encoding dist: "<<std::endl;
     for(size_t i=0;i<20;i++){
         if(bwt_rep.leaf_enc_freq[i]!=0){
-            if(i>0){
+            if(i<=5){
                 std::cout<<"\tFixed "<<i<<" bytes:\t\t\t\t"<<double(bwt_rep.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
             }else{
-                std::cout<<"\tVariable-length 1/2 bytes: "<<double(bwt_rep.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                std::cout<<"\tVariable-length 1-"<<i-5<<" bytes: "<<double(bwt_rep.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
             }
         }
     }
@@ -742,14 +729,17 @@ void forest_stats(bwt_dt_type& bwt_rep,  std::vector<rl_node<bwt_dt_type>>& tmp_
 
     std::cout<<"Percentage of removed nodes: "<<(double(del_nodes)/double(tot_nodes))*100<<"% "<<std::endl;
     std::cout<<"Written bytes in the data structure: "<<INT_CEIL(tmp_nodes[0].node_n_bits, 8)<<std::endl;
-    std::cout<<"Written bytes without the tree's succ/pred info: "<<INT_CEIL((tmp_nodes[0].node_n_bits-bwt_rep.tree_su_pr_header_overhead), 8)<<std::endl;
-    std::cout<<"Headers' contribution to the final space: "<<(double(bwt_rep.header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
-    std::cout<<"Runs' contribution to the final space: "<<(double(bwt_rep.runs_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
-    std::cout<<"Tree rank headers' contribution to the final space: "<<(double(bwt_rep.tree_rank_header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
-    std::cout<<"Tree succ/pred headers' contribution to the final space: "<<(double(bwt_rep.tree_su_pr_header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    std::cout<<"Space breakdown"<<std::endl;
+    //std::cout<<"Written bytes without the tree's succ/pred info: "<<INT_CEIL((tmp_nodes[0].node_n_bits-bwt_rep.tree_su_pr_header_overhead), 8)<<std::endl;
+    std::cout<<"\tRuns: "<<(double(bwt_rep.runs_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    std::cout<<"\tHeaders: "<<(double(bwt_rep.header_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    std::cout<<"\t\tTree pointers: "<<(double(bwt_rep.tree_pointers_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    std::cout<<"\t\tInt. Pointers and bitvectors: "<<(double(bwt_rep.header_overhead - (bwt_rep.rank_overhead + bwt_rep.int_su_pr_overhead + bwt_rep.ext_su_pr_overhead+ bwt_rep.tree_pointers_overhead))/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    std::cout<<"\t\tRank: "<<(double(bwt_rep.rank_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    std::cout<<"\t\tInt. succ/pred: "<<(double(bwt_rep.int_su_pr_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
+    std::cout<<"\t\tExt. succ/pred: "<<(double(bwt_rep.ext_su_pr_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"% "<<std::endl;
     assert(bwt_rep.header_overhead+bwt_rep.runs_overhead==tmp_nodes[0].node_n_bits);
     std::cout<<"space_usage:"<<float(tmp_nodes[0].node_n_bits)/float(bwt_rep.tot_syms)<<" bps"<<std::endl;\
-
 }
 
 template<class bwt_dt_type>
@@ -872,8 +862,10 @@ struct rlbwt_vlb {
     uint64_t children_freq[100]={0};//children frequency = how many nodes with 1,2,...,x children
     uint64_t header_overhead=0;//number of bits used by the headers of the nodes
     uint64_t runs_overhead=0;
-    uint64_t tree_rank_header_overhead=0;
-    uint64_t tree_su_pr_header_overhead=0;
+    uint64_t rank_overhead=0;
+    uint64_t ext_su_pr_overhead=0;
+    uint64_t int_su_pr_overhead=0;
+    uint64_t tree_pointers_overhead=0;
 
     rlbwt_vlb():levels(size_t(ceil(log(b_size)/log(s_factor)) - ceil(log(b_runs)/log(s_factor)))+1){
         // logarithm function to calculate value
