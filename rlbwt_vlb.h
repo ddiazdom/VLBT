@@ -35,6 +35,8 @@ struct stat_collector{
     uint64_t tree_pointers_overhead=0;
     uint64_t eff_runs=0;
     uint64_t max_n_blocks=0;
+    uint64_t ext_pred_freq[257]={0};
+    uint64_t ext_succ_freq[257]={0};
 };
 
 template<class bwt_dt_type>
@@ -320,17 +322,17 @@ struct rl_node {//state of the compression
 
             //std::cout<<l_tree_bound<<", "<<r_tree_bound<<" -> "<<l_sa_bound<<", "<<r_sa_bound<<" "<<l_sym<<"/"<<r_sym<<std::endl;
 
-            size_t max_dist=0, n_samp=0;
+            size_t max_dist=0, pred_samp=0, succ_samp=0;
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 if(ext_pred_info[b][s] && !low_freq_syms[s]){
                     int64_t dist = b-active_pred[s].second;
                     assert(dist>0 && dist<n_children);
-                    bool out_of_range =(tree_offset[active_pred[s].second+1]-1)<l_sa_bound;
+                    bool out_of_range = (tree_offset[active_pred[s].second+1]-1)<l_sa_bound;
 
                     if(dist>5 && !out_of_range){
                         if(dist>max_dist) max_dist = dist;
                         //std::cout<<"block:"<<b<<", symbol:"<<s<<", pred_tree:"<<p_tree<<" "<<dist<<std::endl;
-                        n_samp++;
+                        pred_samp++;
                     }
                 }
 
@@ -356,14 +358,18 @@ struct rl_node {//state of the compression
                     if(dist>5 && !out_of_range){
                         if(dist>max_dist) max_dist = dist;
                         //std::cout<<"block:"<<b<<", symbol:"<<s<<", succ_tree:"<<s_tree<<" "<<dist<<std::endl;
-                        n_samp++;
+                        succ_samp++;
                     }
                 }
             }
+
             //std::cout<<"\n max_dist:"<<max_dist<<std::endl;
-            acc_bits+= n_samp * sym_width(max_dist);
+            acc_bits+= (pred_samp+succ_samp) * sym_width(max_dist);
             acc_bits+= 2*bwt_rep.sigma;
             acc_bits+= sym_width(max_dist);
+
+            stats.ext_pred_freq[pred_samp]++;
+            stats.ext_succ_freq[succ_samp]++;
         }
         stats.header_overhead+=acc_bits;
         stats.ext_su_pr_overhead=acc_bits;
@@ -393,7 +399,6 @@ struct rl_node {//state of the compression
         stats.tree_pointers_overhead+=header_bits;
         stats.header_overhead+=header_bits;
     }
-
 
     inline void create_leaf(std::vector<block_type>& blocks, size_t n_blocks, size_t parent_sigma){
 
@@ -764,6 +769,20 @@ void forest_stats(bwt_dt_type& bwt_rep,  std::vector<rl_node<bwt_dt_type>>& tmp_
             std::cout<<"\t"<<i<<": "<<stats.children_freq[i]<<std::endl;
             del_nodes+=(bwt_rep.scale_factor-i)*stats.children_freq[i];
             tot_nodes+=stats.children_freq[i];
+        }
+    }
+
+    std::cout<<"Ext_pred_info_dist"<<std::endl;
+    for(size_t i=0;i<256;i++){
+        if(stats.ext_pred_freq[i]){
+            std::cout<<"  sym_samp:"<<i<<" freq:"<<stats.ext_pred_freq[i]<<std::endl;
+        }
+    }
+
+    std::cout<<"Ext_succ_info_dist"<<std::endl;
+    for(size_t i=0;i<256;i++){
+        if(stats.ext_succ_freq[i]){
+            std::cout<<"  sym_samp:"<<i<<" freq:"<<stats.ext_succ_freq[i]<<std::endl;
         }
     }
 
