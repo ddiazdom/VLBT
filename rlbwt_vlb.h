@@ -39,6 +39,52 @@ struct stat_collector{
     uint64_t ext_succ_freq[257]={0};
 };
 
+const size_t masks[65]={0x0,
+                        0x1,0x3, 0x7,0xF,
+                        0x1F,0x3F, 0x7F,0xFF,
+                        0x1FF,0x3FF, 0x7FF,0xFFF,
+                        0x1FFF,0x3FFF, 0x7FFF,0xFFFF,
+                        0x1FFFF,0x3FFFF, 0x7FFFF,0xFFFFF,
+                        0x1FFFFF,0x3FFFFF, 0x7FFFFF,0xFFFFFF,
+                        0x1FFFFFF,0x3FFFFFF, 0x7FFFFFF,0xFFFFFFF,
+                        0x1FFFFFFF,0x3FFFFFFF, 0x7FFFFFFF,0xFFFFFFFF,
+                        0x1FFFFFFFF,0x3FFFFFFFF, 0x7FFFFFFFF,0xFFFFFFFFF,
+                        0x1FFFFFFFFF,0x3FFFFFFFFF, 0x7FFFFFFFFF,0xFFFFFFFFFF,
+                        0x1FFFFFFFFFF,0x3FFFFFFFFFF, 0x7FFFFFFFFFF,0xFFFFFFFFFFF,
+                        0x1FFFFFFFFFFF,0x3FFFFFFFFFFF, 0x7FFFFFFFFFFF,0xFFFFFFFFFFFF,
+                        0x1FFFFFFFFFFFF,0x3FFFFFFFFFFFF, 0x7FFFFFFFFFFFF,0xFFFFFFFFFFFFF,
+                        0x1FFFFFFFFFFFFF,0x3FFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF,0xFFFFFFFFFFFFFF,
+                        0x1FFFFFFFFFFFFFF,0x3FFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFF,
+                        0x1FFFFFFFFFFFFFFF,0x3FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF};
+
+inline static void bit_write(uint64_t* stream, size_t i, size_t j, size_t value) {
+    size_t cell_i = i >> 6;
+    size_t cell_j = j >> 6;
+    size_t i_pos = i & 63;
+    if(cell_i==cell_j){
+        stream[cell_i] &= ~(masks[(j - i + 1UL)] << i_pos);
+        stream[cell_i] |= value << i_pos;
+    }else{
+        size_t right = 64-i_pos;
+        size_t left = 1+(j & 63);
+        stream[cell_i] = (stream[cell_i] & ~(masks[right] << i_pos)) | (value << i_pos);
+        stream[cell_j] = (stream[cell_j] & ~masks[left]) | (value >> right);
+    }
+}
+
+inline static size_t bit_read(const uint64_t* stream, size_t i, size_t j){
+    size_t cell_i = i >> 6;
+    size_t cell_j = j >> 6;
+    size_t i_pos = i & 63;
+    if(cell_i == cell_j){
+        return (stream[cell_i] >> i_pos) & masks[(j - i + 1UL)];
+    }else{
+        size_t right = 64-i_pos;
+        size_t left = 1+(j & 63);
+        return ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
+    }
+}
+
 template<class bwt_dt_type>
 struct rl_node {//state of the compression
 
@@ -65,6 +111,11 @@ struct rl_node {//state of the compression
 
     rl_node *tmp_node = nullptr;
 
+    uint64_t *buffer = nullptr;
+    size_t buff_size=0;
+    uint64_t *children_buffer = nullptr;
+    size_t cbuff_size=0;
+
     bwt_dt_type& bwt_rep; //data structure encoding the representation
     std::vector<block_type> active_blocks; //run-length compressed blocks conforming a tree node
     std::vector<bool> node_sigma_bv; //buffer to compute the leaf's effective alphabet
@@ -86,11 +137,11 @@ struct rl_node {//state of the compression
 
     //list of symbols of each tree (as a bitvector) that require external predecessor information
     //That is, each symbol need_ext_pred[s] \cup the symbols not appearing in the tree
-    std::vector<std::vector<bool>> ext_pred_info;
+    std::vector<bool> ext_pred_info;
 
     //list of the symbols of each tree (as a bitvector) that require external successor information
     //That is, each symbol need_ext_succ[s] \cup the symbols not appearing in the tree
-    std::vector<std::vector<bool>> ext_succ_info;
+    std::vector<bool> ext_succ_info;
     //ext_pred_info and ext_succ_info are info for nodes with level 1 (i.e., tree roots)
 
     //a struct to collect statistics about the data structure
@@ -116,12 +167,14 @@ struct rl_node {//state of the compression
             size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);
             block_ptr.resize(n_blocks);
             node_sigma = bwt_rep.sigma;
+            node_sigma_bv = std::vector<bool>(bwt_rep.sigma, true);
+
             sigma_trees.resize(bwt_rep.sigma);
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 sigma_trees[s].reserve(n_blocks);
             }
-            ext_pred_info = std::vector<std::vector<bool>>(n_blocks, std::vector<bool>(bwt_rep.sigma, false));
-            ext_succ_info = std::vector<std::vector<bool>>(n_blocks, std::vector<bool>(bwt_rep.sigma, false));
+            ext_pred_info = std::vector<bool>(n_blocks*bwt_rep.sigma, false);
+            ext_succ_info = std::vector<bool>(n_blocks*bwt_rep.sigma, false);
             tree_offset = std::vector<uint64_t>(n_blocks+1, 0);
         } else{
             block_ptr.resize(s_factor);
@@ -205,71 +258,121 @@ struct rl_node {//state of the compression
         }
     }
 
-    inline void finish_int_node(size_t parent_sigma, std::vector<uint64_t>& parent_ranks){
+    inline void finish_int_node(size_t parent_sigma,
+                                const std::vector<bool>& parent_sigma_bv,
+                                const std::vector<uint64_t>& parent_rank_info){
 
-        //TODO
+        assert(n_children<=s_factor);
+        assert(lvl>0);
+
+        //HEADER DESCRIPTION:
         //1 bit to indicate it is a internal node
-        //s bits to indicate which children were collapsed
         //parent_sigma bits to indicate the effective alphabet of the node with respect to the alphabet of its parent
-        //the rank information for the node
+        //r_width*node_sigma bits store the rank information
+        //s bits to indicate which children were collapsed
         //n_children*node_sigma to indicate successor/predecessor sibling for each symbol
         //n_children pointers to the children
 
-        //children information
-        for(size_t i=0;i<n_children;i++){
-            //TODO add the pointers
-        }
-
-        for(auto && s : node_sigma_bv){
-            if(s){
-                //TODO add the rank information for the symbols within block
-            }
-        }
-
-        for(size_t i=0;i<n_children;i++){
-            //TODO add the stream of each children
-        }
-
-        size_t header_bits=1;//to indicate it is an internal node
-
-        //parent_sigma bits denote which symbols of the parent are in the node
-        header_bits += parent_sigma;
-
-        assert(lvl>0);
-        size_t rank_bits;
-        //these bits store the rank information
+        //===some preliminary information
+        //width in bits for the rank information
+        size_t r_width;
         if(lvl==1) {
             //the root of the tree
-            rank_bits = sym_width(bwt_rep.max_freq)*node_sigma;
+            r_width = sym_width(bwt_rep.max_freq);
         } else {
             //internal node that is not the root
             //bsize*s_factor is the block size of the parent
-            rank_bits = sym_width(b_size*s_factor)*node_sigma;
+            r_width = sym_width(b_size*s_factor);
         }
-        header_bits +=rank_bits;
-
-        //these bits store the successor/predecessor information for each symbol in each child of the node
+        size_t rank_bits = r_width*node_sigma;
+        //amount of bits for the succ/pred info
         size_t su_pr_bv_bits = node_sigma*n_children;
-        header_bits+= su_pr_bv_bits;
 
-        //s_factor bits to indicate which children are collapsed
-        assert(n_children<=s_factor);
-        header_bits += s_factor;
-
-        //pt_bits indicates how many bits we use to encode pointers;
+        //number of bits we use to encode pointers to the children
+        size_t pt_width=20;
         size_t pt_bits = sym_width(node_n_bits/8);
+        assert(pt_bits<pt_width);
 
-        //pt_bits*n_children are the pointers
-        header_bits += pt_bits + (pt_bits*n_children);
-        //byte align *this internal node
-        header_bits = INT_CEIL(header_bits, 8)*8;
+        //amount of information (in bits) for the header
+        size_t header_bits = 1+parent_sigma+rank_bits+s_factor+su_pr_bv_bits+pt_width+(pt_bits*n_children);
+        header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
+        //TODO expand the buffer if (header_bits + node_n_bits) > buffer_cap
+        //===
+
+        //THE ENCODING STARTS HERE
+        //==
+        //1 bit to indicate this is an internal node
+        size_t bit_pos = 0;
+        //bit_write(buffer, h_bits, h_bits, 1);//1 bit to indicate this node is a leaf
+        bit_pos++;
+        //==
+
+        //==parent_sigma bits encode the internal node's effective alphabet
+        for(size_t i=0;i<bwt_rep.sigma;i++){
+            if(parent_sigma_bv[i]){
+                //bit_write(buffer, h_bits, h_bits, node_sigma_bv[i]);
+                bit_pos++;
+            }
+        }
+        //assert(bit_pos==(1+parent_sigma));
+        //==
+
+        //==rank information
+        //these bits store the rank information
+        for(size_t i=0;i<bwt_rep.sigma;i++){
+            if(node_sigma_bv[i]){
+                //bit_write(buffer, h_bits, h_bits+r_width, parent_rank_info[i]);
+                bit_pos+=r_width;
+            }
+        }
+        //assert(bit_pos==(1+parent_sigma+rank_bits));
+        //==
+
+        //==
+        //s_factor bits to indicate which children were collapsed
+        //these bits give us the number of children
+        //TODO compute this information
+        bit_pos+=s_factor;
+        //assert(bit_pos==(1+parent_sigma+rank_bits+s_factor));
+        //==
+
+        //===int succ/prec info
+        //these bits store the successor/predecessor information for each symbol in each child of the node
+        for(size_t s_comp=0;s_comp<node_sigma;s_comp++){
+            for(size_t c=0;c<n_children;c++){
+                //bit_write(buffer, h_bits, h_bits, int_succ_pred_info[s_comp][c]);
+                bit_pos++;
+            }
+        }
+        //assert(bit_pos==(1+parent_sigma+rank_bits+s_factor+su_pr_bv_bits));
+        //===
+
+        //pt_width*n_children bits store pointers (byte offsets) to the children
+        //bit_write(buffer, h_bits, h_bits+pt_width, pt_bits);
+        bit_pos+=pt_width;
+        for(size_t i=0;i<n_children;i++){
+            //NOTE consider the humber of bytes in the header when computing the byte position of a child.
+            //i.e., child_byte_pos = h_bits/8 + block_ptr[c], where c is the child we need to find
+            //bit_write(buffer, h_bits, h_bits+pt_bits-1, block_ptr[i]);
+            bit_pos+=pt_bits;
+        }
+        //assert(bit_pos==(1+parent_sigma+rank_bits+s_factor+su_pr_bv_bits+20+(pt_bits*n_children)));
+        //
+
+        //move to the next byte-aligned position
+        size_t byte_pos = INT_CEIL(bit_pos, 8);
+        assert((byte_pos*8)==header_bits);
+
+        auto *stream = (uint8_t *)&buffer[byte_pos];
+        //TODO add the stream of each children
+        //memcpy(&stream[b_pos], children_buffer, node_n_bits/8);
 
         node_n_bits+=header_bits;
 
         //gather statistics
         stats.header_overhead+=header_bits;
         stats.rank_overhead+=rank_bits;
-        stats.int_su_pr_overhead+= su_pr_bv_bits;
+        stats.int_su_pr_overhead+=su_pr_bv_bits;
     }
 
     inline void compute_ext_succ_pred_info(){
@@ -324,7 +427,7 @@ struct rl_node {//state of the compression
 
             size_t max_dist=0, pred_samp=0, succ_samp=0;
             for(size_t s=0;s<bwt_rep.sigma;s++){
-                if(ext_pred_info[b][s] && !low_freq_syms[s]){
+                if(ext_pred_info[(b*bwt_rep.sigma)+s] && !low_freq_syms[s]){
                     int64_t dist = b-active_pred[s].second;
                     assert(dist>0 && dist<n_children);
                     bool out_of_range = (tree_offset[active_pred[s].second+1]-1)<l_sa_bound;
@@ -351,7 +454,7 @@ struct rl_node {//state of the compression
                     active_succ[s].second = sigma_trees[s][active_succ[s].first];
                 }
 
-                if(ext_succ_info[b][s] && !low_freq_syms[s]){
+                if(ext_succ_info[(b*bwt_rep.sigma)+s] && !low_freq_syms[s]){
                     int64_t dist = active_succ[s].second-b;
                     assert(dist>0 && dist<n_children);
                     bool out_of_range =tree_offset[active_succ[s].second]>r_sa_bound;
@@ -400,9 +503,16 @@ struct rl_node {//state of the compression
         stats.header_overhead+=header_bits;
     }
 
-    inline void create_leaf(std::vector<block_type>& blocks, size_t n_blocks, size_t parent_sigma){
+    inline void create_leaf(std::vector<block_type>& blocks,
+                            size_t n_blocks,
+                            const size_t parent_sigma,
+                            const std::vector<bool>& parent_sigma_bv,
+                            const std::vector<uint64_t>& parent_rank_info
+                            ){
 
         assert(node_n_bits==0);
+        assert(lvl>0);
+
         size_t sym, len, n_runs=0;//, longest_run=0;
         for(size_t j=0;j<(blocks[0].size()-1);j++){
             sym = blocks[0][j].first;
@@ -459,40 +569,35 @@ struct rl_node {//state of the compression
             node_sigma+=s;
         }
 
-        size_t bfr_dist[9]={0};
-        size_t max_bytes=0, bytes;
+        size_t bfr_dist[9]={0}, bytes;
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
                 run.first = packed_alphabet[run.first];
-                bytes = INT_CEIL((sym_width(run.first+1)+sym_width(run.second)), 8);
+                //I need to use a fix number of bits for the symbols (i.e., sym_widht(node_sigma))
+                bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.second)), 8);
                 bfr_dist[bytes]++;
-                if(bytes>max_bytes) max_bytes = bytes;
             }
         }
         assert(bfr_dist[0]==0);
+
         size_t total_vbytes=0, max_vbytes=0;
         for(size_t b=1;b<9;b++){
             total_vbytes +=bfr_dist[b]*b;
             if(bfr_dist[b]>0) max_vbytes = b;
         }
+        assert(max_vbytes>0 && max_vbytes<6);
 
-        //control bits for fast vbyte decompression
-        if(max_vbytes==2){
-            total_vbytes += INT_CEIL(n_runs, 8);
-        }else if(max_vbytes==3 || max_vbytes==4){
-            total_vbytes += INT_CEIL(n_runs, 4);
-        } else if(max_vbytes==5){
-            total_vbytes += INT_CEIL(n_runs, 2);
-        } else if(max_vbytes>5){
-            std::cout<<"error: the number of bytes for a run exceed the limit of 5 bytes"<<std::endl;
-            exit(1);
+        if(max_vbytes>1){
+            //number of control masks of 1 byte for fast vbyte decoding;
+            total_vbytes += INT_CEIL(n_runs, (8/sym_width(max_vbytes-1)));
         }
 
-        //encoding using a fixed number of bytes per run
-        size_t total_fbytes = max_bytes*n_runs;
+        //alternative encoding using a fixed number of bytes per run
+        size_t total_fbytes = max_vbytes*n_runs;
 
         //byte encoding for the runs of this leaf
         size_t leaf_enc, run_bits;
+        bool fix_len_enc=false;
         if(total_vbytes<total_fbytes){
             assert(max_vbytes>1);
             run_bits = total_vbytes*8;
@@ -501,29 +606,57 @@ struct rl_node {//state of the compression
         }else{
             run_bits = total_fbytes*8;
             stats.runs_overhead += run_bits;
-            leaf_enc=max_bytes;
+            leaf_enc=max_vbytes;
+            fix_len_enc = true;
         }
 
-        size_t header_bits=1;//to indicate this node is a leaf
-        header_bits+=4;//to indicate the encoding of the run
-        header_bits+=parent_sigma;//to indicate the leaf's effective alphabet
-
-        assert(lvl>0);
-        size_t rank_bits;
-        //these bits store the rank information
+        //THE ENCODING STARTS HERE
+        size_t r_width;
+        //width in bits to store the range values
         if(lvl==1){
             //the leaf is the root of the tree
             //rank information: previous trees
-            rank_bits = node_sigma*sym_width(bwt_rep.max_freq);
+            r_width = sym_width(bwt_rep.max_freq);
         } else {
             //the leaf is the child of an internal node
             //rank information: previous siblings
-            rank_bits = sym_width(b_size*s_factor)*node_sigma;
+            r_width = sym_width(b_size*s_factor);
         }
-        header_bits +=rank_bits;
+
+        size_t leaf_enc_width=4;//we use 4 bits to encode the encoding type for the sequence of runs in this leaf
+        size_t rank_bits = r_width*node_sigma;
+        size_t header_bits = 1+leaf_enc_width+parent_sigma+rank_bits;
+        header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
+
+        size_t bit_pos = 0;//header bits
+        //bit_write(buffer, h_bits, h_bits, 1);//1 bit to indicate this node is a leaf
+        bit_pos++;
+        //bit_write(buffer, h_bits, h_bits+leaf_enc_width-1, leaf_enc);
+        //parent_sigma bits to encode the leaf's effective alphabet
+        bit_pos+=leaf_enc_width;
+        for(size_t i=0;i<bwt_rep.sigma;i++){
+            if(parent_sigma_bv[i]){
+                //bit_write(buffer, h_bits, h_bits, node_sigma_bv[i]);
+                bit_pos++;
+            }
+        }
+        //assert(bit_pos==(1+4+parent_sigma));
+
+        for(size_t i=0;i<bwt_rep.sigma;i++){
+            if(node_sigma_bv[i]){
+                //bit_write(buffer, h_bits, h_bits+r_width, parent_rank_info[i]);
+                bit_pos+=r_width;
+            }
+        }
+        //assert(bit_pos==(1+4+parent_sigma+rank_bits));
 
         //the runs are byte-aligned
-        header_bits = INT_CEIL(header_bits, 8)*8;
+        size_t byte_pos = INT_CEIL(bit_pos, 8);
+        assert((byte_pos*8)==header_bits);
+
+        auto *stream = (uint8_t *)&buffer[byte_pos];
+        size_t written_bytes = insert_runs(blocks, n_blocks, stream, sym_width(node_sigma), max_vbytes , fix_len_enc);
+        assert((written_bytes*8)==run_bits);
 
         node_n_bits = header_bits+run_bits;
 
@@ -542,6 +675,63 @@ struct rl_node {//state of the compression
         stats.rpl_freq[n_runs]++;
         stats.leaf_depth_freq[lvl-1]++;//lvl=0 is the forest, so it doesn't count. lvl=1 is a root of a tree
         stats.leaf_enc_freq[leaf_enc]++;//the encoding type for a leaf
+    }
+
+    size_t insert_runs(std::vector<block_type>& blocks, size_t n_blocks, uint8_t* stream,
+                       size_t sigma_bytes, size_t max_bytes, bool fix_len_enc){
+
+        size_t written_bytes=0;
+        if(fix_len_enc){
+            size_t enc_run;
+            for(size_t i=0;i<n_blocks;i++){
+                for(auto & run : blocks[i]){
+                    enc_run =  run.second<<node_sigma | run.first;
+                    //memcpy(stream, &enc_run, max_bytes);
+                    stream+=max_bytes;
+                    written_bytes+=max_bytes;
+                }
+            }
+        }else{
+            uint8_t control_bits = sym_width(max_bytes-1);
+            size_t vb_lens[8]={0};
+            uint64_t code;
+            uint8_t tmp_stream[64];
+            uint8_t control = 0, acc_width=0, p=0, byte_pos=0;
+
+            for(size_t i=0;i<n_blocks;i++){
+                for(auto & run : blocks[i]){
+
+                    vb_lens[p] = INT_CEIL((sigma_bytes+sym_width(run.second)), 8);
+                    code = run.second<<node_sigma | run.first;
+                    //memcpy(&tmp_stream[byte_pos], &code, vb_lens[p]);
+                    control |= (vb_lens[p] << acc_width);
+
+                    byte_pos+=vb_lens[p];
+                    p++;
+                    acc_width+=control_bits;
+
+                    if(acc_width+control_bits>8){
+                        //*stream=control;
+                        stream++;
+                        //memcpy(stream, &tmp_stream[0], byte_pos);
+                        stream+=byte_pos;
+                        written_bytes+=byte_pos+1;
+                        p=0;
+                        control = 0;
+                        acc_width = 0;
+                        byte_pos = 0;
+                    }
+                }
+            }
+
+            if(control!=0){
+                //*stream=control;
+                stream++;
+                //memcpy(stream, &tmp_stream[0], byte_pos);
+                written_bytes+=byte_pos+1;
+            }
+        }
+        return written_bytes;
     }
 
     inline void get_node_alphabet(const block_type& block){
@@ -617,7 +807,7 @@ struct rl_node {//state of the compression
     }
 
     template<node_type type>//internal or leaf
-    inline void create_node(size_t n_blocks){
+    inline void create_node(size_t n_blocks) {
 
         assert(aligned<8>(node_n_bits));//check it is byte-aligned
 
@@ -638,11 +828,11 @@ struct rl_node {//state of the compression
                 tmp_node->process_run(run.first, run.second);
             }
             tmp_node->finish_run_scan();
-            tmp_node->finish_int_node(node_sigma, block_ranks);
+            tmp_node->finish_int_node(node_sigma, node_sigma_bv, block_ranks);
             stats.children_freq[tmp_node->n_children]++;
         }else{
             assert(n_blocks>=1);
-            tmp_node->create_leaf(active_blocks, n_blocks, node_sigma);
+            tmp_node->create_leaf(active_blocks, n_blocks, node_sigma, node_sigma_bv, block_ranks);
         }
 
         //add the rank information of the active child node (next_node) to the
@@ -690,16 +880,19 @@ struct rl_node {//state of the compression
                     sigma_trees[s].push_back(n_children);
                 }
                 //symbols within this tree requiring predecessor information to trees on the left side
-                ext_pred_info[n_children][s] = !tmp_node->node_sigma_bv[s] || !tmp_node->need_ext_pred[s];
+                ext_pred_info[(n_children*bwt_rep.sigma)+s] = !tmp_node->node_sigma_bv[s] || !tmp_node->need_ext_pred[s];
 
                 //symbols within this tree requiring successor information to trees on the right side
-                ext_succ_info[n_children][s] = !tmp_node->node_sigma_bv[s] || !tmp_node->need_ext_succ[s];
+                ext_succ_info[(n_children*bwt_rep.sigma)+s] = !tmp_node->node_sigma_bv[s] || !tmp_node->need_ext_succ[s];
             }
         }
 
         //TODO remove
         //tmp_node->print_node_info();
         //
+
+        //store the current child
+        //memcpy(&children_buffer[node_n_bits/8], tmp_node->buffer, (tmp_node->node_n_bits)/8);
 
         //the pointer to the active child node (next_node) should be aligned
         node_n_bits+=tmp_node->node_n_bits;
