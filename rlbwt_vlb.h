@@ -6,8 +6,12 @@
 #define RLBWT_DYBL_H
 
 #include <cmath>
+#ifdef __linux__
+#include <malloc.h>
+#endif
 
-using block_type = std::vector<std::pair<uint32_t, size_t>>;
+using run_type = std::pair<uint32_t, size_t>;
+using block_type = std::vector<run_type>;
 
 enum INPUT_FORMAT{
    GRL_BWT=0,
@@ -23,9 +27,9 @@ enum node_type {
 typedef bitstream<size_t> stream_type;
 
 //statistics about the data structure
-template<size_t b_runs>
+template<class bwt_dt_type>
 struct stat_collector{
-    uint64_t rpl_freq[b_runs+1]={0};//number of runs in a leaf
+    uint64_t rpl_freq[bwt_dt_type::max_block_runs+1]={0};//number of runs in a leaf
     uint64_t leaf_depth_freq[20]={0};//the depth of each leaf
     uint64_t leaf_enc_freq[20]={0};//encoding of each leaf
     uint64_t children_freq[100]={0};//children frequency = how many nodes with 1,2,...,x children
@@ -83,11 +87,11 @@ struct rl_node {//state of the compression
     std::vector<bool> need_ext_succ;//symbols in the alphabet of the need that need external successor info (symbols not in the right branch)
 
     std::vector<uint64_t> block_ranks;//rank information we store in the header of every internal node
-    std::vector<uint8_t> packed_alphabet;//leaf's packed alphabet
     std::vector<uint64_t> block_ptr;//pointers (byte offsets) to the node's children
     std::vector<uint64_t> tree_offset;//number of symbols in the text before each tree
+    std::vector<uint8_t> packed_alphabet;//leaf's packed alphabet
 
-    // each sigma_trees[s], with s \in \Sigma, is a strictly increasing
+    // the vector sigma_trees[s], with s \in \Sigma, is a strictly increasing
     // sequence encoding the trees in the forest containing the symbol s
     std::vector<std::vector<uint64_t>> sigma_trees;
 
@@ -97,14 +101,14 @@ struct rl_node {//state of the compression
 
     //list of the symbols of each tree (as a bitvector) that require external successor information
     //That is, each symbol need_ext_succ[s] \cup the symbols not appearing in the tree
+    //ext_pred_info and ext_succ_info are information for the nodes with level 1 (i.e., tree roots)
     std::vector<bool> ext_succ_info;
-    //ext_pred_info and ext_succ_info are info for nodes with level 1 (i.e., tree roots)
 
     //a struct to collect statistics about the data structure
-    stat_collector<bwt_dt_type::max_block_runs>& stats;
+    stat_collector<bwt_dt_type>& stats;
     std::vector<uint64_t>& C;//the standard C[1..\sigma] array of the FM-index
 
-    explicit rl_node(size_t _lvl, size_t _b_size, bwt_dt_type& _bwt_rep, stat_collector<bwt_dt_type::max_block_runs>& st,
+    explicit rl_node(size_t _lvl, size_t _b_size, bwt_dt_type& _bwt_rep, stat_collector<bwt_dt_type>& st,
                      std::vector<uint64_t>& C_, std::ofstream& _ofs):
                      lvl(_lvl),
                      b_size(_b_size),
@@ -140,7 +144,6 @@ struct rl_node {//state of the compression
     }
 
     inline void process_block_seq() {
-
         if(bk_id==1){//only one block in the sequence and it exceeds the limit of runs
             create_node<INTERNAL>(1);//recursive partitioning
             active_blocks[0].clear();
@@ -164,6 +167,27 @@ struct rl_node {//state of the compression
                 acc_runs=0;
             }
         }
+    }
+
+    inline void destroy(){
+        buffer.destroy();
+        children_buffer.destroy();
+        for(auto bk : active_blocks){
+            destroy_vector(bk);
+        }
+        destroy_vector(node_sigma_bv);
+        for(auto vec : int_succ_pred_info){
+            destroy_vector(vec);
+        }
+        destroy_vector(need_ext_pred);
+        destroy_vector(need_ext_succ);
+        destroy_vector(block_ranks);
+        destroy_vector(block_ptr);
+        destroy_vector(tree_offset);
+        destroy_vector(packed_alphabet);
+#ifdef __linux__
+        malloc_trim(0);
+#endif
     }
 
     inline void finish_run_scan(){
@@ -358,6 +382,7 @@ struct rl_node {//state of the compression
                 //std::cout<<""<<std::endl;
             }
             low_freq_syms[s]= per<=0.01;
+            
             sigma_trees[s].push_back(n_children);
             active_succ[s] = {0, sigma_trees[s][0]};
         }
@@ -387,12 +412,15 @@ struct rl_node {//state of the compression
 
             size_t max_dist=0, pred_samp=0, succ_samp=0;
             for(size_t s=0;s<bwt_rep.sigma;s++){
-                if(ext_pred_info[(b*bwt_rep.sigma)+s] && !low_freq_syms[s]){
+                size_t sym_pos =(b*bwt_rep.sigma)+s;
+                ext_pred_info[sym_pos]=ext_pred_info[sym_pos] && !low_freq_syms[s];
+                if(ext_pred_info[sym_pos]){
                     int64_t dist = b-active_pred[s].second;
                     assert(dist>0 && dist<n_children);
                     bool out_of_range = (tree_offset[active_pred[s].second+1]-1)<l_sa_bound;
 
-                    if(dist>5 && !out_of_range){
+                    ext_pred_info[sym_pos] = dist>5 && !out_of_range;
+                    if(ext_pred_info[sym_pos]){
                         if(dist>max_dist) max_dist = dist;
                         //std::cout<<"block:"<<b<<", symbol:"<<s<<", pred_tree:"<<p_tree<<" "<<dist<<std::endl;
                         pred_samp++;
@@ -414,12 +442,14 @@ struct rl_node {//state of the compression
                     active_succ[s].second = sigma_trees[s][active_succ[s].first];
                 }
 
-                if(ext_succ_info[(b*bwt_rep.sigma)+s] && !low_freq_syms[s]){
+                size_t sym_pos =(b*bwt_rep.sigma)+s;
+                ext_succ_info[sym_pos] = ext_succ_info[sym_pos] && !low_freq_syms[s];
+                if(ext_succ_info[sym_pos]){
                     int64_t dist = active_succ[s].second-b;
                     assert(dist>0 && dist<n_children);
-                    bool out_of_range =tree_offset[active_succ[s].second]>r_sa_bound;
-                    if(dist>5 && !out_of_range){
-                        if(dist>max_dist) max_dist = dist;
+                    bool out_of_range = tree_offset[active_succ[s].second]>r_sa_bound;
+                    ext_succ_info[sym_pos] = dist>5 && !out_of_range;
+                    if(ext_succ_info[sym_pos]){
                         //std::cout<<"block:"<<b<<", symbol:"<<s<<", succ_tree:"<<s_tree<<" "<<dist<<std::endl;
                         succ_samp++;
                     }
@@ -443,6 +473,14 @@ struct rl_node {//state of the compression
 
         tree_offset[n_children]=bwt_rep.tot_syms;
 
+        //free unused memory
+        auto *node = tmp_node;
+        while(node!= nullptr){
+            node->destroy();
+            node = node->tmp_node;
+        }
+        //
+
         compute_ext_succ_pred_info();
 
         //pointer information
@@ -453,7 +491,7 @@ struct rl_node {//state of the compression
         //pt_bits indicates how many bits we use to encode pointers:
         //bits_node/8 is the pointer and b_runs indicate collapsed blocks
         size_t pt_bits = sym_width(node_n_bits/8) + sym_width(b_runs-1);
-        size_t header_bits= pt_bits + (pt_bits*n_blocks);
+        size_t header_bits = pt_bits + (pt_bits*n_blocks);
         //byte align *this internal node
         header_bits = INT_CEIL(header_bits, 8)*8;
         node_n_bits+=header_bits;
@@ -897,8 +935,8 @@ struct rl_node {//state of the compression
     }
 };
 
-template<class bwt_dt_type>
-void forest_stats(bwt_dt_type& bwt_rep,  std::vector<rl_node<bwt_dt_type>>& tmp_nodes, stat_collector<bwt_dt_type::max_block_runs>& stats){
+template<class bwt_dt_type, class node_type>
+void forest_stats(bwt_dt_type& bwt_rep,  std::vector<node_type>& tmp_nodes, stat_collector<bwt_dt_type>& stats){
 
     for(size_t s=0;s<bwt_rep.sigma;s++){
         std::cout<<"\tsymbol "<<s<<", rank: "<<tmp_nodes[0].block_ranks[s]<<std::endl;
@@ -986,8 +1024,7 @@ void forest_stats(bwt_dt_type& bwt_rep,  std::vector<rl_node<bwt_dt_type>>& tmp_
 template<class bwt_dt_type>
 void build_from_grlbwt(bwt_dt_type& bwt_rep, std::string& bwt_file){
 
-    stat_collector<bwt_dt_type::max_block_runs> dt_sts;
-
+    stat_collector<bwt_dt_type> dt_sts;
     bwt_buff_reader bwt_buff(bwt_file);
     size_t n_runs = bwt_buff.size();
     bwt_rep.orig_runs = n_runs;
@@ -1055,7 +1092,6 @@ void build_from_grlbwt(bwt_dt_type& bwt_rep, std::string& bwt_file){
     tmp_nodes[0].finish_forest();
     //
     std::cout<<"trees stored in "<<tws.get_file("trees")<<std::endl;
-
     bwt_rep.eff_runs = dt_sts.eff_runs;
 
     forest_stats(bwt_rep, tmp_nodes, dt_sts);

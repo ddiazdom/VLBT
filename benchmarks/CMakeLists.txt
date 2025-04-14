@@ -34,12 +34,12 @@ target_compile_options(build_bwt_dts
 target_link_libraries(build_bwt_dts LINK_PUBLIC ${LIBSDSL_LIBRARIES})
 target_include_directories(build_bwt_dts PUBLIC ${LIBSDSL_INCLUDE_DIRS})
 
-#for the file_system functionality on Linux
-if(UNIX AND NOT APPLE)
-    target_link_libraries(build_bwt_dts LINK_PUBLIC stdc++fs)
-endif()
-
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     message(STATUS "Adding -march=native compiler flag due to ${CMAKE_CXX_COMPILER_ID}")
     target_compile_options(build_bwt_dts PUBLIC -march=native)
+    #for the file_system functionality on Linux
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS_EQUAL "9.1")
+        message(STATUS "GCC version is <=9.1, adding the compiler flag stdc++fs")
+        target_compile_options(build_bwt_dts PUBLIC stdc++fs)
+    endif()
 endif()

@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 
 #define INT_CEIL(a,b) (a>0? 1+(a-1)/b : 0)
 
@@ -211,5 +212,10 @@ void load_pl_vector(std::string const& file, vector_type& vector){
     std::ifstream ifs(file, std::ios::binary);
     load_plain_vector<vector_type>(ifs, vector);
     ifs.close();
+}
+
+template<class vector_type>
+void destroy_vector(vector_type& vec){
+    vector_type().swap(vec);
 }
 #endif //UTILS_VLBWT_H
