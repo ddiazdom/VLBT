@@ -5,15 +5,15 @@
 #ifndef LPG_COMPRESSOR_BITSTREAM_H
 #define LPG_COMPRESSOR_BITSTREAM_H
 
-#include<iostream>
+#include <iostream>
 #include <limits>
-#include <vector>
-#include "cdt_common.hpp"
+#include <cstring>
+#include <cassert>
 
-#define INT_CEIL(a,b) (a>0? 1+(a-1)/b : 0)
+#include "utils.hpp"
+#include "memory_handler.hpp"
 
-template<class word_t,
-         uint8_t max_dist=std::numeric_limits<word_t>::digits>
+template<class word_t, uint8_t max_dist=std::numeric_limits<word_t>::digits>
 struct bitstream{
 
     constexpr static uint8_t word_bits = std::numeric_limits<word_t>::digits;
@@ -22,28 +22,89 @@ struct bitstream{
     using size_type = size_t;
 
     word_t *stream=nullptr;
-    size_t stream_size=0;
+    size_t stream_cap=0;//in words
 
-    bitstream(): stream(nullptr), stream_size(0){};
+    bitstream(): stream(nullptr), stream_cap(0){};
 
-    [[nodiscard]] inline size_t n_bits() const {
-        return stream_size<<word_shift;
+    bitstream(bitstream&& other) noexcept {
+        std::swap(stream, other.stream);
+        std::swap(stream_cap, other.stream_cap);
     }
 
-    inline bitstream<word_t>& swap(bitstream<word_t>& other) {
+    bitstream(bitstream& other) noexcept {
+        if(&other!=this && other.stream!=nullptr){
+            reserve_in_words(other.stream_cap);
+            memcpy(stream, other.stream, words2bytes(other.stream_cap));
+        }
+    }
+
+    [[nodiscard]] inline size_t capacity_in_bits() const {
+        return stream_cap*word_bits;
+    }
+
+    [[nodiscard]] inline size_t capacity_in_words() const {
+        return stream_cap;
+    }
+
+    [[nodiscard]] inline size_t capacity_in_bytes() const {
+        return stream_cap*sizeof(word_t);
+    }
+
+    inline void reserve_in_bits(size_t bit_size){
+        reserve_in_words(bits2words(bit_size));
+    }
+
+    inline void reserve_in_bytes(size_t byte_size){
+        reserve_in_words(bytes2words(byte_size));
+    }
+
+    inline void reserve_in_words(size_t n_words){
+        if(n_words>stream_cap){
+            if(stream==nullptr){
+                //stream = (word_t *)malloc(words2bytes(n_words));
+                stream = mem<word_t>::allocate(n_words);
+            }else{
+                assert(stream_cap!=0);
+                //stream = (word_t *)realloc(stream, words2bytes(n_words));
+                stream = mem<word_t>::reallocate(stream, n_words);
+            }
+            stream_cap = n_words;
+        }
+    }
+
+    [[nodiscard]] static inline size_t bits2words(size_t n_bits) {
+        return INT_CEIL(n_bits, (sizeof(word_t)*8));
+    }
+
+    [[nodiscard]] static inline size_t bytes2words(size_t n_bytes) {
+        return INT_CEIL(n_bytes, sizeof(word_t));
+    }
+
+    [[nodiscard]] static inline size_t words2bytes(size_t n_words) {
+        return n_words*sizeof(word_t);
+    }
+
+    void destroy(){
+        if(stream!= nullptr){
+            //free(stream);
+            mem<word_t>::deallocate(stream);
+            stream = nullptr;
+        }
+        stream_cap=0;
+    }
+
+    inline bitstream& swap(bitstream& other) {
         std::swap(stream, other.stream);
-        std::swap(stream_size, other.stream_size);
+        std::swap(stream_cap, other.stream_cap);
         return *this;
     }
 
-    inline bitstream<word_t>& operator=(bitstream<word_t> const& other){
+    inline bitstream& operator=(bitstream const& other){
         if(&other!=this){
-            if(stream_size!=other.stream_size){
-                stream = reinterpret_cast<word_t *>(realloc(stream, other.stream_size*sizeof(word_t)));
-                stream_size = other.stream_size;
-            }
-            memcpy(stream, other.stream, stream_size*sizeof(word_t));
+            reserve_in_words(other.stream_cap);
+            memcpy(stream, other.stream, words2bytes(other.stream_cap));
         }
+        return *this;
     }
 
     inline void write(size_t i, size_t j, size_t value){
@@ -56,8 +117,8 @@ struct bitstream{
         }else{
             size_t cell_j = j >> word_shift;
             if(cell_i==cell_j){
-                stream[cell_i] &= ~(masks[(j - i + 1UL)] << i_pos);
-                stream[cell_i] |= value << i_pos;
+                stream[cell_i] &= ~(masks[j-i+1UL] << i_pos);
+                stream[cell_i] |= (value & masks[j-i+1UL]) << i_pos;
             }else{
                 size_t right = word_bits - i_pos;
                 size_t left = 1+(j & (word_bits - 1UL));
@@ -102,27 +163,6 @@ struct bitstream{
                 size_t right = word_bits-i_pos;
                 size_t left = 1+(j & (word_bits - 1UL));
                 return ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
-            }
-        }
-    }
-
-    inline void multi_read(size_t start, const std::vector<size_t>& offsets, std::vector<size_t>& values, size_t n) const{
-        size_t cell_i, cell_j, i_pos, i, j;
-
-        for(size_t u=0;u<n;u++) {
-
-            i = start + offsets[u];
-            j = start + offsets[u+1]-1;
-
-            cell_i = i >> word_shift;
-            i_pos = (i & (word_bits - 1UL));
-            cell_j = j >> word_shift;
-            if (cell_i == cell_j) {
-                values[u] = (stream[cell_i] >> i_pos) & masks[(j - i + 1UL)];
-            } else {
-                size_t right = word_bits - i_pos;
-                size_t left = 1 + (j & (word_bits - 1UL));
-                values[u] = ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
             }
         }
     }
@@ -183,6 +223,14 @@ struct bitstream{
         //
         size_t read_bits = ((n_words - 1) << word_shift);
         return (tmp_in[n_words - 1] & masks[(bits-read_bits)]) == read(i + read_bits, i+bits-1);
+    }
+
+    template<class stream_type>
+    void copy(size_t n_bits, stream_type& dest_stream){
+        size_t n_words = bits2words(n_bits);
+        assert(n_words<=stream_cap);
+        dest_stream.reserve_in_words(n_words);
+        memcpy(dest_stream.stream, stream, words2bytes(n_words));
     }
 
     //compare a segment of the stream with an external source of bits
@@ -246,41 +294,45 @@ struct bitstream{
         }
     }
 
+    void concatenate(size_t bytes_a, bitstream<word_t, max_dist>& stream_b, size_t bytes_b){
+        size_t new_size_in_words = INT_CEIL((bytes_a+bytes_b), sizeof(word_t));
+        reserve_in_words(new_size_in_words);
+        auto * tmp_stream_a = (uint8_t *)stream;
+        auto * tmp_stream_b = (uint8_t *)stream_b.stream;
+        memcpy(&tmp_stream_a[bytes_a], tmp_stream_b, bytes_b);
+    }
+
     size_type serialize(std::ostream &out) const{
-        size_t written_bytes = serialize_elm(out, stream_size);
-        out.write((char *)stream, sizeof(word_t)*stream_size);
-        return written_bytes + (sizeof(word_t)*stream_size);
+        size_t written_bytes = serialize_elm(out, stream_cap);
+        out.write((char *)stream, words2bytes(stream_cap));
+        return written_bytes + words2bytes(stream_cap);
     }
 
     void load(std::istream &in){
-        load_elm(in, stream_size);
-        if(stream==nullptr){
-            stream = (word_t *) malloc(sizeof(word_t)*stream_size);
-        }else{
-            stream = (word_t *) realloc(stream, sizeof(word_t)*stream_size);
-        }
-
-        in.read((char *)stream, sizeof(word_t)*stream_size);
+        size_t tmp_size;
+        load_elm(in, tmp_size);
+        reserve_in_words(tmp_size);
+        in.read((char *)stream, words2bytes(tmp_size));
     }
 };
 
 template<class word_t, uint8_t max_dist>
 const size_t bitstream<word_t, max_dist>::masks[65]={0x0,
-                               0x1,0x3, 0x7,0xF,
-                               0x1F,0x3F, 0x7F,0xFF,
-                               0x1FF,0x3FF, 0x7FF,0xFFF,
-                               0x1FFF,0x3FFF, 0x7FFF,0xFFFF,
-                               0x1FFFF,0x3FFFF, 0x7FFFF,0xFFFFF,
-                               0x1FFFFF,0x3FFFFF, 0x7FFFFF,0xFFFFFF,
-                               0x1FFFFFF,0x3FFFFFF, 0x7FFFFFF,0xFFFFFFF,
-                               0x1FFFFFFF,0x3FFFFFFF, 0x7FFFFFFF,0xFFFFFFFF,
-                               0x1FFFFFFFF,0x3FFFFFFFF, 0x7FFFFFFFF,0xFFFFFFFFF,
-                               0x1FFFFFFFFF,0x3FFFFFFFFF, 0x7FFFFFFFFF,0xFFFFFFFFFF,
-                               0x1FFFFFFFFFF,0x3FFFFFFFFFF, 0x7FFFFFFFFFF,0xFFFFFFFFFFF,
-                               0x1FFFFFFFFFFF,0x3FFFFFFFFFFF, 0x7FFFFFFFFFFF,0xFFFFFFFFFFFF,
-                               0x1FFFFFFFFFFFF,0x3FFFFFFFFFFFF, 0x7FFFFFFFFFFFF,0xFFFFFFFFFFFFF,
-                               0x1FFFFFFFFFFFFF,0x3FFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF,0xFFFFFFFFFFFFFF,
-                               0x1FFFFFFFFFFFFFF,0x3FFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFF,
-                               0x1FFFFFFFFFFFFFFF,0x3FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF};
+                                                     0x1,0x3, 0x7,0xF,
+                                                     0x1F,0x3F, 0x7F,0xFF,
+                                                     0x1FF,0x3FF, 0x7FF,0xFFF,
+                                                     0x1FFF,0x3FFF, 0x7FFF,0xFFFF,
+                                                     0x1FFFF,0x3FFFF, 0x7FFFF,0xFFFFF,
+                                                     0x1FFFFF,0x3FFFFF, 0x7FFFFF,0xFFFFFF,
+                                                     0x1FFFFFF,0x3FFFFFF, 0x7FFFFFF,0xFFFFFFF,
+                                                     0x1FFFFFFF,0x3FFFFFFF, 0x7FFFFFFF,0xFFFFFFFF,
+                                                     0x1FFFFFFFF,0x3FFFFFFFF, 0x7FFFFFFFF,0xFFFFFFFFF,
+                                                     0x1FFFFFFFFF,0x3FFFFFFFFF, 0x7FFFFFFFFF,0xFFFFFFFFFF,
+                                                     0x1FFFFFFFFFF,0x3FFFFFFFFFF, 0x7FFFFFFFFFF,0xFFFFFFFFFFF,
+                                                     0x1FFFFFFFFFFF,0x3FFFFFFFFFFF, 0x7FFFFFFFFFFF,0xFFFFFFFFFFFF,
+                                                     0x1FFFFFFFFFFFF,0x3FFFFFFFFFFFF, 0x7FFFFFFFFFFFF,0xFFFFFFFFFFFFF,
+                                                     0x1FFFFFFFFFFFFF,0x3FFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF,0xFFFFFFFFFFFFFF,
+                                                     0x1FFFFFFFFFFFFFF,0x3FFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFF,
+                                                     0x1FFFFFFFFFFFFFFF,0x3FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF};
 
 #endif //LPG_COMPRESSOR_BITSTREAM_H

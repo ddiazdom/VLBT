@@ -184,7 +184,7 @@ int main(int argc, char** argv){
         std::cout<<"We will build only my BWT..."<<std::endl;
     }
 
-    using bwt_type = rlbwt_vlb<262144, 64, 8>;
+    using bwt_type = rlbwt_vlb<4096, 64, 4>;
     bwt_type bwt;
     build_rlbwt_vlb<bwt_type>(bwt, input_file, INPUT_FORMAT::GRL_BWT);
 }

@@ -23,12 +23,13 @@ include_directories(SYSTEM ${LIBSDSL_INCLUDE_DIRS}  ${CMAKE_CURRENT_SOURCE_DIR}/
 #endif()
 
 #Build the BWT data structures
-add_executable(build_bwt_dts build_bwt_dts.cpp ../cdt_common.cpp)
+add_executable(build_bwt_dts build_bwt_dts.cpp)
 target_compile_options(build_bwt_dts
         PUBLIC
         #-Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function
         #-O3 -funroll-loops -fomit-frame-pointer -ffast-math
         #-O3 -funroll-loops -mavx2
+        -O3
 )
 target_link_libraries(build_bwt_dts LINK_PUBLIC ${LIBSDSL_LIBRARIES})
 target_include_directories(build_bwt_dts PUBLIC ${LIBSDSL_INCLUDE_DIRS})

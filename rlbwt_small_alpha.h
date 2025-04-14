@@ -345,8 +345,8 @@ struct rlbwt_small_alpha{
 
         //estimate the number of bits in the BWT
         size_t bwt_size_bits = n_blocks*(b_header_bits+8) + n_sampled_blocks*(mb_header_bytes*8) + eff_runs*16;
-        bwt.stream_size = INT_CEIL(bwt_size_bits, (sizeof(size_t)*8));
-        bwt.stream = (size_t *) malloc(bwt.stream_size*sizeof(size_t));
+        bwt.stream_cap = INT_CEIL(bwt_size_bits, (sizeof(size_t)*8));
+        bwt.stream = (size_t *) malloc(bwt.stream_cap*sizeof(size_t));
         data_pointer = (uint8_t *)bwt.stream;
 
         size_t bwt_pos = 64;//I pad the BWT stream with 64 bits to avoid corner cases in the scan of a block
@@ -509,8 +509,8 @@ struct rlbwt_small_alpha{
         assert(bwt_pos<=bwt_size_bits);
 
         //shrink to fit
-        bwt.stream_size = INT_CEIL(bwt_pos, (sizeof(size_t)*8));
-        bwt.stream = (size_t *) realloc(bwt.stream, bwt.stream_size*sizeof(size_t));
+        bwt.stream_cap = INT_CEIL(bwt_pos, (sizeof(size_t)*8));
+        bwt.stream = (size_t *) realloc(bwt.stream, bwt.stream_cap*sizeof(size_t));
         data_pointer = (uint8_t *)bwt.stream;
 
         //todo testing
@@ -1333,7 +1333,7 @@ struct rlbwt_small_alpha{
         std::cout<<"Mini block size:                          "<<mb_size<<std::endl;
         std::cout<<"Total number of mini blocks:              "<<mini_blocks()<<std::endl;
         std::cout<<"Mini block headers' space overhead:       "<<double(n_sampled_blocks*mb_header_bytes)/1000000<<" Mb"<<std::endl;
-        std::cout<<"BWT space usage:                          "<<double(bwt.stream_size*sizeof(size_t))/1000000<<" Mb"<<std::endl;
+        std::cout<<"BWT space usage:                          "<<double(bwt.stream_cap*sizeof(size_t))/1000000<<" Mb"<<std::endl;
     }
 
     [[nodiscard]] inline size_t size() const {
