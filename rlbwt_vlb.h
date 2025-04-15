@@ -359,12 +359,13 @@ struct rl_node {//state of the compression
         stats.int_su_pr_overhead+=su_pr_bv_bits;
     }
 
-    inline void compute_ext_succ_pred_info(){
+    inline void compute_ext_succ_pred_info(std::vector<uint32_t>& concat_ext_suc_pred_info,
+                                           std::vector<bool>& low_freq_syms,
+                                           std::vector<uint16_t>& trees_extra_bytes){
 
         assert(lvl==0);
 
         //compute symbols that are in few trees
-        std::vector<bool> low_freq_syms(bwt_rep.sigma, false);
         std::vector<std::pair<uint64_t, int64_t>> active_pred(bwt_rep.sigma, {0, -1});
         std::vector<std::pair<uint64_t, int64_t>> active_succ(bwt_rep.sigma, {0, 0});
 
@@ -376,13 +377,12 @@ struct rl_node {//state of the compression
             //symbol present in <=1% of the trees
             if(per<=0.01){
                 acc_bits+= sigma_trees[s].size()*(sym_width(n_blocks)+ sym_width(bwt_rep.tot_syms));
-                for(unsigned long long tree : sigma_trees[s]){
+                //for(unsigned long long tree : sigma_trees[s]){
                     //std::cout<<"symbol:"<<s<<" tree:"<<tree<<" offset:"<<tree_offset[tree]<<std::endl;
-                }
+                //}
                 //std::cout<<""<<std::endl;
             }
             low_freq_syms[s]= per<=0.01;
-            
             sigma_trees[s].push_back(n_children);
             active_succ[s] = {0, sigma_trees[s][0]};
         }
@@ -457,9 +457,12 @@ struct rl_node {//state of the compression
             }
 
             //std::cout<<"\n max_dist:"<<max_dist<<std::endl;
-            acc_bits+= (pred_samp+succ_samp) * sym_width(max_dist);
-            acc_bits+= 2*bwt_rep.sigma;
-            acc_bits+= sym_width(max_dist);
+            size_t t_ext_bits = (pred_samp+succ_samp) * sym_width(max_dist)+ 2*bwt_rep.sigma + sym_width(max_dist);
+            size_t t_ext_bytes = INT_CEIL(t_ext_bits, 8);
+            assert(t_ext_bytes<65536);
+            trees_extra_bytes[b] = t_ext_bytes;
+
+            acc_bits+= t_ext_bits;
 
             stats.ext_pred_freq[pred_samp]++;
             stats.ext_succ_freq[succ_samp]++;
@@ -481,7 +484,10 @@ struct rl_node {//state of the compression
         }
         //
 
-        compute_ext_succ_pred_info();
+        std::vector<uint32_t> concat_exp_suc_pred_info;
+        std::vector<bool> low_freq_syms(bwt_rep.sigma, false);
+        std::vector<uint16_t> trees_extra_bytes(n_children, 0);
+        compute_ext_succ_pred_info(concat_exp_suc_pred_info, low_freq_syms, trees_extra_bytes);
 
         //pointer information
         //TODO
@@ -1017,7 +1023,7 @@ void forest_stats(bwt_dt_type& bwt_rep,  std::vector<node_type>& tmp_nodes, stat
     std::cout<<"\t\tInt. succ/pred: "<<INT_CEIL(stats.int_su_pr_overhead, 8)<<" ("<<(double(stats.int_su_pr_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"%)"<<std::endl;
     std::cout<<"\t\tExt. succ/pred: "<<INT_CEIL(stats.ext_su_pr_overhead, 8)<<" ("<<(double(stats.ext_su_pr_overhead)/double(tmp_nodes[0].node_n_bits))*100<<"%)"<<std::endl;
     assert(stats.header_overhead+stats.runs_overhead==tmp_nodes[0].node_n_bits);
-    std::cout<<"\t\tOverhead of the trees without ext. succ/pred info nor tree pointers: "<<INT_CEIL(stats.trees_overhead, 8)<<std::endl;
+    std::cout<<"\t\tTrees without ext. succ/pred info nor tree pointers: "<<INT_CEIL(stats.trees_overhead, 8)<<std::endl;
     std::cout<<"space_usage:"<<float(tmp_nodes[0].node_n_bits)/float(bwt_rep.tot_syms)<<" bps"<<std::endl;\
 }
 
