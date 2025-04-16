@@ -29,7 +29,7 @@ target_compile_options(build_bwt_dts
         #-Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function
         #-O3 -funroll-loops -fomit-frame-pointer -ffast-math
         #-O3 -funroll-loops -mavx2
-        #-O3
+        -O3
 )
 target_link_libraries(build_bwt_dts LINK_PUBLIC ${LIBSDSL_LIBRARIES})
 target_include_directories(build_bwt_dts PUBLIC ${LIBSDSL_INCLUDE_DIRS})

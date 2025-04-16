@@ -186,6 +186,8 @@ int main(int argc, char** argv){
 
     using bwt_type = rlbwt_vlb<4096, 64, 4>;
     bwt_type bwt_dt;
-    std::string output_dt = output_prefix+".brl_bwt";
-    build_rlbwt_vlb<bwt_type>(bwt_dt, input_file, output_dt, INPUT_FORMAT::GRL_BWT);
+    build_rlbwt_vlb<bwt_type>(bwt_dt, input_file, INPUT_FORMAT::GRL_BWT);
+    std::string output_file = output_prefix+".rlbwt_vlb";
+    size_t written_bytes = store_to_file(output_file, bwt_dt);
+    std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 }

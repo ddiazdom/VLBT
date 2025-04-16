@@ -36,11 +36,11 @@ struct stat_collector{
     uint64_t header_overhead=0;//number of bits used by the headers of the nodes
     uint64_t runs_overhead=0;
     uint64_t rank_overhead=0;
+    uint64_t lfs_offset=0;//symbols with low frequency for which we encode the blocks where they occur explicitly
     uint64_t ext_su_pr_overhead=0;
     uint64_t int_su_pr_overhead=0;
     uint64_t tree_pointers_overhead=0;
     uint64_t trees_overhead=0;
-    uint64_t eff_runs=0;
     uint64_t max_n_blocks=0;
     uint64_t ext_pred_freq[257]={0};
     uint64_t ext_succ_freq[257]={0};
@@ -359,31 +359,63 @@ struct rl_node {//state of the compression
         stats.int_su_pr_overhead+=su_pr_bv_bits;
     }
 
-    inline size_t compute_low_freq_symbols(std::vector<bool>& low_freq_syms){
+    inline void record_low_freq_symbols(size_t& bit_pos, std::vector<bool>& low_freq_syms){
+
         assert(lvl==0);
-        size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
-        size_t low_freq_bits=0;
+        //compute how many (and which) symbols have low frequency
+        //(i.e., symbol present in <=1% of the trees)
+        size_t n_syms=0, n_elms=0, sym_bit_pos=bit_pos;
         for(size_t s=0;s<bwt_rep.sigma;s++){
             double per =  double(sigma_trees[s].size())/double(n_children);
-            //symbol present in <=1% of the trees
-            if(per<=0.01){
-                low_freq_bits+= sigma_trees[s].size()*(sym_width(n_blocks)+ sym_width(bwt_rep.tot_syms));
-                //for(unsigned long long tree : sigma_trees[s]){
-                //std::cout<<"symbol:"<<s<<" tree:"<<tree<<" offset:"<<tree_offset[tree]<<std::endl;
-                //}
-                //std::cout<<""<<std::endl;
-            }
             low_freq_syms[s]= per<=0.01;
+            n_elms+=sigma_trees[s].size()*low_freq_syms[s];
+            n_syms+=per<=0.01;
+            bit_pos++;
         }
-        return low_freq_bits;
+        //
+
+        //original number of blocks in the first level of the tree
+        size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);
+
+        size_t w1=sym_width(n_blocks);
+        size_t w2=sym_width(bwt_rep.tot_syms);
+        size_t elm_bits = n_elms*(w1+w2);
+        size_t c_bit_pos=bit_pos;//control bits
+
+        //40 bits to encode the bit offset(s) in the stream where the x elements of s lie
+        //NOTE: (offset(s+1)-offset(s))/(w1+w2) is equal to x
+        bit_pos+= (n_syms+1)*40;
+        buffer.reserve_in_bits(bit_pos+elm_bits);
+
+        size_t data_start = bit_pos;
+        for(size_t s=0;s<bwt_rep.sigma;s++){
+            if(low_freq_syms[s]){
+                buffer.write(c_bit_pos, c_bit_pos+39, bit_pos);
+                c_bit_pos+=40;
+                for(unsigned long tree_id : sigma_trees[s]){
+                    //encode the tree where s occurs
+                    buffer.write(bit_pos, bit_pos+w1-1, tree_id);
+                    bit_pos+=w1;
+                    //how many symbols we have in the text before this tree
+                    buffer.write(bit_pos, bit_pos+w2-1, tree_offset[tree_id]);
+                    bit_pos+=w2;
+                }
+            }
+            buffer.write(sym_bit_pos, sym_bit_pos, low_freq_syms[s]);
+            sym_bit_pos++;
+        }
+        buffer.write(c_bit_pos, c_bit_pos+39, bit_pos);
+        c_bit_pos+=40;
+        assert(c_bit_pos==data_start);
+        assert(bit_pos==(c_bit_pos+elm_bits));
     }
 
     inline void compute_ext_succ_pred_info(std::vector<uint64_t>& concat_ext_suc_pred_info,
                                            std::vector<bool>& low_freq_syms,
-                                           std::vector<uint64_t>& trees_extra_bits,
-                                           int64_t& max_dist,
-                                           std::vector<uint64_t>& C){
+                                           std::vector<uint64_t>& bk_boundaries){
         assert(lvl==0);
+        std::vector<uint64_t> trees_extra_bits(n_children, 0);
+
         //compute symbols that are in few trees
         std::vector<std::pair<uint64_t, int64_t>> active_pred(bwt_rep.sigma, {0, -1});
         std::vector<std::pair<uint64_t, int64_t>> active_succ(bwt_rep.sigma, {0, 0});
@@ -395,22 +427,22 @@ struct rl_node {//state of the compression
         std::cout<<"Computing ext. succ/pred info"<<std::endl;
 
         size_t l_sym=0, r_sym=0;
-        size_t l_sa_bound, r_sa_bound = C[r_sym+1]-1;
+        size_t l_sa_bound, r_sa_bound = bk_boundaries[r_sym+1]-1;
         size_t l_tree_bound, r_tree_bound;
-        max_dist=0;
+        int64_t max_dist=0;
 
         for(int64_t b=0;b<n_children;b++){
 
             l_tree_bound = tree_offset[b];
             r_tree_bound = tree_offset[b+1]-1;
 
-            while(C[l_sym+1]<l_tree_bound){
+            while(bk_boundaries[l_sym+1]<l_tree_bound){
                 ++l_sym;
             }
-            l_sa_bound = C[l_sym];
+            l_sa_bound = bk_boundaries[l_sym];
 
             while(r_sa_bound<r_tree_bound){
-                r_sa_bound = C[++r_sym+1]-1;
+                r_sa_bound = bk_boundaries[++r_sym+1]-1;
             }
 
             //std::cout<<l_tree_bound<<", "<<r_tree_bound<<" -> "<<l_sa_bound<<", "<<r_sa_bound<<" "<<l_sym<<"/"<<r_sym<<std::endl;
@@ -419,6 +451,7 @@ struct rl_node {//state of the compression
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 size_t sym_pos =(b*bwt_rep.sigma)+s;
                 ext_pred_info[sym_pos]=ext_pred_info[sym_pos] && !low_freq_syms[s];
+
                 if(ext_pred_info[sym_pos]){
                     int64_t tree_dist = b-active_pred[s].second;
                     assert(tree_dist>0 && tree_dist<n_children);
@@ -464,6 +497,7 @@ struct rl_node {//state of the compression
                 }
             }
 
+            concat_ext_suc_pred_info.push_back(max_tree_dist);
             if(max_tree_dist>max_dist) max_dist = max_tree_dist;
             size_t t_ext_bits = (pred_samp+succ_samp)*sym_width(max_tree_dist) + 2*bwt_rep.sigma;
             trees_extra_bits[b] = t_ext_bits;
@@ -472,41 +506,40 @@ struct rl_node {//state of the compression
             stats.ext_succ_freq[succ_samp]++;
         }
 
-        std::cout<<"\n max_dist:"<<max_dist<<std::endl;
-        size_t n_bits = sym_width(max_dist), acc_bits=0;
+        bwt_rep.mtd_bits = std::max<uint8_t>(1, sym_width(sym_width((size_t)max_dist)));
+        size_t acc_bits=0;
         for(size_t b=0;b<n_children;b++){
-            trees_extra_bits[b]+=n_bits;
-            trees_extra_bits[b] = INT_CEIL(trees_extra_bits[b], 8)*8;
-            acc_bits+=trees_extra_bits[b];
+            trees_extra_bits[b]+=bwt_rep.mtd_bits;
+            acc_bits += INT_CEIL(trees_extra_bits[b], 8)*8;
         }
 
         stats.header_overhead+=acc_bits;
         stats.ext_su_pr_overhead+=acc_bits;
         node_n_bits+=acc_bits;
+
     }
 
-    inline void finish_tree(std::vector<uint64_t>& boundaries/*std::string& trees_file, std::string&output_file*/) {
+    inline void finish_tree(std::vector<uint64_t>& bk_boundaries) {
 
         assert(lvl==0);
         tree_offset[n_children]=bwt_rep.tot_syms;
 
-        //compute symbols with low frequency on the trees
-        //we store the trees where they appear explicitly
+        //compute symbols with low frequency and their tree positions explicitly
+        size_t bit_pos=40;
         std::vector<bool> low_freq_syms(bwt_rep.sigma, false);
-        size_t low_freq_bits = compute_low_freq_symbols(low_freq_syms);
-        low_freq_bits+=bwt_rep.sigma;//to mark which symbols have low freq
+        record_low_freq_symbols(bit_pos, low_freq_syms);
+        size_t lfs_bits = bit_pos;
+        buffer.write(0, 39, lfs_bits);
         //
 
         //compute ext succ/pred information
         std::vector<uint64_t> concat_exp_suc_pred_info;
-        std::vector<uint64_t> trees_extra_bits(n_children, 0);
-        int64_t max_dist;
-        compute_ext_succ_pred_info(concat_exp_suc_pred_info, low_freq_syms, trees_extra_bits, max_dist, boundaries);
+        compute_ext_succ_pred_info(concat_exp_suc_pred_info, low_freq_syms, bk_boundaries);
         //
 
         size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
 
-        //pt_bits indicates how many bits we use to encode pointers:
+        //pt_bits indicates how many bits we use to encode pointers to the trees:
         //node_n_bits/8 is the pointer and b_runs indicate collapsed blocks
         //so far, node_n_bits considers:
         // * the sum of the tree sizes in bits (excluding the external su/pred information)
@@ -515,32 +548,104 @@ struct rl_node {//state of the compression
 
         //(pt_bits*n_blocks) for the pointers to the trees
         size_t tree_ptr_bits = (bwt_rep.pt_bits*n_blocks);
-        size_t header_bits = tree_ptr_bits+low_freq_bits;
+        size_t header_bits = lfs_bits+tree_ptr_bits;
         header_bits = INT_CEIL(header_bits, 8)*8;
 
-        /*size_t pred_syms=0, next_tree=1, bytes=0, offset=0, acc_bytes=0;
-        std::ofstream os(output_file, std::ios::binary);
-        os.seekp(std::streamoff(header_bits/8));
-        std::ifstream is(trees_file, std::ios::binary);
+        bit_pos=header_bits;
+        size_t w1, w2;
+        buffer.reserve_in_bits(node_n_bits+header_bits);
 
-        for(size_t i=0;i<n_blocks;i++){
-            if(pred_syms==tree_offset[next_tree]){
-                acc_bytes+=INT_CEIL(concat_exp_suc_pred_info[next_tree-1], 8);
-                bytes =  acc_bytes + block_ptr[i];
-                offset=0;
-                next_tree++;
+        size_t p_sym_pos=0, s_sym_pos=0, p_trees, s_trees, pos=0, max_tree_dist, stream_byte_pos, tree_new_byte_pos;
+        std::streamsize tree_bytes;
+        auto *stream = (char *)buffer.stream;
+        for(size_t b=0;b<n_children;b++){
+
+            assert(aligned<8>(bit_pos));
+            tree_new_byte_pos = (header_bits-bit_pos)/8;
+
+            //add the ext succ/pred information
+            p_trees=0;
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                buffer.write(bit_pos, bit_pos, ext_pred_info[p_sym_pos]);
+                p_trees+=ext_pred_info[p_sym_pos];
+                bit_pos++;
+                p_sym_pos++;
             }
-            //std::cout<<"acc_syms: "<<pred_syms<<" tree:"<<next_tree-1<<" offset:"<<offset<<" block:"<<i<<" "<<tree_offset[next_tree]-tree_offset[next_tree-1]<<std::endl;
-            offset++;
-            pred_syms+=b_size;
-        }*/
+
+            s_trees=0;
+            for(size_t s=0;s<bwt_rep.sigma;s++){
+                buffer.write(bit_pos, bit_pos, ext_succ_info[s_sym_pos]);
+                s_trees+=ext_succ_info[s_sym_pos];
+                bit_pos++;
+                s_sym_pos++;
+            }
+
+            max_tree_dist = concat_exp_suc_pred_info[pos+p_trees+s_trees];
+            w2 = sym_width(max_tree_dist);
+            buffer.write(bit_pos, bit_pos+bwt_rep.mtd_bits-1, w2);
+            bit_pos+=bwt_rep.mtd_bits;
+
+            for(size_t t=0;t<p_trees;t++){
+                buffer.write(bit_pos, bit_pos+w2-1, concat_exp_suc_pred_info[pos++]);
+                bit_pos+=w2;
+            }
+
+            for(size_t t=0;t<s_trees;t++){
+                buffer.write(bit_pos, bit_pos+w2-1, concat_exp_suc_pred_info[pos++]);
+                bit_pos+=w2;
+            }
+            pos++;
+            bit_pos = INT_CEIL(bit_pos, 8)*8;
+            //
+
+            //add the tree
+            stream_byte_pos = bit_pos/8;
+            tree_bytes = block_ptr[b+1]-block_ptr[b];
+            assert(INT_CEIL(stream_byte_pos+tree_bytes, 8) <= buffer.stream_cap);
+            ifs->read(&stream[stream_byte_pos], tree_bytes);
+            //
+            bit_pos+=tree_bytes*8;
+            block_ptr[b]=tree_new_byte_pos;
+        }
+        assert(pos==concat_exp_suc_pred_info.size());
+        assert(bit_pos==(node_n_bits+header_bits));
+        block_ptr[n_children]=(header_bits-bit_pos)/8;
+
+        bit_pos=lfs_bits;
+        w1 = sym_width(node_n_bits/8);
+        w2 = sym_width(b_runs-1);
+        size_t c=0, l=0, n_syms;
+        for(size_t b=0;b<n_children;b++){
+            buffer.write(bit_pos, bit_pos+w1-1, block_ptr[b]);
+            bit_pos+=w1;
+            buffer.write(bit_pos, bit_pos+w2-1, l);
+            bit_pos+=w2;
+            c++;
+            l++;
+            n_syms =tree_offset[b];
+            while((n_syms+b_size)<tree_offset[b+1]){
+                buffer.write(bit_pos, bit_pos+w1-1, block_ptr[b]);
+                bit_pos+=w1;
+                buffer.write(bit_pos, bit_pos+w2-1, l);
+                bit_pos+=w2;
+                n_syms +=b_size;
+                c++;
+                l++;
+            }
+            l=0;
+        }
+        assert(bit_pos==(lfs_bits+tree_ptr_bits));
+        assert(c==n_blocks);
 
         node_n_bits+=header_bits;
+        //move the information to the bwt
+        bwt_rep.stream.swap(buffer);
 
         //gather statistics
-        stats.ext_su_pr_overhead+=low_freq_bits;
+        stats.ext_su_pr_overhead+=lfs_bits;
         stats.header_overhead+=header_bits;
         stats.tree_pointers_overhead+=tree_ptr_bits;
+        stats.lfs_offset+=lfs_bits;
     }
 
     inline void create_leaf(std::vector<block_type>& blocks,
@@ -714,12 +819,12 @@ struct rl_node {//state of the compression
         if(rm_tree_branch){
             need_ext_succ = node_sigma_bv;
         }
+        bwt_rep.eff_runs += n_runs;
 
         //gather statistics
         if(n_blocks>stats.max_n_blocks) stats.max_n_blocks = n_blocks;
         stats.header_overhead+=header_bits;
         stats.rank_overhead+=rank_bits;
-        stats.eff_runs += n_runs;
         stats.rpl_freq[n_runs]++;
         stats.leaf_depth_freq[lvl-1]++;//lvl=0 is the tree, so it doesn't count. lvl=1 is a root of a block
         stats.leaf_enc_freq[leaf_enc]++;//the encoding type for a leaf
@@ -981,20 +1086,18 @@ struct tree_dt{
     tmp_workspace twd;
     bwt_dt_type& bwt_rep;
     std::vector<uint64_t> C;
-    std::vector<uint8_t> sym_map;
     node_type *root= nullptr;
 
-    explicit tree_dt(const std::string& tmp_dir, bwt_dt_type& _bwt_rep): twd(tmp_dir, false),
+    explicit tree_dt(const std::string& tmp_dir, bwt_dt_type& _bwt_rep): twd(tmp_dir),
                                                                          bwt_rep(_bwt_rep),
-                                                                         C(256, 0),
-                                                                         sym_map(256,0){
-    }
+                                                                         C(256, 0){}
 
-    void build_from_grlbwt(std::string& bwt_file, std::string&output_dt){
+    void build_from_grlbwt(std::string& bwt_file){
 
         bwt_buff_reader bwt_buff(bwt_file);
         size_t n_runs = bwt_buff.size();
         bwt_rep.orig_runs = n_runs;
+        bwt_rep.packed_alpha.resize(256);
 
         //compute symbol frequencies
         size_t sym, len;
@@ -1009,7 +1112,7 @@ struct tree_dt{
         for(size_t i=0;i<C.size();i++){
             if(C[i]!=0){
                 if(C[i]>max_freq) max_freq = C[i];
-                sym_map[i] = sigma;
+                bwt_rep.packed_alpha[i] = sigma;
                 C[sigma++] = C[i];
                 sigma_bits+= sym_width(C[i]);
             }
@@ -1049,20 +1152,24 @@ struct tree_dt{
         //compute the tree
         for(size_t i=0;i<n_runs;i++){
             bwt_buff.read_run(i, sym, len);
-            root->process_run(sym_map[sym], len);
+            root->process_run(bwt_rep.packed_alpha[sym], len);
         }
         root->finish_run_scan();
         ofs.close();
 
         std::ifstream ifs(twd.get_file("trees"), std::ios::binary);
-        std::ofstream ofs2(output_dt, std::ios::binary);
         root->ifs = &ifs;
-        root->ofs = &ofs;
         root->finish_tree(C);
-        bwt_rep.eff_runs = stats.eff_runs;
         ifs.close();
-        ofs.close();
         //
+    }
+
+    void build_from_rl_plain(std::string& bwt_file){
+
+    }
+
+    void build_from_plain(std::string& bwt_file){
+
     }
 
     void report_stats(){
@@ -1075,8 +1182,8 @@ struct tree_dt{
         for(size_t r=1;r<=bwt_dt_type::max_block_runs;r++){
             std::cout<<"\t"<<r<<" : "<<stats.rpl_freq[r]<<std::endl;
         }
-        std::cout<<"Total number of runs versus original number of runs: "<<stats.eff_runs<<" / "<<bwt_rep.orig_runs<<std::endl;
-        std::cout<<"Increase in the number of runs "<<(double(stats.eff_runs)/double(bwt_rep.orig_runs)-1)*100<<"%"<<std::endl;
+        std::cout<<"Total number of runs versus original number of runs: "<<bwt_rep.eff_runs<<" / "<<bwt_rep.orig_runs<<std::endl;
+        std::cout<<"Increase in the number of runs "<<(double(bwt_rep.eff_runs)/double(bwt_rep.orig_runs)-1)*100<<"%"<<std::endl;
 
         std::cout<<"Leaf_depth dist:"<<std::endl;
         size_t tot_leaves=0;
@@ -1143,6 +1250,7 @@ struct tree_dt{
         std::cout<<"\t\tRank: "<<INT_CEIL(stats.rank_overhead, 8)<<" ("<<(double(stats.rank_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\t\tInt. succ/pred: "<<INT_CEIL(stats.int_su_pr_overhead, 8)<<" ("<<(double(stats.int_su_pr_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\t\tExt. succ/pred: "<<INT_CEIL(stats.ext_su_pr_overhead, 8)<<" ("<<(double(stats.ext_su_pr_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
+        std::cout<<"\t\t\tLow freq. symbols: "<<INT_CEIL(stats.lfs_offset, 8)<<" ("<<(double(stats.lfs_offset)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         assert(stats.header_overhead+stats.runs_overhead==root->node_n_bits);
         std::cout<<"\t\tTrees without ext. succ/pred info nor tree pointers: "<<INT_CEIL(stats.trees_overhead, 8)<<std::endl;
         std::cout<<"space_usage:"<<float(root->node_n_bits)/float(bwt_rep.tot_syms)<<" bps"<<std::endl;
@@ -1151,31 +1259,17 @@ struct tree_dt{
 
 
 template<class bwt_dt_type>
-void build_from_grlbwt(bwt_dt_type& bwt_rep, std::string& bwt_file){
-}
-
-template<class bwt_dt_type>
-void build_from_rl_plain(bwt_dt_type& bwt_rep, std::string& file){
-
-}
-
-template<class bwt_dt_type>
-void build_from_plain(bwt_dt_type& bwt_rep, std::string& file){
-
-}
-
-template<class bwt_dt_type>
-void build_rlbwt_vlb(bwt_dt_type& bwt_rep, std::string& bwt_file, std::string& output_dt, INPUT_FORMAT f){
-    tree_dt<bwt_dt_type, rl_node<bwt_dt_type>> tree("./", bwt_rep);
+void build_rlbwt_vlb(bwt_dt_type& bwt_rep, std::string& bwt_file, INPUT_FORMAT f, std::string tmp_dir="./"){
+    tree_dt<bwt_dt_type, rl_node<bwt_dt_type>> tree(tmp_dir, bwt_rep);
     switch (f) {
         case INPUT_FORMAT::GRL_BWT:
-            tree.build_from_grlbwt(bwt_file, output_dt);
+            tree.build_from_grlbwt(bwt_file);
             break;
         case INPUT_FORMAT::RL_PLAIN:
-            build_from_rl_plain<bwt_dt_type>(bwt_rep, bwt_file);
+            tree.build_from_rl_plain(bwt_file);
             break;
         case INPUT_FORMAT::PLAIN:
-            build_from_plain<bwt_dt_type>(bwt_rep, bwt_file);
+            tree.build_from_plain(bwt_file);
             break;
         default:
             std::cout<<"Unknown format"<<std::endl;
@@ -1191,17 +1285,20 @@ struct rlbwt_vlb {
     static constexpr size_t scale_factor = s_factor;
     static constexpr size_t max_block_runs = b_runs;
 
-    size_t tot_syms=0;
-    size_t sigma=0;
-    size_t orig_runs=0;
-    size_t eff_runs=0;
-    size_t max_freq=0;
-    size_t pt_bits=0;//number of bits to store the pointers to the trees
+    uint64_t tot_syms=0;//total symbols in the text
+    uint64_t orig_runs=0;//original number of runs in the BWT
+    uint64_t eff_runs=0;//number of runs in the representation
+    uint64_t max_freq=0;//frequency of the most frequent symbol
+    uint8_t sigma=0;//alphabet
+    uint8_t pt_bits=0;//number of bits to store the pointers to the trees
+    uint8_t mtd_bits=0;//number of bits to encode the tree distance
+    std::vector<uint8_t> packed_alpha;//map the symbols from byte to eff alphabet
 
-    size_t levels=0;
-    stream_type stream;
+    uint8_t levels=0;//maximum number of levels
+    stream_type stream;//stream with the data
 
     rlbwt_vlb():levels(size_t(ceil(log(b_size)/log(s_factor)) - ceil(log(b_runs)/log(s_factor)))+1){
+        //TODO static asserts in block_size, scale_factor, and b_runs
         // logarithm function to calculate value
         float lg = log(b_size) / log(s_factor);
         assert(lg==floor(lg));
@@ -1209,7 +1306,34 @@ struct rlbwt_vlb {
         assert(lg2==floor(lg2));
     }
 
-    //TODO static asserts in block_size, scale_factor, and b_runs
+    size_t serialize(std::ostream & ofs) const {
+        size_t written_bytes = 0;
+        written_bytes += serialize_elm(ofs, tot_syms);
+        written_bytes += serialize_elm(ofs, orig_runs);
+        written_bytes += serialize_elm(ofs, eff_runs);
+        written_bytes += serialize_elm(ofs, max_freq);
+        written_bytes += serialize_elm(ofs, sigma);
+        written_bytes += serialize_elm(ofs, pt_bits);
+        written_bytes += serialize_elm(ofs, mtd_bits);
+
+        written_bytes += serialize_plain_vector(ofs, packed_alpha);
+
+        written_bytes+=stream.serialize(ofs);
+        return written_bytes;
+    }
+
+    void load(std::istream & ifs){
+        load_elm(ifs, tot_syms);
+        load_elm(ifs, orig_runs);
+        load_elm(ifs, eff_runs);
+        load_elm(ifs, max_freq);
+        load_elm(ifs, sigma);
+        load_elm(ifs, pt_bits);
+        load_elm(ifs, mtd_bits);
+        load_plain_vector(ifs, packed_alpha);
+        stream.load(ifs);
+    }
+
 };
 
 #endif //RLBWT_DYBL_H
