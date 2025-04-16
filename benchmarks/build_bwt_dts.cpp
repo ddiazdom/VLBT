@@ -172,10 +172,10 @@ int main(int argc, char** argv){
     char *pend;
     long int other_dts = strtol(argv[2], &pend, 10);
     assert(other_dts>=0 && other_dts<=1);
+    std::string output_prefix = std::string(argv[3]);
 
     if(other_dts){
         std::cout<<"We will build other DTs for the BWT..."<<std::endl;
-        std::string output_prefix = std::string(argv[3]);
         std::string plain_input_file = "tmp_plain.txt";
         rl2plain(input_file, plain_input_file);
         std::cout<<"Creating wavelet trees for "<<input_file<<std::endl;
@@ -185,6 +185,7 @@ int main(int argc, char** argv){
     }
 
     using bwt_type = rlbwt_vlb<4096, 64, 4>;
-    bwt_type bwt;
-    build_rlbwt_vlb<bwt_type>(bwt, input_file, INPUT_FORMAT::GRL_BWT);
+    bwt_type bwt_dt;
+    std::string output_dt = output_prefix+".brl_bwt";
+    build_rlbwt_vlb<bwt_type>(bwt_dt, input_file, output_dt, INPUT_FORMAT::GRL_BWT);
 }
