@@ -9,9 +9,41 @@
 #include <limits>
 #include <cstring>
 #include <cassert>
+#ifdef __linux__
+#include <malloc.h>
+#endif
 
-#include "utils.hpp"
-#include "memory_handler.hpp"
+#include "utils.h"
+
+template <class T> struct mem {
+
+    static T * allocate(const size_t n) {
+        if (n == 0) {return nullptr;}
+        if (n > static_cast<size_t>(-1) / sizeof(T)) {
+            throw std::bad_array_new_length();
+        }
+        void * const pv = malloc(n * sizeof(T));
+        if (!pv) { throw std::bad_alloc(); }
+        return static_cast<T *>(pv);
+    }
+
+    static T * reallocate(T* old_ptr, const size_t n) {
+        if (n == 0) {return nullptr;}
+        if (n > static_cast<size_t>(-1) / sizeof(T)) {
+            throw std::bad_array_new_length();
+        }
+        void * const pv = realloc(old_ptr, n * sizeof(T));
+        if (!pv) { throw std::bad_alloc(); }
+        return static_cast<T *>(pv);
+    }
+
+    static void deallocate(T * const p) {
+        free(p);
+#ifdef __linux__
+        malloc_trim(0);
+#endif
+    }
+};
 
 template<class word_t, uint8_t max_dist=std::numeric_limits<word_t>::digits>
 struct bitstream{
@@ -166,6 +198,11 @@ struct bitstream{
             }
         }
     }
+
+    [[nodiscard]] inline bool read_bit(size_t i) const{
+        return (stream[i>>word_shift] >> (i & (word_bits - 1UL))) & 1UL;
+    }
+
 
     [[nodiscard]] inline size_t pop_count(size_t i, size_t j) const{
         size_t cell_i = i >> word_shift;

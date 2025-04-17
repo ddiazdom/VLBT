@@ -14,6 +14,7 @@
 #include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 
 #include "../rlbwt_small_alpha.h"
+#include "../construct_rlbwt_vlb.h"
 #include "../rlbwt_vlb.h"
 
 #define build_dt(dt, suffix) \
