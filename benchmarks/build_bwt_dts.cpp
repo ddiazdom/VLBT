@@ -191,4 +191,5 @@ int main(int argc, char** argv){
     std::string output_file = output_prefix+".rlbwt_vlb";
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
+    bwt_dt.inverse_select(3074);
 }

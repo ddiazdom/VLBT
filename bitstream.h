@@ -208,15 +208,19 @@ struct bitstream{
         size_t cell_i = i >> word_shift;
         size_t i_pos = (i & (word_bits - 1UL));
         size_t cell_j = j >> word_shift;
-        size_t val;
         if(cell_i == cell_j){
-            val = (stream[cell_i] >> i_pos) & masks[(j - i + 1UL)];
+            size_t val = (stream[cell_i] >> i_pos) & masks[(j - i + 1UL)];
+            return __builtin_popcountll(val);
         }else{
+            size_t count=0;
+            for(size_t c=cell_i+1;c<cell_j;c++){
+                count+=__builtin_popcountll(stream[c]);
+            }
             size_t right = word_bits-i_pos;
             size_t left = 1+(j & (word_bits - 1UL));
-            val = ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
+            size_t fake_val = ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
+            return count + __builtin_popcountll(fake_val);
         }
-        return __builtin_popcountll(val);
     }
 
     inline void read_chunk(void* dst, size_t i, size_t j) const{

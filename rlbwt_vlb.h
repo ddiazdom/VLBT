@@ -17,8 +17,9 @@ struct rlbwt_vlb {
     static constexpr size_t scale_factor = s_factor;
     static constexpr size_t max_block_runs = b_runs;
     static constexpr uint8_t int_pt_width=7;//number of bits we use to encode the number of bits we use to encode pointers
-    static constexpr uint8_t run_width = sym_width(b_runs-1);
+    static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
     static constexpr uint64_t run_mask = (1UL<<run_width)-1UL;
+    static constexpr uint8_t leaf_enc_width=4;
 
     uint64_t tot_syms=0;//total symbols in the text
     uint64_t orig_runs=0;//original number of runs in the BWT
@@ -81,17 +82,19 @@ struct rlbwt_vlb {
         size_t bk_sz = block_size;
 
         //get the block where index i lies
-        size_t bk = i/bk_sz;
+        uint64_t child = i/bk_sz;
 
         //skip the bits with the ext. succ/pred info of low-freq symbols
         size_t bit_pos = lfs_bits;
 
         //get the effective block where i lies and its byte offset within the stream
         //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
-        size_t p = bit_pos+(ext_pt_width*bk);
+        size_t p = bit_pos+(ext_pt_width*child);
         p = stream.read(p, p+ext_pt_width-1);
 
-        size_t child = bk-(p & run_mask);//effective block e_bk where i lies in the representation
+        //std::cout<<p<<" "<<int(run_mask)<<" "<<int(run_width)<<" byte_pos"<<int(p>>run_width)<<" offset:"<<int(p & run_mask)<<std::endl;
+
+        child = child-(p & run_mask);//eff child in the representation where i lies
         bit_pos =  (header_bytes + (p >> run_width))*8;//bit position where child begins in the stream
 
         //skip ext succ/pred information
@@ -103,7 +106,7 @@ struct rlbwt_vlb {
         bit_pos= INT_CEIL(bit_pos, 8)*8;//next byte-aligned position
         //
 
-        //read if it is leaf or an internal node
+        //read the node header
         bool is_leaf = stream.read_bit(bit_pos++);
         size_t parent_sigma = sigma;
         size_t node_sigma = stream.pop_count(bit_pos, bit_pos+parent_sigma-1);
@@ -113,22 +116,26 @@ struct rlbwt_vlb {
 
         while(!is_leaf){
             bk_sz/=scale_factor;
-            bk = i/bk_sz;
-            assert(bk<scale_factor);
+            child = i/bk_sz;
+            assert(child<scale_factor);
 
             size_t child_info = stream.read(bit_pos, bit_pos+scale_factor-1);
             bit_pos+=scale_factor;
 
-            size_t n_children = __builtin_popcount(child_info);
-            child_info &= (1<<bk)-1;
-            child = __builtin_popcount(child_info);
+            size_t n_children = __builtin_popcount(child_info);//number of eff children
+
+            child_info &= (1<<(child+1))-1;//clean the bits marking the right siblings
+            child = __builtin_popcount(child_info)-1;//eff child (zero-based)
+            size_t n_real_lsib = 63-__builtin_clzll(child_info);//= select_1(child_info, (eff child)+1)-1
+            i-=n_real_lsib*bk_sz;//number of symbols before child within the node
+
             bit_pos+=node_sigma*n_children;//skip int succ/pred info
 
             //read how many bits we use to encode the pointers to the children
             size_t p_width = stream.read(bit_pos, bit_pos+int_pt_width-1);
             bit_pos+=int_pt_width;
 
-            p = bit_pos+child*p_width;
+            p = bit_pos+(child*p_width);
             p = stream.read(p, p+p_width-1);
 
             //skip the pointer to the children and position the bit in the next byte-aligned position
@@ -136,14 +143,18 @@ struct rlbwt_vlb {
             //add the bit offset. Now bit_pos points to child
             bit_pos+= p*8;
 
-            //read the header of the child (this child does not have ext succ/pred info)
+            //start reading the header of child (there is no ext succ/pred info)
             is_leaf = stream.read_bit(bit_pos++);
             parent_sigma = node_sigma;
             node_sigma = stream.pop_count(bit_pos, bit_pos+parent_sigma-1);
             bit_pos+=parent_sigma;
-            bit_pos+=sym_width(bk_sz*scale_factor)*node_sigma;//skip rank information
-            i-=child*bk_sz;//relative position of i within the child block
+            bit_pos+=sym_width(bk_sz)*node_sigma;//skip rank information
         }
+
+        uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
+
+        bit_pos+= leaf_enc_width;
+        bit_pos = INT_CEIL(bit_pos, 8);
 
         return {0,0};
     }

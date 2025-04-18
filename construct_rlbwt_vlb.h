@@ -58,6 +58,7 @@ struct rl_node {//state of the compression
     size_t child_rank=0;//this node is the child_rank of its parent
     size_t cov_symbols=0;//how many symbols of the input BWT does this node cover
     size_t child_mark_acc=0;
+    size_t leaf_enc=0;
 
     bool lm_tree_branch=true;//true if this node in the leftmost branch of its tree
     bool rm_tree_branch=true;//true if this node in the rightmost branch of its tree
@@ -562,7 +563,7 @@ struct rl_node {//state of the compression
         for(size_t b=0;b<n_children;b++){
 
             assert(aligned<8>(bit_pos));
-            tree_new_byte_pos = (header_bits-bit_pos)/8;
+            tree_new_byte_pos = (bit_pos-header_bits)/8;
 
             //add the ext succ/pred information
             p_trees=0;
@@ -617,18 +618,18 @@ struct rl_node {//state of the compression
         w2 = sym_width(b_runs-1);
         size_t c=0, l=0, n_syms;
         for(size_t b=0;b<n_children;b++){
-            buffer.write(bit_pos, bit_pos+w1-1, block_ptr[b]);
-            bit_pos+=w1;
             buffer.write(bit_pos, bit_pos+w2-1, l);
             bit_pos+=w2;
+            buffer.write(bit_pos, bit_pos+w1-1, block_ptr[b]);
+            bit_pos+=w1;
             c++;
             l++;
             n_syms =tree_offset[b];
             while((n_syms+b_size)<tree_offset[b+1]){
-                buffer.write(bit_pos, bit_pos+w1-1, block_ptr[b]);
-                bit_pos+=w1;
                 buffer.write(bit_pos, bit_pos+w2-1, l);
                 bit_pos+=w2;
+                buffer.write(bit_pos, bit_pos+w1-1, block_ptr[b]);
+                bit_pos+=w1;
                 n_syms +=b_size;
                 c++;
                 l++;
@@ -653,8 +654,7 @@ struct rl_node {//state of the compression
                             size_t n_blocks,
                             const size_t parent_sigma,
                             const std::vector<bool>& parent_sigma_bv,
-                            const std::vector<uint64_t>& parent_rank_info
-    ){
+                            const std::vector<uint64_t>& parent_rank_info){
 
         assert(node_n_bits==0);
         assert(lvl>0);
@@ -742,7 +742,7 @@ struct rl_node {//state of the compression
         size_t total_fbytes = max_vbytes*n_runs;
 
         //byte encoding for the runs of this leaf
-        size_t leaf_enc, run_bits;
+        size_t run_bits;
         bool fix_len_enc=false;
         if(total_vbytes<total_fbytes){
             assert(max_vbytes>1);
@@ -769,9 +769,8 @@ struct rl_node {//state of the compression
             r_width = sym_width(b_size*s_factor);
         }
 
-        size_t leaf_enc_width=4;//we use 4 bits to encode the encoding type for the sequence of runs in this leaf
         size_t rank_bits = r_width*node_sigma;
-        size_t header_bits = 1+leaf_enc_width+parent_sigma+rank_bits;
+        size_t header_bits = 1+bwt_rep.leaf_enc_width+parent_sigma+rank_bits;
         header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
 
         //allocate bytes for the information of this leaf
@@ -784,8 +783,6 @@ struct rl_node {//state of the compression
         bit_pos++;
 
         //parent_sigma bits to encode the leaf's effective alphabet
-        buffer.write(bit_pos, bit_pos+leaf_enc_width-1, leaf_enc);
-        bit_pos+=leaf_enc_width;
         for(size_t i=0;i<bwt_rep.sigma;i++){
             if(parent_sigma_bv[i]){
                 buffer.write(bit_pos, bit_pos, node_sigma_bv[i]);
@@ -802,6 +799,11 @@ struct rl_node {//state of the compression
             }
         }
         //assert(bit_pos==(1+4+parent_sigma+rank_bits));
+
+        //store the leaf encoding
+        buffer.write(bit_pos, bit_pos+bwt_rep.leaf_enc_width-1, leaf_enc);
+        bit_pos+=bwt_rep.leaf_enc_width;
+        //
 
         //the runs are byte-aligned
         size_t byte_pos = INT_CEIL(bit_pos, 8);
@@ -914,6 +916,7 @@ struct rl_node {//state of the compression
         std::cout<<pad<<"child_rank:"<<child_rank<<std::endl;
         std::cout<<pad<<"node_sigma:"<<int(node_sigma)<<std::endl;
         std::cout<<pad<<"level:"<<int(lvl)<<std::endl;
+        std::cout<<pad<<"size in bytes:"<<INT_CEIL(node_n_bits, 8)<<std::endl;
         std::cout<<pad<<"alphabet:(";
         size_t p=0;
         for(size_t s=0;s<bwt_rep.sigma;s++){
@@ -939,6 +942,13 @@ struct rl_node {//state of the compression
                 }
             }
             std::cout<<""<<std::endl;
+            std::cout<<pad<<"pointer to children:";
+            for(size_t k=0;k<n_children;k++){
+                std::cout<<(k>0 ? ", ":"")<<block_ptr[k];
+            }
+            std::cout<<""<<std::endl;
+        }else{
+            std::cout<<pad<<"leaf encoding:"<<int(leaf_enc)<<std::endl;
         }
 
         if(lvl==1){
@@ -1083,6 +1093,7 @@ struct rl_node {//state of the compression
         lm_tree_branch = lvl==0;
         block_ptr[0] = 0;
         child_mark_acc=0;
+        leaf_enc=0;
     }
 };
 
