@@ -810,7 +810,8 @@ struct rl_node {//state of the compression
         assert((byte_pos*8)==header_bits);
 
         auto *byte_stream = (uint8_t *) buffer.stream;
-        size_t written_bytes = insert_runs(blocks, n_blocks, &byte_stream[byte_pos], sym_width(node_sigma), max_vbytes , fix_len_enc);
+        size_t written_bytes = insert_runs(blocks, n_blocks, &byte_stream[byte_pos], sym_width(node_sigma),
+                                           max_vbytes , fix_len_enc, n_runs);
         assert((written_bytes*8)==run_bits);
 
         node_n_bits = header_bits+run_bits;
@@ -834,7 +835,7 @@ struct rl_node {//state of the compression
     }
 
     size_t insert_runs(std::vector<block_type>& blocks, size_t n_blocks, uint8_t *stream,
-                       size_t sigma_bytes, size_t max_bytes, bool fix_len_enc){
+                       size_t sigma_bytes, size_t max_bytes, bool fix_len_enc, size_t n_runs){
 
         size_t written_bytes=0;
         if(fix_len_enc){
@@ -855,7 +856,12 @@ struct rl_node {//state of the compression
             // Each code uses (at most) 8 bytes, thus we need 8*8=64 tmp_bytes
             uint64_t code;
             uint8_t tmp_stream[64];
-            uint8_t control = 0, acc_width=0, p=0, byte_pos=0;
+
+            uint8_t ctrl_bits = 0, acc_width=0, p=0, byte_pos=0;
+            size_t n_ctrl = INT_CEIL(n_runs, 8);
+
+            uint8_t *ctrl_ptr = stream;
+            uint8_t *run_ptr = stream+n_ctrl;
 
             for(size_t i=0;i<n_blocks;i++){
                 for(auto & run : blocks[i]){
@@ -863,30 +869,30 @@ struct rl_node {//state of the compression
                     vb_lens[p] = INT_CEIL((sigma_bytes+sym_width(run.second)), 8);
                     code = run.second<<node_sigma | run.first;
                     memcpy(&tmp_stream[byte_pos], &code, vb_lens[p]);
-                    control |= (vb_lens[p] << acc_width);
+                    ctrl_bits |= (vb_lens[p] << acc_width);
 
                     byte_pos+=vb_lens[p];
                     p++;
                     acc_width+=control_bits;
 
                     if(acc_width+control_bits>8){
-                        *stream=control;
-                        stream++;
-                        memcpy(stream, &tmp_stream[0], byte_pos);
-                        stream+=byte_pos;
+                        *ctrl_ptr=ctrl_bits;
+                        ctrl_ptr++;
+
+                        memcpy(run_ptr, &tmp_stream[0], byte_pos);
+                        run_ptr+=byte_pos;
                         written_bytes+=byte_pos+1;
                         p=0;
-                        control = 0;
+                        ctrl_bits = 0;
                         acc_width = 0;
                         byte_pos = 0;
                     }
                 }
             }
 
-            if(control!=0){
-                *stream=control;
-                stream++;
-                memcpy(stream, &tmp_stream[0], byte_pos);
+            if(ctrl_bits!=0){
+                *ctrl_ptr=ctrl_bits;
+                memcpy(run_ptr, &tmp_stream[0], byte_pos);
                 written_bytes+=byte_pos+1;
             }
         }
