@@ -811,7 +811,7 @@ struct rl_node {//state of the compression
 
         auto *byte_stream = (uint8_t *) buffer.stream;
         size_t written_bytes = insert_runs(blocks, n_blocks, &byte_stream[byte_pos], sym_width(node_sigma),
-                                           max_vbytes , fix_len_enc, n_runs);
+                                           max_vbytes , fix_len_enc);
         assert((written_bytes*8)==run_bits);
 
         node_n_bits = header_bits+run_bits;
@@ -834,53 +834,49 @@ struct rl_node {//state of the compression
         stats.leaf_enc_freq[leaf_enc]++;//the encoding type for a leaf
     }
 
-    size_t insert_runs(std::vector<block_type>& blocks, size_t n_blocks, uint8_t *stream,
-                       size_t sigma_bytes, size_t max_bytes, bool fix_len_enc, size_t n_runs){
+    size_t insert_runs(std::vector<block_type>& blocks, size_t n_blocks, uint8_t *stream, size_t sigma_bits,
+                       size_t max_bytes, bool fix_len_enc){
+
+        assert(sigma_bits== sym_width(node_sigma));
 
         size_t written_bytes=0;
         if(fix_len_enc){
             size_t enc_run;
             for(size_t i=0;i<n_blocks;i++){
                 for(auto & run : blocks[i]){
-                    enc_run =  run.second<<node_sigma | run.first;
+                    enc_run =  run.second<<sigma_bits | run.first;
                     memcpy(stream, &enc_run, max_bytes);
                     stream+=max_bytes;
                     written_bytes+=max_bytes;
                 }
             }
         }else{
-            uint8_t control_bits = sym_width(max_bytes-1);
+            uint8_t n_ctrl_bits = sym_width(max_bytes-1);
             size_t vb_lens[8]={0};
 
             //we pack the stream in groups of (at most) 8 elements,
             // Each code uses (at most) 8 bytes, thus we need 8*8=64 tmp_bytes
             uint64_t code;
             uint8_t tmp_stream[64];
-
             uint8_t ctrl_bits = 0, acc_width=0, p=0, byte_pos=0;
-            size_t n_ctrl = INT_CEIL(n_runs, 8);
-
-            uint8_t *ctrl_ptr = stream;
-            uint8_t *run_ptr = stream+n_ctrl;
 
             for(size_t i=0;i<n_blocks;i++){
                 for(auto & run : blocks[i]){
 
-                    vb_lens[p] = INT_CEIL((sigma_bytes+sym_width(run.second)), 8);
-                    code = run.second<<node_sigma | run.first;
+                    vb_lens[p] = INT_CEIL((sigma_bits+sym_width(run.second)), 8);
+                    code = run.second<<sigma_bits | run.first;
                     memcpy(&tmp_stream[byte_pos], &code, vb_lens[p]);
-                    ctrl_bits |= (vb_lens[p] << acc_width);
-
+                    ctrl_bits |= ((vb_lens[p]-1U) << acc_width);
                     byte_pos+=vb_lens[p];
                     p++;
-                    acc_width+=control_bits;
+                    acc_width+=n_ctrl_bits;
 
-                    if(acc_width+control_bits>8){
-                        *ctrl_ptr=ctrl_bits;
-                        ctrl_ptr++;
+                    if(acc_width+n_ctrl_bits>8){
+                        *stream=ctrl_bits;
+                        stream++;
 
-                        memcpy(run_ptr, &tmp_stream[0], byte_pos);
-                        run_ptr+=byte_pos;
+                        memcpy(stream, &tmp_stream[0], byte_pos);
+                        stream+=byte_pos;
                         written_bytes+=byte_pos+1;
                         p=0;
                         ctrl_bits = 0;
@@ -890,9 +886,10 @@ struct rl_node {//state of the compression
                 }
             }
 
-            if(ctrl_bits!=0){
-                *ctrl_ptr=ctrl_bits;
-                memcpy(run_ptr, &tmp_stream[0], byte_pos);
+            if(p!=0){
+                *stream=ctrl_bits;
+                stream++;
+                memcpy(stream, &tmp_stream[0], byte_pos);
                 written_bytes+=byte_pos+1;
             }
         }
@@ -911,7 +908,7 @@ struct rl_node {//state of the compression
         }
     }
 
-    void print_node_info(){
+    void print_node_info(std::vector<block_type> bkl, size_t n_blocks){
 
         std::string pad = std::string(lvl+1, '\t');
 
@@ -955,6 +952,13 @@ struct rl_node {//state of the compression
             std::cout<<""<<std::endl;
         }else{
             std::cout<<pad<<"leaf encoding:"<<int(leaf_enc)<<std::endl;
+            std::cout<<pad<<"runs: ";
+            for(size_t k=0;k<n_blocks;k++){
+                for(auto & l : bkl[k]){
+                    std::cout<<"(packed_sym:"<<int(l.first)<<",len:"<<l.second<<") ";
+                }
+            }
+            std::cout<<""<<std::endl;
         }
 
         if(lvl==1){
@@ -1072,7 +1076,7 @@ struct rl_node {//state of the compression
         }
 
         //print the node information for debugging purposes
-        //tmp_node->print_node_info();
+        tmp_node->print_node_info(active_blocks, n_blocks);
         //
 
         //the pointer to the active child node (next_node) should be aligned

@@ -38,34 +38,111 @@ typedef uint8x16_t decode_t;
 typedef uint8x8x2_t decode_t;
 #endif
 
-static inline decode_t  _decode_vbyte_neon(const uint8_t key, const uint8_t *dataPtrPtr) {
+template<uint8_t width>
+static inline decode_t _decode_vbyte_neon(const uint8_t **stream){
 
+    uint8_t *pshuf, ctrl_bits=**stream;
     uint8_t len;
-    uint8_t *pshuf = (uint8_t *)&shuffleTable[key];
-    uint8x16_t decodingShuffle = vld1q_u8(pshuf);
 
-    uint8x16_t compressed = vld1q_u8(dataPtrPtr);
-#ifdef AVOIDLENGTHLOOKUP
-// this avoids the dependency on lengthTable, see https://github.com/lemire/streamvbyte/issues/12
-    len = pshuf[12 + (key >> 6)] + 1;
-#else
-    len = lengthTable[key];
-#endif
+    if constexpr (width==1){
+        pshuf = (uint8_t *)&dec_table_16x8[ctrl_bits];
+        len = pshuf[14 + (ctrl_bits >> 7)] + 1;
+    }else if constexpr (width==2){
+        pshuf = (uint8_t *)&dec_table_32x4[ctrl_bits];
+        len = pshuf[12 + (ctrl_bits >> 6)] + 1;
+    }else if constexpr (width==3){
+        pshuf = (uint8_t *)&dec_table_64x2[ctrl_bits];
+        len = pshuf[8 + ((ctrl_bits >> 3) & 7)] + 1;
+    }else{
+        exit(1);
+    }
+
+    uint8x16_t compressed = vld1q_u8(*stream+1);
+    uint8x16_t dec_shuffle = vld1q_u8(pshuf);
 
 #ifdef __aarch64__
-    uint8x16_t data = vqtbl1q_u8(compressed, decodingShuffle);
+    uint8x16_t data = vqtbl1q_u8(compressed, dec_shuffle);
 #else
     uint8x8x2_t codehalves = {{vget_low_u8(compressed),
                                vget_high_u8(compressed)}};
     uint8x8x2_t data = {{vtbl2_u8(codehalves, vget_low_u8(decodingShuffle)),
                          vtbl2_u8(codehalves, vget_high_u8(decodingShuffle))}};
 #endif
-    dataPtrPtr += len;
+    *stream+=len+1;
     return data;
 }
 
+template<uint8_t width>
+static inline void find_run_neon(const uint8_t **stream, uint8_t sigma, uint64_t idx);
 
-static inline uint64_t rank16x8_neon(const uint16_t * stream, uint8_t sigma, uint8_t sym, uint64_t idx){
+template<>
+static inline void find_run_neon<1>(const uint8_t **stream, uint8_t sigma, uint64_t idx){
+    //assert idx fits 2 bytes
+    const uint8_t sigma_bits = sym_width(sigma);
+    const int16x8_t alpha_shift = vdupq_n_u16(-sigma_bits);
+
+    size_t i=0;
+    uint16x8_t block = vreinterpretq_u16_u8(_decode_vbyte_neon<1>(stream));
+    uint16x8_t bk_lengths = vshlq_u16(block, alpha_shift);
+    uint64x2_t tmp   = vpaddlq_u32(vpaddlq_u16(bk_lengths));
+    uint64_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
+    while(acc<idx){
+        i+=8;
+        block = vreinterpretq_u16_u8(_decode_vbyte_neon<1>(stream));
+        bk_lengths = vshlq_u16(block, alpha_shift);
+        tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
+        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    }
+
+    bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 7), bk_lengths);
+    bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 6), bk_lengths);
+    bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 4), bk_lengths);
+
+    const uint16x8_t mask = vcltq_u16(bk_lengths, vdupq_n_u16(idx));
+    const uint8x8_t res = vshrn_n_u16(mask, 4);
+    const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
+    uint64_t idx_run = __builtin_popcount(less_than)>>3;
+}
+
+template<>
+static inline void find_run_neon<2>(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+
+    const uint8_t sigma_bits = sym_width(sigma);
+    const int32x4_t alpha_shift = vdupq_n_u32(-sigma_bits);
+
+    size_t i=0;
+    uint32x4_t block = vreinterpretq_u32_u8(_decode_vbyte_neon<2>(stream));
+    uint32x4_t bk_lengths = vshlq_u32(block, alpha_shift);
+
+    uint64x2_t tmp = vpaddlq_u32(bk_lengths);
+    uint64_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
+    while(acc<idx){
+        i+=4;
+        block = vreinterpretq_u32_u8(_decode_vbyte_neon<1>(stream));
+        bk_lengths = vshlq_u32(block, alpha_shift);
+
+        tmp = vpaddlq_u32(bk_lengths);
+        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    }
+
+    bk_lengths = vaddq_u32(bk_lengths, vextq_u8(bk_lengths, vdupq_n_u32(0), 1));
+    bk_lengths = vandq_u32(bk_lengths, vextq_u8(bk_lengths, vdupq_n_u32(0), 2));
+
+    const uint32x4_t mask = vcltq_u32(bk_lengths, vdupq_n_u32(idx));
+    const uint16x4_t res = vshrn_n_u32(mask, 16);
+    const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u16(res), 0);
+    uint64_t idx_run = __builtin_popcount(less_than)>>4;
+
+}
+
+template<>
+static inline void find_run_neon<3>(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+}
+
+
+/*static inline uint64_t rank16x8_neon(const uint8_t ** stream, uint8_t sigma, uint8_t sym, uint64_t idx){
 
     uint8_t sigma_bits = sym_width(sigma);
     uint8_t sigma_mask = (1UL << sigma_bits)-1;
@@ -75,7 +152,6 @@ static inline uint64_t rank16x8_neon(const uint16_t * stream, uint8_t sigma, uin
     const uint16x8_t alpha_shift = vdupq_n_u16(-sigma_bits);
 
     size_t i=0;
-
     uint16x8_t block = vld1q_u16(&stream[0]);
     uint16x8_t bk_lengths = vshlq_u16(block, alpha_shift);
     uint64x2_t tmp   = vpaddlq_u32(vpaddlq_u16(bk_lengths));
@@ -98,7 +174,7 @@ static inline uint64_t rank16x8_neon(const uint16_t * stream, uint8_t sigma, uin
 
 static inline uint64_t rank4x32_neon(const uint32_t * stream, uint8_t sigma, uint8_t sym, uint64_t idx){
     return 0;
-}
+}*/
 #endif
 
 #ifdef __AVX2__
@@ -351,10 +427,52 @@ struct rlbwt_vlb {
             bit_pos+=sym_width(bk_sz)*node_sigma;//skip rank information
         }
 
-        uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
+        //encoding
+        //1 = 1 byte
+        //2 = 2 bytes
+        //3 = 3 bytes
+        //4 = 4 bytes
+        //5 = 5 bytes
+        //6 = 1 bytes
+        //7 = 1-2 vbytes
+        //8 = 1-3 vbytes
+        //9 = 1-4 vbytes
+        //10 = 1-5 vbytes
 
+        uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
         bit_pos+= leaf_enc_width;
-        bit_pos = INT_CEIL(bit_pos, 8);
+        auto const *runs_stream = ((uint8_t *)stream.stream)+(INT_CEIL(bit_pos, 8));
+
+        switch (leaf_enc) {
+            case 1:
+                break;
+            case 2:
+                break;
+            case 3:
+                break;
+            case 4:
+                break;
+            case 5:
+                break;
+            case 6:
+                break;
+            case 7:
+                //std::cout<<int(*runs_stream)<<std::endl;
+                find_run_neon<1>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);
+                break;
+            case 8:
+                find_run_neon<2>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);
+                break;
+            case 9:
+                find_run_neon<2>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);
+                break;
+            case 10:
+                find_run_neon<3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);
+                break;
+            default:
+                std::cout<<"Undefined encoding"<<std::endl;
+                exit(1);
+        }
 
         return {0,0};
     }
