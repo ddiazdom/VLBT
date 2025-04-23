@@ -8,8 +8,8 @@
 #include <cmath>
 #include "bitstream.h"
 
-static inline uint64_t count_scalar(const uint16_t* stream, uint8_t sym, uint64_t idx){
-
+template<bool vbyte_compressed>
+static inline uint64_t inv_select_scalar(const uint16_t* stream, uint8_t sym, uint64_t idx){
     uint8_t alpha_bits = 4;
     uint8_t alpha_mask = 15;
 
@@ -28,119 +28,290 @@ static inline uint64_t count_scalar(const uint16_t* stream, uint8_t sym, uint64_
 #include <arm_neon.h>
 #include "vbyte_simd_dec_tables.h"
 
-static inline uint64_t rank8x16_neon(const uint8_t * stream, uint8_t sigma, uint8_t sym, uint64_t idx){
-   return 0;
-}
+template<bool vbyte_compressed, uint8_t ctr_width, uint8_t bytes_per_run>
+static inline uint8x16_t decode_block_neon(const uint8_t **stream){
 
-#ifdef __aarch64__
-typedef uint8x16_t decode_t;
-#else
-typedef uint8x8x2_t decode_t;
-#endif
+    if constexpr (vbyte_compressed) {
+        uint8_t *pshuf, ctrl_bits = **stream;
+        uint8_t len;
+        if constexpr (ctr_width == 1) {
+            pshuf = (uint8_t *) &dec_table_16x8[ctrl_bits];
+            len = pshuf[14 + (ctrl_bits >> 7)] + 1;
+        } else if constexpr (ctr_width == 2) {
+            pshuf = (uint8_t *) &dec_table_32x4[ctrl_bits];
+            len = pshuf[12 + (ctrl_bits >> 6)] + 1;
+        } else if constexpr (ctr_width == 3) {
+            pshuf = (uint8_t *) &dec_table_64x2[ctrl_bits];
+            len = pshuf[8 + ((ctrl_bits >> 3) & 7)] + 1;
+        } else {
+            exit(1);
+        }
+        uint8x16_t compressed = vld1q_u8(*stream + 1);
+        uint8x16_t dec_shuffle = vld1q_u8(pshuf);
+        uint8x16_t data = vqtbl1q_u8(compressed, dec_shuffle);
+        *stream += len + 1;
 
-template<uint8_t width>
-static inline decode_t _decode_vbyte_neon(const uint8_t **stream){
+        return data;
 
-    uint8_t *pshuf, ctrl_bits=**stream;
-    uint8_t len;
-
-    if constexpr (width==1){
-        pshuf = (uint8_t *)&dec_table_16x8[ctrl_bits];
-        len = pshuf[14 + (ctrl_bits >> 7)] + 1;
-    }else if constexpr (width==2){
-        pshuf = (uint8_t *)&dec_table_32x4[ctrl_bits];
-        len = pshuf[12 + (ctrl_bits >> 6)] + 1;
-    }else if constexpr (width==3){
-        pshuf = (uint8_t *)&dec_table_64x2[ctrl_bits];
-        len = pshuf[8 + ((ctrl_bits >> 3) & 7)] + 1;
-    }else{
-        exit(1);
+    } else {
+        uint8x16_t data = vld1q_u8(*stream);
+        //align the bytes
+        if constexpr (bytes_per_run==3){
+            const int8x16_t dec_shuff = {0,1,2,-1, 3,4,5,-1, 6,7,8,-1, 9,10,11,-1};
+            data = vqtbl1q_u8(data, dec_shuff);
+            *stream+=12;
+        } else if constexpr (bytes_per_run==5){
+            const int8x16_t dec_shuff = {0,1,2,3,4,-1,-1,-1, 5,6,7,8,9,-1,-1,-1};
+            data = vqtbl1q_u8(data, dec_shuff);
+            *stream+=10;
+        } else if constexpr (bytes_per_run==6){
+            const int8x16_t dec_shuff = {0,1,2,3,4,5,-1,-1, 6,7,8,9,10,11,-1,-1};
+            data = vqtbl1q_u8(data, dec_shuff);
+            *stream+=12;
+        } else if constexpr (bytes_per_run==7){
+            const int8x16_t dec_shuff = {0,1,2,3,4,5,6,-1, 7,8,9,10,11,12,13,-1};
+            data = vqtbl1q_u8(data, dec_shuff);
+            *stream+=14;
+        } else{
+            *stream+=16;
+        }
+        return data;
     }
-
-    uint8x16_t compressed = vld1q_u8(*stream+1);
-    uint8x16_t dec_shuffle = vld1q_u8(pshuf);
-
-#ifdef __aarch64__
-    uint8x16_t data = vqtbl1q_u8(compressed, dec_shuffle);
-#else
-    uint8x8x2_t codehalves = {{vget_low_u8(compressed),
-                               vget_high_u8(compressed)}};
-    uint8x8x2_t data = {{vtbl2_u8(codehalves, vget_low_u8(decodingShuffle)),
-                         vtbl2_u8(codehalves, vget_high_u8(decodingShuffle))}};
-#endif
-    *stream+=len+1;
-    return data;
 }
 
-template<uint8_t width>
-static inline void find_run_neon(const uint8_t **stream, uint8_t sigma, uint64_t idx);
+static inline std::pair<uint8_t, uint64_t> inv_select_neon_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx){
 
-template<>
-static inline void find_run_neon<1>(const uint8_t **stream, uint8_t sigma, uint64_t idx){
-    //assert idx fits 2 bytes
+    //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
-    const int16x8_t alpha_shift = vdupq_n_u16(-sigma_bits);
+    const int8x16_t alpha_shift = vdupq_n_u8(-sigma_bits);
+    const uint8_t *stream_start = *stream;
 
-    size_t i=0;
-    uint16x8_t block = vreinterpretq_u16_u8(_decode_vbyte_neon<1>(stream));
-    uint16x8_t bk_lengths = vshlq_u16(block, alpha_shift);
-    uint64x2_t tmp   = vpaddlq_u32(vpaddlq_u16(bk_lengths));
-    uint64_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    size_t l=0;
+    uint8x16_t block =  vld1q_u8(*stream);
+    *stream+=16;
+    uint8x16_t bk_lengths = vshlq_u8(block, alpha_shift);
+    uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
+    uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
     while(acc<idx){
-        i+=8;
-        block = vreinterpretq_u16_u8(_decode_vbyte_neon<1>(stream));
-        bk_lengths = vshlq_u16(block, alpha_shift);
-        tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
+        block =  vld1q_u8(*stream);
+        *stream+=16;
+        bk_lengths = vshlq_u8(block, alpha_shift);
+
+        prev_acc = acc;
+        tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
         acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+        l++;
     }
 
+    idx-=prev_acc;
+
+    //prefix sum
+    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 15), bk_lengths);
+    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 14), bk_lengths);
+    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 12), bk_lengths);
+    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 8), bk_lengths);
+    //
+
+    const uint8x16_t idx_mask = vcltq_u8(bk_lengths, vdupq_n_u8(idx));
+    const uint8x8_t res = vshrn_n_u16(vreinterpretq_u16_u8(idx_mask), 4);
+    const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
+    uint8_t idx_run = __builtin_popcountll(less_than)>>2;
+
+    uint8_t alpha_m = (1UL << sigma_bits)-1;
+    const uint8x16_t alpha_mask = vdupq_n_u8(alpha_m);
+
+    const uint8x16_t shuff = vdupq_n_u8(idx_run);
+    const uint8x16_t run_vec = vqtbl1q_u8(block, shuff);
+    const uint8x16_t sym_vec = vandq_u8(run_vec, alpha_mask);
+
+    uint8_t run = vgetq_lane_u8(run_vec, 0);
+    uint8_t pf_sum = vgetq_lane_u8(vqtbl1q_u8(bk_lengths, shuff), 0);
+    pf_sum-= run>>sigma_bits;
+    uint8_t sym = run & alpha_m;
+
+    *stream = stream_start;
+    //compute the rank answer
+    uint64_t rank = 0;
+    for(size_t p=0;p<l;p++){
+        block = vld1q_u8(*stream);
+        *stream+=16;
+        bk_lengths = vshlq_u8(block, alpha_shift);
+
+        bk_lengths = vandq_u8(bk_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
+
+        tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
+        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    }
+
+    block = vld1q_u8(*stream);
+    bk_lengths = vshlq_u8(block, alpha_shift);
+
+    bk_lengths = vandq_u8(bk_lengths, idx_mask);
+    bk_lengths = vandq_u8(bk_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
+
+    tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
+    rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    rank +=idx-pf_sum;
+    return {sym, rank};
+}
+
+template<bool vbyte_compressed>
+static inline std::pair<uint8_t, uint64_t> inv_select_neon_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx){
+
+    //TODO: assert idx fits 2 bytes
+    const uint8_t sigma_bits = sym_width(sigma);
+    const int16x8_t alpha_shift = vdupq_n_u16(-sigma_bits);
+    const uint8_t *stream_start = *stream;
+
+    size_t l=0;
+    uint16x8_t block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
+    uint16x8_t bk_lengths = vshlq_u16(block, alpha_shift);
+    uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(bk_lengths));
+    uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
+    while(acc<idx){
+        block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
+        bk_lengths = vshlq_u16(block, alpha_shift);
+
+        prev_acc = acc;
+        tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
+        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+        l++;
+    }
+
+    idx-=prev_acc;
+
+    //prefix sum
     bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 7), bk_lengths);
     bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 6), bk_lengths);
     bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 4), bk_lengths);
+    //
 
-    const uint16x8_t mask = vcltq_u16(bk_lengths, vdupq_n_u16(idx));
-    const uint8x8_t res = vshrn_n_u16(mask, 4);
+    const uint16x8_t idx_mask = vcltq_u16(bk_lengths, vdupq_n_u16(idx));
+    const uint8x8_t res = vshrn_n_u16(idx_mask, 4);
     const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
-    uint64_t idx_run = __builtin_popcount(less_than)>>3;
-}
+    uint8_t idx_run = __builtin_popcountll(less_than)>>3;
+    uint16_t alpha_m = (1UL << sigma_bits)-1;
+    const uint16x8_t alpha_mask = vdupq_n_u16(alpha_m);
 
-template<>
-static inline void find_run_neon<2>(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+    const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
+    const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(idx_run<<1));
 
-    const uint8_t sigma_bits = sym_width(sigma);
-    const int32x4_t alpha_shift = vdupq_n_u32(-sigma_bits);
+    const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
+    const uint16x8_t sym_vec = vandq_u16(run_vec, alpha_mask);
 
-    size_t i=0;
-    uint32x4_t block = vreinterpretq_u32_u8(_decode_vbyte_neon<2>(stream));
-    uint32x4_t bk_lengths = vshlq_u32(block, alpha_shift);
+    uint16_t run = vgetq_lane_u16(run_vec, 0);
+    uint16_t pf_sum = vgetq_lane_u16(vreinterpretq_u16_u8(vqtbl1q_u8(bk_lengths, shuff)), 0);
+    pf_sum-= run>>sigma_bits;
+    uint8_t sym = run & alpha_m;
 
-    uint64x2_t tmp = vpaddlq_u32(bk_lengths);
-    uint64_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    *stream = stream_start;
+    //compute the rank answer
+    uint64_t rank = 0;
+    for(size_t p=0;p<l;p++){
 
-    while(acc<idx){
-        i+=4;
-        block = vreinterpretq_u32_u8(_decode_vbyte_neon<1>(stream));
-        bk_lengths = vshlq_u32(block, alpha_shift);
+        block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
+        bk_lengths = vshlq_u16(block, alpha_shift);
 
-        tmp = vpaddlq_u32(bk_lengths);
-        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+        bk_lengths = vandq_u16(bk_lengths, vceqq_u16(vandq_u16(block, alpha_mask), sym_vec));
+
+        tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
+        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     }
 
-    bk_lengths = vaddq_u32(bk_lengths, vextq_u8(bk_lengths, vdupq_n_u32(0), 1));
-    bk_lengths = vandq_u32(bk_lengths, vextq_u8(bk_lengths, vdupq_n_u32(0), 2));
+    block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
+    bk_lengths = vshlq_u16(block, alpha_shift);
 
-    const uint32x4_t mask = vcltq_u32(bk_lengths, vdupq_n_u32(idx));
-    const uint16x4_t res = vshrn_n_u32(mask, 16);
+    bk_lengths = vandq_u16(bk_lengths, idx_mask);
+    bk_lengths = vandq_u16(bk_lengths, vceqq_u16(vandq_u16(block, alpha_mask), sym_vec));
+
+    tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
+    rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    rank +=idx-pf_sum;
+    return {sym, rank};
+}
+
+template<bool vbyte_compressed, uint8_t bytes_per_run>
+static inline std::pair<uint8_t, uint64_t> inv_select_neon_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+
+    //TODO: assert idx fits 4 bytes
+    const uint8_t sigma_bits = sym_width(sigma);
+    const int32x4_t alpha_shift = vdupq_n_u32(-sigma_bits);
+    const uint8_t *stream_start = *stream;
+
+    size_t l=0;
+    uint32x4_t block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
+    uint32x4_t bk_lengths = vshlq_u32(block, alpha_shift);
+    uint64x2_t tmp = vpaddlq_u32(bk_lengths);
+    uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
+    while(acc<idx){
+        block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
+        bk_lengths = vshlq_u32(block, alpha_shift);
+
+        prev_acc = acc;
+        tmp = vpaddlq_u32(bk_lengths);
+        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+        l++;
+    }
+
+    idx-=prev_acc;
+
+    //prefix sum
+    bk_lengths = vaddq_u32(vextq_u32(vdupq_n_u32(0), bk_lengths, 3), bk_lengths);
+    bk_lengths = vaddq_u32(vextq_u32(vdupq_n_u32(0), bk_lengths, 2), bk_lengths);
+    //
+
+    const uint32x4_t idx_mask = vcltq_u32(bk_lengths, vdupq_n_u32(idx));
+    const uint16x4_t res = vshrn_n_u32(idx_mask, 16);
     const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u16(res), 0);
-    uint64_t idx_run = __builtin_popcount(less_than)>>4;
+    uint8_t idx_run = __builtin_popcountll(less_than)>>4;
+    uint32_t alpha_m = (1UL << sigma_bits)-1;
+    const uint32x4_t alpha_mask = vdupq_n_u32(alpha_m);
 
+    const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
+    const uint8x16_t shuff = vaddq_u32(shuff_idxs, vdupq_n_u8(idx_run<<2));
+
+    const uint32x4_t run_vec = vreinterpretq_u32_u8(vqtbl1q_u8(block, shuff));
+    const uint32x4_t sym_vec = vandq_u32(run_vec, alpha_mask);
+
+    uint32_t run = vgetq_lane_u32(run_vec, 0);
+    uint32_t pf_sum = vgetq_lane_u32(vreinterpretq_u32_u8(vqtbl1q_u8(bk_lengths, shuff)), 0);
+    pf_sum-= run>>sigma_bits;
+    uint8_t sym = run & alpha_m;
+
+    *stream = stream_start;
+
+    //compute the rank answer
+    uint64_t rank = 0;
+    for(size_t p=0;p<l;p++){
+        block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
+        bk_lengths = vshlq_u32(block, alpha_shift);
+
+        bk_lengths = vandq_u32(bk_lengths, vceqq_u32(vandq_u32(block, alpha_mask), sym_vec));
+
+        tmp = vpaddlq_u32(bk_lengths);
+        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    }
+
+    block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
+    bk_lengths = vshlq_u32(block, alpha_shift);
+
+    bk_lengths = vandq_u32(bk_lengths, idx_mask);
+    bk_lengths = vandq_u32(bk_lengths, vceqq_u32(vandq_u32(block, alpha_mask), sym_vec));
+
+    tmp = vpaddlq_u32(bk_lengths);
+    rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    rank +=idx-pf_sum;
+
+    return {sym, rank};
 }
 
-template<>
-static inline void find_run_neon<3>(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+template<bool vbyte_compressed, uint8_t bytes_per_run>
+static inline std::pair<uint8_t, uint64_t> inv_select_neon_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+    return {0,0};
 }
-
 
 /*static inline uint64_t rank16x8_neon(const uint8_t ** stream, uint8_t sigma, uint8_t sym, uint64_t idx){
 
@@ -352,7 +523,7 @@ struct rlbwt_vlb {
         stream.load(ifs);
     }
 
-    inline std::pair<size_t, uint8_t> inverse_select(size_t i) const {
+    [[nodiscard]] inline std::pair<uint8_t, uint64_t> inverse_select(size_t i) const {
 
         //initialize the block size
         size_t bk_sz = block_size;
@@ -399,6 +570,7 @@ struct rlbwt_vlb {
             bit_pos+=scale_factor;
 
             size_t n_children = __builtin_popcount(child_info);//number of eff children
+            assert(n_children>0);
 
             child_info &= (1<<(child+1))-1;//clean the bits marking the right siblings
             child = __builtin_popcount(child_info)-1;//eff child (zero-based)
@@ -427,54 +599,34 @@ struct rlbwt_vlb {
             bit_pos+=sym_width(bk_sz)*node_sigma;//skip rank information
         }
 
-        //encoding
-        //1 = 1 byte
-        //2 = 2 bytes
-        //3 = 3 bytes
-        //4 = 4 bytes
-        //5 = 5 bytes
-        //6 = 1 bytes
-        //7 = 1-2 vbytes
-        //8 = 1-3 vbytes
-        //9 = 1-4 vbytes
-        //10 = 1-5 vbytes
-
         uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
         bit_pos+= leaf_enc_width;
         auto const *runs_stream = ((uint8_t *)stream.stream)+(INT_CEIL(bit_pos, 8));
 
+        //scan the runs in the leaf according to the leaf encoding
         switch (leaf_enc) {
             case 1:
-                break;
+                return inv_select_neon_8x16(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 1 byte (no vbyte)
             case 2:
-                break;
+                return inv_select_neon_16x8<false>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 2 bytes (no vbyte)
             case 3:
-                break;
+                return inv_select_neon_32x4<false, 3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 3 bytes (no vbyte)
             case 4:
-                break;
+                return inv_select_neon_32x4<false, 4>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 4 bytes (no vbyte)
             case 5:
-                break;
-            case 6:
-                break;
+                return inv_select_neon_64x2<false, 5>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 5 bytes (no vbyte)
             case 7:
-                //std::cout<<int(*runs_stream)<<std::endl;
-                find_run_neon<1>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);
-                break;
+                return inv_select_neon_16x8<true>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 2 bytes (vbyte)
             case 8:
-                find_run_neon<2>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);
-                break;
+                return inv_select_neon_32x4<true, 3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 3 bytes (vbyte)
             case 9:
-                find_run_neon<2>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);
-                break;
+                return inv_select_neon_32x4<true, 4>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 4 bytes (vbyte)
             case 10:
-                find_run_neon<3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);
-                break;
+                return inv_select_neon_64x2<true, 5>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 5 bytes (vbyte)
             default:
                 std::cout<<"Undefined encoding"<<std::endl;
                 exit(1);
         }
-
-        return {0,0};
     }
 };
 

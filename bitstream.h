@@ -216,10 +216,10 @@ struct bitstream{
             for(size_t c=cell_i+1;c<cell_j;c++){
                 count+=__builtin_popcountll(stream[c]);
             }
-            size_t right = word_bits-i_pos;
             size_t left = 1+(j & (word_bits - 1UL));
-            size_t fake_val = ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
-            return count + __builtin_popcountll(fake_val);
+            //size_t right = word_bits-i_pos;
+            //size_t fake_val = ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
+            return count + __builtin_popcountll(stream[cell_i] >> i_pos) + __builtin_popcountll(stream[cell_j] & masks[left]);
         }
     }
 

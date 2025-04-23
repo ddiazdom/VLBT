@@ -55,6 +55,7 @@ struct rl_node {//state of the compression
     size_t node_sigma=0;//number of symbols under the parent node
     size_t node_n_bits=0;//number of bits required for the subtree rooted under this node
     size_t consumed_syms=0;//number of symbols under this node that have been scanned so far
+    size_t syms_before=0;//number of symbols in the text preceeding this node
     size_t child_rank=0;//this node is the child_rank of its parent
     size_t cov_symbols=0;//how many symbols of the input BWT does this node cover
     size_t child_mark_acc=0;
@@ -656,10 +657,18 @@ struct rl_node {//state of the compression
                             const std::vector<bool>& parent_sigma_bv,
                             const std::vector<uint64_t>& parent_rank_info){
 
+        //TODO check the sum of runs fits the encoding
+        //that is:
+        //for 1 byte: check that the sum of 16 (or 32 for AVX) consecutive run lens is <=256
+        //for 2 bytes: check that the sum of 8 (or 16 for AVX) consecutive run lens is <=2^16-1
+        //for 3-4 bytes: check that the sum of 4 (or 8 for AVX) consecutive run lens is <=2^32-1
+        //for 4-8 bytes: check that the sum of 2 (or 4 for AVX) consecutive run lens is <=2^64-1
+        //we need to do this check to work with SIMD instructions. It it does not fit, use the next encoding that can fits them
+
         assert(node_n_bits==0);
         assert(lvl>0);
 
-        size_t sym, len, n_runs=0;//, longest_run=0;
+        size_t sym, len, n_runs=0;
         for(size_t j=0;j<(blocks[0].size()-1);j++){
             sym = blocks[0][j].first;
             len = blocks[0][j].second;
@@ -915,6 +924,7 @@ struct rl_node {//state of the compression
         std::cout<<pad<<(leaf? "leaf" :"internal_node")<<std::endl;
         std::cout<<pad<<"lm_child:"<<lm_child<<std::endl;
         std::cout<<pad<<"rm_child:"<<rm_child<<std::endl;
+        std::cout<<pad<<"sym_before:"<<syms_before<<std::endl;
         std::cout<<pad<<"covered_symbols:"<<cov_symbols<<std::endl;
         std::cout<<pad<<"child_rank:"<<child_rank<<std::endl;
         std::cout<<pad<<"node_sigma:"<<int(node_sigma)<<std::endl;
@@ -943,6 +953,12 @@ struct rl_node {//state of the compression
                     std::cout<<") ";
                     s_comp++;
                 }
+            }
+            std::cout<<""<<std::endl;
+            std::cout<<pad<<"n_children:"<<n_children<<std::endl;
+            std::cout<<pad<<"child info:";
+            for(size_t k=0;k<s_factor;k++){
+                std::cout<<(k>0 ? ", ":"")<<int(child_marks[k]);
             }
             std::cout<<""<<std::endl;
             std::cout<<pad<<"pointer to children:";
@@ -996,6 +1012,7 @@ struct rl_node {//state of the compression
         tmp_node->rm_tree_branch = rm_tree_branch && tmp_node->rm_child;
         tmp_node->child_rank = n_children;
         tmp_node->leaf = type==LEAF;
+        tmp_node->syms_before=syms_before+consumed_syms;
 
         if constexpr (type==INTERNAL){
             assert(n_blocks==1);
@@ -1104,6 +1121,7 @@ struct rl_node {//state of the compression
         block_ptr[0] = 0;
         child_mark_acc=0;
         leaf_enc=0;
+        syms_before=0;
     }
 };
 
