@@ -79,7 +79,7 @@ static inline uint8x16_t decode_block_neon(const uint8_t **stream){
     }
 }
 
-static inline std::pair<uint8_t, uint64_t> inv_select_neon_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx){
+static inline std::pair<uint64_t, uint8_t> inv_select_neon_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx){
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
@@ -93,7 +93,7 @@ static inline std::pair<uint8_t, uint64_t> inv_select_neon_8x16(const uint8_t **
     uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
     uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
-    while(acc<idx){
+    while(acc<=idx){
         block =  vld1q_u8(*stream);
         *stream+=16;
         bk_lengths = vshlq_u8(block, alpha_shift);
@@ -113,7 +113,7 @@ static inline std::pair<uint8_t, uint64_t> inv_select_neon_8x16(const uint8_t **
     bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 8), bk_lengths);
     //
 
-    const uint8x16_t idx_mask = vcltq_u8(bk_lengths, vdupq_n_u8(idx));
+    const uint8x16_t idx_mask = vcltq_u8(bk_lengths, vdupq_n_u8(idx+1));//mask for <=idx
     const uint8x8_t res = vshrn_n_u16(vreinterpretq_u16_u8(idx_mask), 4);
     const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
     uint8_t idx_run = __builtin_popcountll(less_than)>>2;
@@ -153,11 +153,11 @@ static inline std::pair<uint8_t, uint64_t> inv_select_neon_8x16(const uint8_t **
     tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     rank +=idx-pf_sum;
-    return {sym, rank};
+    return {rank, sym};
 }
 
 template<bool vbyte_compressed>
-static inline std::pair<uint8_t, uint64_t> inv_select_neon_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx){
+static inline std::pair<uint64_t, uint8_t> inv_select_neon_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx){
 
     //TODO: assert idx fits 2 bytes
     const uint8_t sigma_bits = sym_width(sigma);
@@ -170,7 +170,7 @@ static inline std::pair<uint8_t, uint64_t> inv_select_neon_16x8(const uint8_t **
     uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(bk_lengths));
     uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
-    while(acc<idx){
+    while(acc<=idx){
         block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
         bk_lengths = vshlq_u16(block, alpha_shift);
 
@@ -188,7 +188,7 @@ static inline std::pair<uint8_t, uint64_t> inv_select_neon_16x8(const uint8_t **
     bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 4), bk_lengths);
     //
 
-    const uint16x8_t idx_mask = vcltq_u16(bk_lengths, vdupq_n_u16(idx));
+    const uint16x8_t idx_mask = vcltq_u16(bk_lengths, vdupq_n_u16(idx+1));//mask for <=idx
     const uint8x8_t res = vshrn_n_u16(idx_mask, 4);
     const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
     uint8_t idx_run = __builtin_popcountll(less_than)>>3;
@@ -229,11 +229,11 @@ static inline std::pair<uint8_t, uint64_t> inv_select_neon_16x8(const uint8_t **
     tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     rank +=idx-pf_sum;
-    return {sym, rank};
+    return {rank, sym};
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run>
-static inline std::pair<uint8_t, uint64_t> inv_select_neon_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+static inline std::pair<uint64_t, uint8_t> inv_select_neon_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
 
     //TODO: assert idx fits 4 bytes
     const uint8_t sigma_bits = sym_width(sigma);
@@ -246,7 +246,7 @@ static inline std::pair<uint8_t, uint64_t> inv_select_neon_32x4(const uint8_t **
     uint64x2_t tmp = vpaddlq_u32(bk_lengths);
     uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
-    while(acc<idx){
+    while(acc<=idx){
         block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
         bk_lengths = vshlq_u32(block, alpha_shift);
 
@@ -263,7 +263,7 @@ static inline std::pair<uint8_t, uint64_t> inv_select_neon_32x4(const uint8_t **
     bk_lengths = vaddq_u32(vextq_u32(vdupq_n_u32(0), bk_lengths, 2), bk_lengths);
     //
 
-    const uint32x4_t idx_mask = vcltq_u32(bk_lengths, vdupq_n_u32(idx));
+    const uint32x4_t idx_mask = vcltq_u32(bk_lengths, vdupq_n_u32(idx+1));// mask for <=idx
     const uint16x4_t res = vshrn_n_u32(idx_mask, 16);
     const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u16(res), 0);
     uint8_t idx_run = __builtin_popcountll(less_than)>>4;
@@ -305,11 +305,11 @@ static inline std::pair<uint8_t, uint64_t> inv_select_neon_32x4(const uint8_t **
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     rank +=idx-pf_sum;
 
-    return {sym, rank};
+    return {rank, sym};
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run>
-static inline std::pair<uint8_t, uint64_t> inv_select_neon_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+static inline std::pair<uint64_t, uint8_t> inv_select_neon_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
     return {0,0};
 }
 
@@ -478,6 +478,7 @@ struct rlbwt_vlb {
     uint16_t ext_pt_width=0;//number of bits we use store the pointers to the trees
     uint8_t mtd_bits=0;//number of bits to encode the maximum tree distance
     std::vector<uint8_t> packed_alpha;//map the symbols from byte to eff alphabet
+    std::vector<uint8_t> unpacked_alpha;//map eff alphabet to the original alphabet
 
     uint8_t levels=0;//maximum number of levels
     stream_type stream;//stream with the data
@@ -504,6 +505,7 @@ struct rlbwt_vlb {
         written_bytes += serialize_elm(ofs, mtd_bits);
 
         written_bytes += serialize_plain_vector(ofs, packed_alpha);
+        written_bytes += serialize_plain_vector(ofs, unpacked_alpha);
 
         written_bytes+=stream.serialize(ofs);
         return written_bytes;
@@ -520,10 +522,11 @@ struct rlbwt_vlb {
         load_elm(ifs, ext_pt_width);
         load_elm(ifs, mtd_bits);
         load_plain_vector(ifs, packed_alpha);
+        load_plain_vector(ifs, unpacked_alpha);
         stream.load(ifs);
     }
 
-    [[nodiscard]] inline std::pair<uint8_t, uint64_t> inverse_select(size_t i) const {
+    [[nodiscard]] inline std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {
 
         //initialize the block size
         size_t bk_sz = block_size;
@@ -544,6 +547,12 @@ struct rlbwt_vlb {
         child = child-(p & run_mask);//eff child in the representation where i lies
         bit_pos =  (header_bytes + (p >> run_width))*8;//bit position where child begins in the stream
 
+        uint8_t lvl=0;
+        uint64_t sigma_pos[10]={0};
+        uint64_t rank_pos[10]={0};
+        uint8_t node_sigma[10]={0};
+        uint8_t rank_width[10]={0};
+
         //skip ext succ/pred information
         size_t n_samps = stream.pop_count(bit_pos, bit_pos+2*sigma-1);
         bit_pos+=2*sigma;
@@ -552,13 +561,18 @@ struct rlbwt_vlb {
         bit_pos+=n_samps*w;//skip the n_samp tree distances
         bit_pos= INT_CEIL(bit_pos, 8)*8;//next byte-aligned position
         //
+        node_sigma[lvl] = sigma;
 
         //read the node header
+        lvl++;
         bool is_leaf = stream.read_bit(bit_pos++);
-        size_t parent_sigma = sigma;
-        size_t node_sigma = stream.pop_count(bit_pos, bit_pos+parent_sigma-1);
-        bit_pos+=parent_sigma;
-        bit_pos+=sym_width(max_freq)*node_sigma;//skip rank information
+        node_sigma[lvl] = stream.pop_count(bit_pos, bit_pos+node_sigma[lvl-1]-1);
+        sigma_pos[lvl]=bit_pos;
+        bit_pos+=node_sigma[lvl-1];
+        rank_pos[lvl] = bit_pos;
+        rank_width[lvl] = sym_width(max_freq);
+        bit_pos+=rank_width[lvl]*node_sigma[lvl];//skip rank information
+
         i-= child*bk_sz;//relative position of i within the child block
 
         while(!is_leaf){
@@ -577,7 +591,7 @@ struct rlbwt_vlb {
             size_t n_real_lsib = 63-__builtin_clzll(child_info);//= select_1(child_info, (eff child)+1)-1
             i-=n_real_lsib*bk_sz;//number of symbols before child within the node
 
-            bit_pos+=node_sigma*n_children;//skip int succ/pred info
+            bit_pos+=node_sigma[lvl]*n_children;//skip int succ/pred info
 
             //read how many bits we use to encode the pointers to the children
             size_t p_width = stream.read(bit_pos, bit_pos+int_pt_width-1);
@@ -592,41 +606,81 @@ struct rlbwt_vlb {
             bit_pos+= p*8;
 
             //start reading the header of child (there is no ext succ/pred info)
+            lvl++;
             is_leaf = stream.read_bit(bit_pos++);
-            parent_sigma = node_sigma;
-            node_sigma = stream.pop_count(bit_pos, bit_pos+parent_sigma-1);
-            bit_pos+=parent_sigma;
-            bit_pos+=sym_width(bk_sz)*node_sigma;//skip rank information
+            node_sigma[lvl] = stream.pop_count(bit_pos, bit_pos+node_sigma[lvl-1]-1);
+            sigma_pos[lvl]=bit_pos;
+            bit_pos+=node_sigma[lvl-1];
+            rank_pos[lvl] = bit_pos;
+            rank_width[lvl] = sym_width(bk_sz);
+            bit_pos+=rank_width[lvl]*node_sigma[lvl];//skip rank information
         }
 
         uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
         bit_pos+= leaf_enc_width;
         auto const *runs_stream = ((uint8_t *)stream.stream)+(INT_CEIL(bit_pos, 8));
 
+        std::pair<uint64_t, uint8_t> rank_answer;
+
         //scan the runs in the leaf according to the leaf encoding
         switch (leaf_enc) {
             case 1:
-                return inv_select_neon_8x16(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 1 byte (no vbyte)
+                rank_answer = inv_select_neon_8x16(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 1 byte (no vbyte)
+                break;
             case 2:
-                return inv_select_neon_16x8<false>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 2 bytes (no vbyte)
+                rank_answer = inv_select_neon_16x8<false>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 2 bytes (no vbyte)
+                break;
             case 3:
-                return inv_select_neon_32x4<false, 3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 3 bytes (no vbyte)
+                rank_answer = inv_select_neon_32x4<false, 3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 3 bytes (no vbyte)
+                break;
             case 4:
-                return inv_select_neon_32x4<false, 4>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 4 bytes (no vbyte)
+                rank_answer = inv_select_neon_32x4<false, 4>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 4 bytes (no vbyte)
+                break;
             case 5:
-                return inv_select_neon_64x2<false, 5>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 5 bytes (no vbyte)
+                rank_answer = inv_select_neon_64x2<false, 5>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 5 bytes (no vbyte)
+                break;
             case 7:
-                return inv_select_neon_16x8<true>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 2 bytes (vbyte)
+                rank_answer = inv_select_neon_16x8<true>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 2 bytes (vbyte)
+                break;
             case 8:
-                return inv_select_neon_32x4<true, 3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 3 bytes (vbyte)
+                rank_answer = inv_select_neon_32x4<true, 3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 3 bytes (vbyte)
+                break;
             case 9:
-                return inv_select_neon_32x4<true, 4>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 4 bytes (vbyte)
+                rank_answer = inv_select_neon_32x4<true, 4>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 4 bytes (vbyte)
+                break;
             case 10:
-                return inv_select_neon_64x2<true, 5>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma, i);//runs use 5 bytes (vbyte)
+                rank_answer = inv_select_neon_64x2<true, 5>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 5 bytes (vbyte)
+                break;
             default:
                 std::cout<<"Undefined encoding"<<std::endl;
                 exit(1);
         }
+
+        bit_pos = rank_pos[lvl]+(rank_answer.second*rank_width[lvl]);
+
+        rank_answer.first += stream.read(bit_pos, bit_pos+rank_width[lvl]-1);//add rank information
+        rank_answer.second = stream.select(sigma_pos[lvl], sigma_pos[lvl]+node_sigma[lvl-1]-1, rank_answer.second+1);//update the symbol
+        lvl--;
+
+        //std::cout<<symbol<<std::endl;
+        while(lvl>0){
+            bit_pos = rank_pos[lvl]+(rank_answer.second*rank_width[lvl]);
+            rank_answer.first += stream.read(bit_pos, bit_pos+rank_width[lvl]-1);
+            rank_answer.second = stream.select(sigma_pos[lvl], sigma_pos[lvl]+node_sigma[lvl-1]-1, rank_answer.second+1);
+            //std::cout<<stream.pop_count(sigma_pos[lvl], sigma_pos[lvl]+node_sigma[lvl-1]-1)<<" "<<symbol<<std::endl;
+            lvl--;
+        }
+
+        return rank_answer;
+    }
+
+    [[nodiscard]] inline uint8_t eff2byte(uint8_t eff_sym) const {
+        assert(eff_sym<sigma);
+        return unpacked_alpha[eff_sym];
+    }
+
+    [[nodiscard]] inline uint64_t size() const {
+        return tot_syms;
     }
 };
 

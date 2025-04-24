@@ -162,6 +162,42 @@ void build_my_bwt(std::string& input_file, std::string& output_file){
     }
 }*/
 
+#define MEASURE(query, time_answer, query_answer) \
+{\
+auto t1 = std::chrono::high_resolution_clock::now();\
+query_answer = query;\
+auto t2 = std::chrono::high_resolution_clock::now();\
+time_answer += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();\
+}
+
+template<class bwt_type>
+void test_inverse_select(bwt_type& my_dt, std::string& input_file){
+    //size_t samp_size = (wt_dt.size()*10)/100;
+
+    sdsl::wt_huff<> wt_huff;
+    sdsl::load_from_file(wt_huff, input_file+".wt_huff_bv");
+
+    size_t samp_size = 10000;
+    double acc_time=0;
+    std::vector<std::pair<uint8_t, uint64_t>> answers(samp_size);
+    for(size_t j=0;j<my_dt.size();j++){
+        //size_t p = rand() % my_dt.size();
+        size_t p = j;
+
+        auto res1= wt_huff.inverse_select(p);
+        auto res2 = my_dt.inverse_select(p);
+
+        if(res1.first!=res2.first || res1.second!=my_dt.eff2byte(res2.second)){
+            std::cout<<"wt_huff idx: "<<p<<" |\t sym: "<<int(res1.second)<<" rank: "<<res1.first<<std::endl;
+            std::cout<<"my_dt   idx: "<<p<<" |\t sym: "<<int(my_dt.eff2byte(res2.second))<<" rank: "<<res2.first<<"\n"<<std::endl;
+        }
+        assert(res1.first==res2.first && res1.second==my_dt.eff2byte(res2.second));
+        //MEASURE(my_dt.inverse_select(p), acc_time, answers[0]);
+    }
+    std::cout<<"inverse_select ";
+    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+}
+
 int main(int argc, char** argv){
 
     if(argc!=4){
@@ -191,5 +227,7 @@ int main(int argc, char** argv){
     std::string output_file = output_prefix+".rlbwt_vlb";
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
-    auto res = bwt_dt.inverse_select(8647935);
+
+    auto res = bwt_dt.inverse_select(27648);
+    test_inverse_select(bwt_dt, output_prefix);
 }

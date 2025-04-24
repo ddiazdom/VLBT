@@ -917,7 +917,7 @@ struct rl_node {//state of the compression
         }
     }
 
-    void print_node_info(std::vector<block_type> bkl, size_t n_blocks){
+    void print_node_info(std::vector<block_type> bkl, size_t n_blocks, std::vector<uint64_t>& parent_rank_info){
 
         std::string pad = std::string(lvl+1, '\t');
 
@@ -934,7 +934,7 @@ struct rl_node {//state of the compression
         size_t p=0;
         for(size_t s=0;s<bwt_rep.sigma;s++){
             if(node_sigma_bv[s]){
-                std::cout<<(p++>0 ? ", ":"")<<s;
+                std::cout<<(p++>0 ? ", ":"")<<"(sym:"<<s<<" rank:"<<parent_rank_info[s]<<")";
             }
         }
         std::cout<<")"<<std::endl;
@@ -1028,6 +1028,10 @@ struct rl_node {//state of the compression
             tmp_node->create_leaf(active_blocks, n_blocks, node_sigma, node_sigma_bv, block_ranks);
         }
 
+        //print the node information for debugging purposes
+        tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
+        //
+
         //add the rank information of the active child node (tmp_node) to the
         // parent's rank information
         for(size_t s=0;s<bwt_rep.sigma;s++){
@@ -1092,10 +1096,6 @@ struct rl_node {//state of the compression
             stats.trees_overhead+=tmp_node->node_n_bits;
         }
 
-        //print the node information for debugging purposes
-        tmp_node->print_node_info(active_blocks, n_blocks);
-        //
-
         //the pointer to the active child node (next_node) should be aligned
         node_n_bits+=tmp_node->node_n_bits;
         block_ptr[++n_children]=(node_n_bits/8);
@@ -1155,14 +1155,17 @@ struct tree_dt{
 
         //compute the effective alphabet and the number of bits we require to encode it
         size_t sigma=0, sigma_bits=0, max_freq=0;
+        bwt_rep.unpacked_alpha.reserve(256);
         for(size_t i=0;i<C.size();i++){
             if(C[i]!=0){
                 if(C[i]>max_freq) max_freq = C[i];
                 bwt_rep.packed_alpha[i] = sigma;
+                bwt_rep.unpacked_alpha.push_back(i);
                 C[sigma++] = C[i];
                 sigma_bits+= sym_width(C[i]);
             }
         }
+        bwt_rep.unpacked_alpha.shrink_to_fit();
         C.resize(sigma+1);
         //
         //compute the array C[1..\sigma]
@@ -1173,7 +1176,6 @@ struct tree_dt{
             acc+=tmp;
         }
         C[sigma] = acc;
-        //bwt_rep.sigma_bits = sigma_bits;
         bwt_rep.tot_syms = acc;
         bwt_rep.sigma = sigma;
         bwt_rep.max_freq = max_freq;
