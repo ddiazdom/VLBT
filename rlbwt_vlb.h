@@ -612,7 +612,7 @@ struct rlbwt_vlb {
             sigma_pos[lvl]=bit_pos;
             bit_pos+=node_sigma[lvl-1];
             rank_pos[lvl] = bit_pos;
-            rank_width[lvl] = sym_width(bk_sz);
+            rank_width[lvl] = sym_width(bk_sz*scale_factor);
             bit_pos+=rank_width[lvl]*node_sigma[lvl];//skip rank information
         }
 

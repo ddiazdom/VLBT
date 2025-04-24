@@ -228,6 +228,6 @@ int main(int argc, char** argv){
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-    auto res = bwt_dt.inverse_select(27648);
+    auto res = bwt_dt.inverse_select(11342590);
     test_inverse_select(bwt_dt, output_prefix);
 }

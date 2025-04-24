@@ -269,7 +269,7 @@ struct rl_node {//state of the compression
         } else {
             //internal node that is not the root
             //bsize*s_factor is the block size of the parent
-            r_width = sym_width(b_size*s_factor);
+            r_width = sym_width(b_size*s_factor*s_factor);
         }
         size_t rank_bits = r_width*node_sigma;
         //amount of bits for the succ/pred info
@@ -725,43 +725,82 @@ struct rl_node {//state of the compression
         }
 
         size_t bfr_dist[9]={0}, bytes;
+        uint64_t sum4=0, sum8=0, sum16=0, sum32=0;
+        uint64_t max_sum4=0, max_sum8=0, max_sum16, max_sum32;
+        size_t run_id=0;
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
                 run.first = packed_alphabet[run.first];
                 //I need to use a fixed number of bits for the symbols (i.e., sym_width(node_sigma) bits)
                 bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.second)), 8);
                 bfr_dist[bytes]++;
+
+                if(run_id % 4==0){
+                    if(sum4>max_sum4) max_sum4=sum4;
+                    sum4=0;
+                }
+
+                if(run_id % 8==0){
+                    if(sum8>max_sum8) max_sum8=sum8;
+                    sum8=0;
+                }
+
+                if(run_id % 16==0){
+                    if(sum16>max_sum16) max_sum16=sum16;
+                    sum16=0;
+                }
+
+                if(run_id % 32==0){
+                    if(sum32>max_sum32) max_sum32=sum32;
+                    sum32=0;
+                }
+
+                sum4+=run.second;
+                sum8+=run.second;
+                sum16+=run.second;
+                sum32+=run.second;
+                run_id++;
             }
         }
         assert(bfr_dist[0]==0);
 
-        size_t total_vbytes=0, max_vbytes=0;
+        if(sum4>max_sum4) max_sum4=sum4;
+        if(sum8>max_sum8) max_sum8=sum8;
+        if(sum16>max_sum16) max_sum16=sum16;
+        if(sum32>max_sum32) max_sum32=sum32;
+
+        size_t total_vbytes=0, max_bytes=0;
         for(size_t b=1;b<9;b++){
             total_vbytes +=bfr_dist[b]*b;
-            if(bfr_dist[b]>0) max_vbytes = b;
+            if(bfr_dist[b]>0) max_bytes = b;
         }
-        assert(max_vbytes>0 && max_vbytes<6);
+        assert(max_bytes>0 && max_bytes<6);
 
-        if(max_vbytes>1){
+        if(max_bytes==1 && max_sum32>256){
+
+        }
+
+
+        if(max_bytes>1){
             //number of control masks of 1 byte for fast vbyte decoding;
-            total_vbytes += INT_CEIL(n_runs, (8/sym_width(max_vbytes-1)));
+            total_vbytes += INT_CEIL(n_runs, (8/sym_width(max_bytes-1)));
         }
 
         //alternative encoding using a fixed number of bytes per run
-        size_t total_fbytes = max_vbytes*n_runs;
+        size_t total_fbytes = max_bytes*n_runs;
 
         //byte encoding for the runs of this leaf
         size_t run_bits;
         bool fix_len_enc=false;
         if(total_vbytes<total_fbytes){
-            assert(max_vbytes>1);
+            assert(max_bytes>1);
             run_bits = total_vbytes*8;
             stats.runs_overhead += run_bits;
-            leaf_enc=5+max_vbytes;//+5 is to difference them from fix-length blocks
+            leaf_enc=5+max_bytes;//+5 is to difference them from fix-length blocks
         }else{
             run_bits = total_fbytes*8;
             stats.runs_overhead += run_bits;
-            leaf_enc=max_vbytes;
+            leaf_enc=max_bytes;
             fix_len_enc = true;
         }
 
@@ -775,7 +814,7 @@ struct rl_node {//state of the compression
         } else {
             //the leaf is the child of an internal node
             //rank information: previous siblings
-            r_width = sym_width(b_size*s_factor);
+            r_width = sym_width(b_size*s_factor*s_factor);
         }
 
         size_t rank_bits = r_width*node_sigma;
@@ -819,8 +858,7 @@ struct rl_node {//state of the compression
         assert((byte_pos*8)==header_bits);
 
         auto *byte_stream = (uint8_t *) buffer.stream;
-        size_t written_bytes = insert_runs(blocks, n_blocks, &byte_stream[byte_pos], sym_width(node_sigma),
-                                           max_vbytes , fix_len_enc);
+        size_t written_bytes = insert_runs(blocks, n_blocks, &byte_stream[byte_pos], sym_width(node_sigma), max_bytes , fix_len_enc);
         assert((written_bytes*8)==run_bits);
 
         node_n_bits = header_bits+run_bits;
