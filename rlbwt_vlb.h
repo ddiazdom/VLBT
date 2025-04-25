@@ -9,7 +9,7 @@
 #include "bitstream.h"
 
 template<bool vbyte_compressed>
-static inline uint64_t inv_select_scalar(const uint16_t* stream, uint8_t sym, uint64_t idx){
+static inline uint64_t inv_select_scl_8(const uint16_t* stream, uint8_t sym, uint64_t idx){
     uint8_t alpha_bits = 4;
     uint8_t alpha_mask = 15;
 
@@ -24,401 +24,77 @@ static inline uint64_t inv_select_scalar(const uint16_t* stream, uint8_t sym, ui
     return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);
 }
 
-#ifdef __ARM_NEON__
-#include <arm_neon.h>
-#include "vbyte_simd_dec_tables.h"
+template<bool vbyte_compressed>
+static inline uint64_t inv_select_scl_16(const uint16_t* stream, uint8_t sym, uint64_t idx){
+    uint8_t alpha_bits = 4;
+    uint8_t alpha_mask = 15;
 
-template<bool vbyte_compressed, uint8_t ctr_width, uint8_t bytes_per_run>
-static inline uint8x16_t decode_block_neon(const uint8_t **stream){
-
-    if constexpr (vbyte_compressed) {
-        uint8_t *pshuf, ctrl_bits = **stream;
-        uint8_t len;
-        if constexpr (ctr_width == 1) {
-            pshuf = (uint8_t *) &dec_table_16x8[ctrl_bits];
-            len = pshuf[14 + (ctrl_bits >> 7)] + 1;
-        } else if constexpr (ctr_width == 2) {
-            pshuf = (uint8_t *) &dec_table_32x4[ctrl_bits];
-            len = pshuf[12 + (ctrl_bits >> 6)] + 1;
-        } else if constexpr (ctr_width == 3) {
-            pshuf = (uint8_t *) &dec_table_64x2[ctrl_bits];
-            len = pshuf[8 + ((ctrl_bits >> 3) & 7)] + 1;
-        } else {
-            exit(1);
-        }
-        uint8x16_t compressed = vld1q_u8(*stream + 1);
-        uint8x16_t dec_shuffle = vld1q_u8(pshuf);
-        uint8x16_t data = vqtbl1q_u8(compressed, dec_shuffle);
-        *stream += len + 1;
-
-        return data;
-
-    } else {
-        uint8x16_t data = vld1q_u8(*stream);
-        //align the bytes
-        if constexpr (bytes_per_run==3){
-            const int8x16_t dec_shuff = {0,1,2,-1, 3,4,5,-1, 6,7,8,-1, 9,10,11,-1};
-            data = vqtbl1q_u8(data, dec_shuff);
-            *stream+=12;
-        } else if constexpr (bytes_per_run==5){
-            const int8x16_t dec_shuff = {0,1,2,3,4,-1,-1,-1, 5,6,7,8,9,-1,-1,-1};
-            data = vqtbl1q_u8(data, dec_shuff);
-            *stream+=10;
-        } else if constexpr (bytes_per_run==6){
-            const int8x16_t dec_shuff = {0,1,2,3,4,5,-1,-1, 6,7,8,9,10,11,-1,-1};
-            data = vqtbl1q_u8(data, dec_shuff);
-            *stream+=12;
-        } else if constexpr (bytes_per_run==7){
-            const int8x16_t dec_shuff = {0,1,2,3,4,5,6,-1, 7,8,9,10,11,12,13,-1};
-            data = vqtbl1q_u8(data, dec_shuff);
-            *stream+=14;
-        } else{
-            *stream+=16;
-        }
-        return data;
+    uint64_t r_len[2]={0};
+    r_len[1] = stream[0]>>alpha_bits;
+    size_t acc = r_len[1], i=0, rank=0;
+    while(acc<idx){
+        rank+= r_len[(stream[i] & alpha_mask)==sym];
+        r_len[1] = stream[++i]>>alpha_bits;
+        acc+= r_len[1];
     }
-}
-
-static inline std::pair<uint64_t, uint8_t> inv_select_neon_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx){
-
-    //NOTE here I do not need to vbyte compress the block
-    const uint8_t sigma_bits = sym_width(sigma);
-    const int8x16_t alpha_shift = vdupq_n_u8(-sigma_bits);
-    const uint8_t *stream_start = *stream;
-
-    size_t l=0;
-    uint8x16_t block =  vld1q_u8(*stream);
-    *stream+=16;
-    uint8x16_t bk_lengths = vshlq_u8(block, alpha_shift);
-    uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
-    uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-
-    while(acc<=idx){
-        block =  vld1q_u8(*stream);
-        *stream+=16;
-        bk_lengths = vshlq_u8(block, alpha_shift);
-
-        prev_acc = acc;
-        tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
-        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-        l++;
-    }
-
-    idx-=prev_acc;
-
-    //prefix sum
-    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 15), bk_lengths);
-    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 14), bk_lengths);
-    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 12), bk_lengths);
-    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 8), bk_lengths);
-    //
-
-    const uint8x16_t idx_mask = vcgtq_u8(bk_lengths, vdupq_n_u8(idx));//mask for >idx
-    const uint8x8_t res = vshrn_n_u16(vreinterpretq_u16_u8(idx_mask), 4);
-    const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
-    uint8_t idx_run = __builtin_ctzll(less_than)>>2;
-
-    uint8_t alpha_m = (1UL << sigma_bits)-1;
-    const uint8x16_t alpha_mask = vdupq_n_u8(alpha_m);
-
-    const uint8x16_t shuff = vdupq_n_u8(idx_run);
-    const uint8x16_t run_vec = vqtbl1q_u8(block, shuff);
-    const uint8x16_t sym_vec = vandq_u8(run_vec, alpha_mask);
-
-    uint8_t run = vgetq_lane_u8(run_vec, 0);
-    uint8_t pf_sum = vgetq_lane_u8(vqtbl1q_u8(bk_lengths, shuff), 0);
-    pf_sum-= run>>sigma_bits;
-    uint8_t sym = run & alpha_m;
-
-    *stream = stream_start;
-    //compute the rank answer
-    uint64_t rank = 0;
-    for(size_t p=0;p<l;p++){
-        block = vld1q_u8(*stream);
-        *stream+=16;
-        bk_lengths = vshlq_u8(block, alpha_shift);
-
-        bk_lengths = vandq_u8(bk_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
-
-        tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
-        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-    }
-
-    block = vld1q_u8(*stream);
-    bk_lengths = vshlq_u8(block, alpha_shift);
-
-    bk_lengths = vandq_u8(bk_lengths, vld1q_u8(mask8x16[idx_run]));
-    bk_lengths = vandq_u8(bk_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
-
-    tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
-    rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-    rank +=idx-pf_sum;
-    return {rank, sym};
+    return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);
 }
 
 template<bool vbyte_compressed>
-static inline std::pair<uint64_t, uint8_t> inv_select_neon_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx){
+static inline uint64_t inv_select_scl_32(const uint16_t* stream, uint8_t sym, uint64_t idx){
+    uint8_t alpha_bits = 4;
+    uint8_t alpha_mask = 15;
 
-    //TODO: assert idx fits 2 bytes
-    const uint8_t sigma_bits = sym_width(sigma);
-    const int16x8_t alpha_shift = vdupq_n_u16(-sigma_bits);
-    const uint8_t *stream_start = *stream;
-
-    size_t l=0;
-    uint16x8_t block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
-    uint16x8_t bk_lengths = vshlq_u16(block, alpha_shift);
-    uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(bk_lengths));
-    uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-
-    while(acc<=idx){
-        block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
-        bk_lengths = vshlq_u16(block, alpha_shift);
-
-        prev_acc = acc;
-        tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
-        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-        l++;
-    }
-
-    idx-=prev_acc;
-
-    //prefix sum
-    bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 7), bk_lengths);
-    bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 6), bk_lengths);
-    bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 4), bk_lengths);
-    //
-
-    const uint16x8_t idx_mask = vcgtq_u16(bk_lengths, vdupq_n_u16(idx));//mask for >idx
-    const uint8x8_t res = vshrn_n_u16(idx_mask, 4);
-    const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
-    uint8_t idx_run = __builtin_ctzll(less_than)>>3;
-    uint16_t alpha_m = (1UL << sigma_bits)-1;
-    const uint16x8_t alpha_mask = vdupq_n_u16(alpha_m);
-
-    const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
-    const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(idx_run<<1));
-
-    const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
-    const uint16x8_t sym_vec = vandq_u16(run_vec, alpha_mask);
-
-    uint16_t run = vgetq_lane_u16(run_vec, 0);
-    uint16_t pf_sum = vgetq_lane_u16(vreinterpretq_u16_u8(vqtbl1q_u8(bk_lengths, shuff)), 0);
-    pf_sum-= run>>sigma_bits;
-    uint8_t sym = run & alpha_m;
-
-    *stream = stream_start;
-    //compute the rank answer
-    uint64_t rank = 0;
-    for(size_t p=0;p<l;p++){
-
-        block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
-        bk_lengths = vshlq_u16(block, alpha_shift);
-
-        bk_lengths = vandq_u16(bk_lengths, vceqq_u16(vandq_u16(block, alpha_mask), sym_vec));
-
-        tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
-        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-    }
-
-    block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
-    bk_lengths = vshlq_u16(block, alpha_shift);
-
-    bk_lengths = vandq_u16(bk_lengths, vld1q_u16(mask16x8[idx_run]));
-    bk_lengths = vandq_u16(bk_lengths, vceqq_u16(vandq_u16(block, alpha_mask), sym_vec));
-
-    tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
-    rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-    rank +=idx-pf_sum;
-    return {rank, sym};
-}
-
-template<bool vbyte_compressed, uint8_t bytes_per_run>
-static inline std::pair<uint64_t, uint8_t> inv_select_neon_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
-
-    //TODO: assert idx fits 4 bytes
-    const uint8_t sigma_bits = sym_width(sigma);
-    const int32x4_t alpha_shift = vdupq_n_u32(-sigma_bits);
-    const uint8_t *stream_start = *stream;
-
-    size_t l=0;
-    uint32x4_t block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
-    uint32x4_t bk_lengths = vshlq_u32(block, alpha_shift);
-    uint64x2_t tmp = vpaddlq_u32(bk_lengths);
-    uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-
-    while(acc<=idx){
-        block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
-        bk_lengths = vshlq_u32(block, alpha_shift);
-
-        prev_acc = acc;
-        tmp = vpaddlq_u32(bk_lengths);
-        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-        l++;
-    }
-
-    idx-=prev_acc;
-
-    //prefix sum
-    bk_lengths = vaddq_u32(vextq_u32(vdupq_n_u32(0), bk_lengths, 3), bk_lengths);
-    bk_lengths = vaddq_u32(vextq_u32(vdupq_n_u32(0), bk_lengths, 2), bk_lengths);
-    //
-
-    const uint32x4_t idx_mask = vcgtq_u32(bk_lengths, vdupq_n_u32(idx));// mask for >idx
-    const uint16x4_t res = vshrn_n_u32(idx_mask, 16);
-    const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u16(res), 0);
-    uint8_t idx_run = __builtin_ctzll(less_than)>>4;
-    uint32_t alpha_m = (1UL << sigma_bits)-1;
-    const uint32x4_t alpha_mask = vdupq_n_u32(alpha_m);
-
-    const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
-    const uint8x16_t shuff = vaddq_u32(shuff_idxs, vdupq_n_u8(idx_run<<2));
-
-    const uint32x4_t run_vec = vreinterpretq_u32_u8(vqtbl1q_u8(block, shuff));
-    const uint32x4_t sym_vec = vandq_u32(run_vec, alpha_mask);
-
-    uint32_t run = vgetq_lane_u32(run_vec, 0);
-    uint32_t pf_sum = vgetq_lane_u32(vreinterpretq_u32_u8(vqtbl1q_u8(bk_lengths, shuff)), 0);
-    pf_sum-= run>>sigma_bits;
-    uint8_t sym = run & alpha_m;
-
-    *stream = stream_start;
-
-    //compute the rank answer
-    uint64_t rank = 0;
-    for(size_t p=0;p<l;p++){
-        block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
-        bk_lengths = vshlq_u32(block, alpha_shift);
-
-        bk_lengths = vandq_u32(bk_lengths, vceqq_u32(vandq_u32(block, alpha_mask), sym_vec));
-
-        tmp = vpaddlq_u32(bk_lengths);
-        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-    }
-
-    block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
-    bk_lengths = vshlq_u32(block, alpha_shift);
-
-    bk_lengths = vandq_u32(bk_lengths, vld1q_u32(mask32x4[idx_run]));
-    bk_lengths = vandq_u32(bk_lengths, vceqq_u32(vandq_u32(block, alpha_mask), sym_vec));
-
-    tmp = vpaddlq_u32(bk_lengths);
-    rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-    rank +=idx-pf_sum;
-
-    return {rank, sym};
-}
-
-template<bool vbyte_compressed, uint8_t bytes_per_run>
-static inline std::pair<uint64_t, uint8_t> inv_select_neon_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
-    return {0,0};
-}
-#endif
-
-#ifdef __AVX2__
-#include <immintrin.h>
-
-#define _mm256_cmpge_epu16(a, b) \
-        _mm256_cmpeq_epi16(_mm256_max_epu16(a, b), a)
-
-#define _mm256_cmple_epu16(a, b) _mm256_cmpge_epu16(b, a)
-
-static inline uint64_t count_avx2(const uint16_t * stream, uint8_t sym, uint64_t idx){
-
-
-    /*const __m256i sym_vec = _mm256_set1_epi16(sym);
-    const __m256i alpha_mask = _mm256_set1_epi16(15);
-    size_t i=0;
-
-    __m256i block = _mm256_loadu_si256((const __m256i*)&stream[0]);
-    __m256i bk_lengths = _mm256_srli_epi16(block, 4);
-
-    __m256i hadd = _mm256_hadd_epi16(bk_lengths, bk_lengths);
-    __m128i sum128 = _mm_add_epi16(_mm256_extracti128_si256(hadd, 0), _mm256_extracti128_si256(hadd, 1));
-    sum128 = _mm_hadd_epi16(sum128, sum128);
-    sum128 = _mm_hadd_epi16(sum128, sum128);
-    uint64_t acc = _mm_extract_epi16(sum128, 0);
-
-    size_t rank=0;
-
+    uint64_t r_len[2]={0};
+    r_len[1] = stream[0]>>alpha_bits;
+    size_t acc = r_len[1], i=0, rank=0;
     while(acc<idx){
-        bk_lengths = _mm256_and_si256(bk_lengths, _mm256_cmpeq_epi16(_mm256_and_si256(block, alpha_mask), sym_vec));
-
-        hadd = _mm256_hadd_epi16(bk_lengths, bk_lengths);
-        sum128 = _mm_add_epi16(_mm256_extracti128_si256(hadd, 0), _mm256_extracti128_si256(hadd, 1));
-        sum128 = _mm_hadd_epi16(sum128, sum128);
-        sum128 = _mm_hadd_epi16(sum128, sum128);
-        rank += _mm_extract_epi16(sum128, 0);
-
-        i+=8;
-        block = _mm256_load_si256((const __m256i*)stream);
-        bk_lengths = _mm256_srli_epi16(block, 4);
-
-        hadd = _mm256_hadd_epi16(bk_lengths, bk_lengths);
-        sum128 = _mm_add_epi16(_mm256_extracti128_si256(hadd, 0), _mm256_extracti128_si256(hadd, 1));
-        sum128 = _mm_hadd_epi16(sum128, sum128);
-        sum128 = _mm_hadd_epi16(sum128, sum128);
-        acc += _mm_extract_epi16(sum128, 0);
-    }*/
-
-    /*size_t tmp=0;
-    for(size_t j=0;j<64;j++){
-        tmp+=stream[j]>>4;
-        std::cout<<j<<" -> sym:"<<(stream[j] & 15)<<" len:"<<(stream[j]>>4)<<" acc:"<<tmp<<std::endl;
-    }*/
-
-    const __m256i sym_vec = _mm256_set1_epi16(sym);
-    const __m256i alpha_mask = _mm256_set1_epi16(15);
-    __m256i rank_acc = _mm256_set1_epi16(0);
-    size_t i=0;
-    uint16_t acc[16]={0};
-
-    do{
-        __m256i block = _mm256_loadu_si256((const __m256i*)&stream[i]);
-        __m256i bk_lengths = _mm256_srli_epi16(block, 4);
-        __m256i sym_mask = _mm256_cmpeq_epi16(_mm256_and_si256(block, alpha_mask), sym_vec);
-
-        _mm256_storeu_si256((__m256i *)&acc, bk_lengths);
-        /*for(size_t j=0;j<16;j++){
-            std::cout<<i<<" = "<<idx<<" -> "<<j<<" / "<<acc[j]<<std::endl;
-        }*/
-
-        __m256i pf_sum = _mm256_add_epi16(bk_lengths, _mm256_slli_si256(bk_lengths, 2));
-        pf_sum = _mm256_add_epi16(pf_sum, _mm256_slli_si256(pf_sum, 4));
-        pf_sum = _mm256_add_epi16(pf_sum, _mm256_slli_si256(pf_sum, 8));
-        _mm256_storeu_si256((__m256i *)&acc, pf_sum);
-        uint16_t last_pf = acc[7]+acc[15];
-        pf_sum = _mm256_add_epi16(pf_sum, _mm256_set_m128i( _mm_set1_epi16(acc[7]), _mm_set1_epi16(0)));
-
-        __m256i counter =_mm256_cmpgt_epi16(_mm256_set1_epi16(idx),pf_sum);
-        sym_mask = _mm256_and_si256(sym_mask, counter);
-        rank_acc = _mm256_add_epi16(rank_acc, _mm256_and_si256(bk_lengths, sym_mask));
-
-        //TODO
-        /*_mm256_storeu_si256((__m256i *)&acc, pf_sum);
-        for(size_t j=0;j<16;j++){
-            std::cout<<idx<<" -> "<<j<<" / "<<acc[j]<<std::endl;
-        }
-        _mm256_storeu_si256((__m256i *)&acc, counter);
-        for(size_t j=0;j<16;j++){
-            std::cout<<j<<" | "<<acc[j]<<std::endl;
-        }*/
-        //
-
-        if(idx<=last_pf){
-            uint32_t cnt_mask = _mm256_movemask_epi8(counter);
-            uint64_t last = (_mm_popcnt_u32(cnt_mask)>>1);
-
-            __m256i hadd = _mm256_hadd_epi16(rank_acc, rank_acc);
-            __m128i sum128 = _mm_add_epi16(_mm256_extracti128_si256(hadd, 0), _mm256_extracti128_si256(hadd, 1));
-            sum128 = _mm_hadd_epi16(sum128, sum128);
-            sum128 = _mm_hadd_epi16(sum128, sum128);
-            uint64_t rank = _mm_extract_epi16(sum128, 0);
-            return rank + ((idx-last_pf)*((stream[i+last] & 15)==sym));
-        }
-        i+=16;
-        idx -= last_pf;
-    } while(true);
+        rank+= r_len[(stream[i] & alpha_mask)==sym];
+        r_len[1] = stream[++i]>>alpha_bits;
+        acc+= r_len[1];
+    }
+    return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);
 }
+
+template<bool vbyte_compressed>
+static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, uint64_t idx){
+    uint8_t alpha_bits = 4;
+    uint8_t alpha_mask = 15;
+
+    uint64_t r_len[2]={0};
+    r_len[1] = stream[0]>>alpha_bits;
+    size_t acc = r_len[1], i=0, rank=0;
+    while(acc<idx){
+        rank+= r_len[(stream[i] & alpha_mask)==sym];
+        r_len[1] = stream[++i]>>alpha_bits;
+        acc+= r_len[1];
+    }
+    return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);
+}
+
+#if defined(__ARM_NEON__)
+#include "neon_scan.h"
+#define INV_SELECT_8 inv_select_neon_8x16
+#define INV_SELECT_16 inv_select_neon_16x8
+#define INV_SELECT_32 inv_select_neon_32x4
+#define INV_SELECT_64 inv_select_neon_64x2
+#elif defined(__AVX2__)
+#include "avx2_scan.h"
+#define INV_SELECT_8 inv_select_avx2_8x16
+#define INV_SELECT_16 inv_select_avx2_16x8
+#define INV_SELECT_32 inv_select_avx2_32x4
+#define INV_SELECT_64 inv_select_avx2_64x2
+#elif defined(__SSE4_2__)
+#include "sse42_scan.h
+#define INV_SELECT_8 inv_select_sse42_8x16
+#define INV_SELECT_16 inv_select_sse42_16x8
+#define INV_SELECT_32 inv_select_sse42_32x4
+#define INV_SELECT_64 inv_select_sse42_64x2
+#else
+#define INV_SELECT_8 inv_select_scl_8
+#define INV_SELECT_16 inv_select_scl_16
+#define INV_SELECT_32 inv_select_scl_32
+#define INV_SELECT_64 inv_select_scl_64
 #endif
 
 typedef bitstream<size_t> stream_type;
@@ -490,6 +166,10 @@ struct rlbwt_vlb {
         load_plain_vector(ifs, packed_alpha);
         load_plain_vector(ifs, unpacked_alpha);
         stream.load(ifs);
+    }
+
+    static inline void find_leaf(size_t i){
+
     }
 
     [[nodiscard]] inline std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {
@@ -591,31 +271,31 @@ struct rlbwt_vlb {
         //scan the runs in the leaf according to the leaf encoding
         switch (leaf_enc) {
             case 1:
-                rank_answer = inv_select_neon_8x16(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 1 byte (no vbyte)
+                rank_answer = INV_SELECT_8(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 1 byte (no vbyte)
                 break;
             case 2:
-                rank_answer = inv_select_neon_16x8<false>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 2 bytes (no vbyte)
+                rank_answer = INV_SELECT_16<false>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 2 bytes (no vbyte)
                 break;
             case 3:
-                rank_answer = inv_select_neon_32x4<false, 3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 3 bytes (no vbyte)
+                rank_answer = INV_SELECT_32<false, 3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 3 bytes (no vbyte)
                 break;
             case 4:
-                rank_answer = inv_select_neon_32x4<false, 4>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 4 bytes (no vbyte)
+                rank_answer = INV_SELECT_32<false, 4>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 4 bytes (no vbyte)
                 break;
             case 5:
-                rank_answer = inv_select_neon_64x2<false, 5>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 5 bytes (no vbyte)
+                rank_answer = INV_SELECT_64<false, 5>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 5 bytes (no vbyte)
                 break;
             case 7:
-                rank_answer = inv_select_neon_16x8<true>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 2 bytes (vbyte)
+                rank_answer = INV_SELECT_16<true>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 2 bytes (vbyte)
                 break;
             case 8:
-                rank_answer = inv_select_neon_32x4<true, 3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 3 bytes (vbyte)
+                rank_answer = INV_SELECT_32<true, 3>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 3 bytes (vbyte)
                 break;
             case 9:
-                rank_answer = inv_select_neon_32x4<true, 4>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 4 bytes (vbyte)
+                rank_answer = INV_SELECT_32<true, 4>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 4 bytes (vbyte)
                 break;
             case 10:
-                rank_answer = inv_select_neon_64x2<true, 5>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 5 bytes (vbyte)
+                rank_answer = INV_SELECT_64<true, 5>(reinterpret_cast<const uint8_t **>(&runs_stream), node_sigma[lvl], i);//runs use 5 bytes (vbyte)
                 break;
             default:
                 std::cout<<"Undefined encoding"<<std::endl;
@@ -636,8 +316,11 @@ struct rlbwt_vlb {
             //std::cout<<stream.pop_count(sigma_pos[lvl], sigma_pos[lvl]+node_sigma[lvl-1]-1)<<" "<<symbol<<std::endl;
             lvl--;
         }
-
         return rank_answer;
+    }
+
+    [[nodiscard]] inline uint8_t operator[](size_t i) const {
+        assert(i<tot_syms);
     }
 
     [[nodiscard]] inline uint8_t eff2byte(uint8_t eff_sym) const {

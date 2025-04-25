@@ -1,0 +1,8 @@
+//
+// Created by Diaz, Diego on 25.4.2025.
+//
+
+#ifndef BWT_DTS_BENCHMARKS_SSE42_SCAN_H
+#define BWT_DTS_BENCHMARKS_SSE42_SCAN_H
+
+#endif //BWT_DTS_BENCHMARKS_SSE42_SCAN_H
