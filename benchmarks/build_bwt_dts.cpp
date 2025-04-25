@@ -17,6 +17,25 @@
 #include "../construct_rlbwt_vlb.h"
 #include "../rlbwt_vlb.h"
 
+#include <unordered_set>
+#include <vector>
+#include <random>
+
+std::vector<uint64_t> sample_unique(uint64_t n, uint64_t x) {
+    if (x > n) throw std::invalid_argument("x cannot be larger than n");
+
+    std::unordered_set<uint64_t> seen;
+    std::mt19937_64 rng(std::random_device{}());
+    std::uniform_int_distribution<uint64_t> dist(0, n - 1);
+
+    while (seen.size() < x) {
+        uint64_t val = dist(rng);
+        seen.insert(val);  // insert is a no-op if val already exists
+    }
+
+    return {seen.begin(), seen.end()};
+}
+
 #define build_dt(dt, suffix) \
 {                            \
 dt instance;                 \
@@ -177,10 +196,35 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
     sdsl::wt_huff<> wt_huff;
     sdsl::load_from_file(wt_huff, input_file+".wt_huff_bv");
 
+    sdsl::wt_rlmn<> wt_rlmn;
+    sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
+
     size_t samp_size = 10000;
+    std::vector<uint64_t> samples = sample_unique(wt_huff.size(), 10000);
+    std::vector<std::pair<uint8_t, uint64_t>> answers(1);
+
     double acc_time=0;
-    std::vector<std::pair<uint8_t, uint64_t>> answers(samp_size);
-    for(size_t j=0;j<my_dt.size();j++){
+    for(unsigned long long & sample : samples){
+        MEASURE(my_dt.inverse_select(sample), acc_time, answers[0]);
+    }
+    std::cout<<"inverse_select rlbwt_vlb:";
+    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+
+    acc_time=0;
+    for(unsigned long long & sample : samples){
+        MEASURE(wt_huff.inverse_select(sample), acc_time, answers[0]);
+    }
+    std::cout<<"inverse_select wt_huff:";
+    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+
+    acc_time=0;
+    for(unsigned long long & sample : samples){
+        MEASURE(wt_rlmn.inverse_select(sample), acc_time, answers[0]);
+    }
+    std::cout<<"inverse_select wt_rlmn:";
+    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+
+    /*for(size_t j=0;j<my_dt.size();j++){
         //size_t p = rand() % my_dt.size();
         size_t p = j;
 
@@ -193,9 +237,7 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
         }
         assert(res1.first==res2.first && res1.second==my_dt.eff2byte(res2.second));
         //MEASURE(my_dt.inverse_select(p), acc_time, answers[0]);
-    }
-    std::cout<<"inverse_select ";
-    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+    }*/
 }
 
 int main(int argc, char** argv){
@@ -228,6 +270,6 @@ int main(int argc, char** argv){
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-    auto res = bwt_dt.inverse_select(11342590);
+    auto res = bwt_dt.inverse_select(29613627);
     test_inverse_select(bwt_dt, output_prefix);
 }

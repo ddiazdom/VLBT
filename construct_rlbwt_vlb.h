@@ -725,9 +725,10 @@ struct rl_node {//state of the compression
         }
 
         size_t bfr_dist[9]={0}, bytes;
-        uint64_t sum4=0, sum8=0, sum16=0, sum32=0;
-        uint64_t max_sum4=0, max_sum8=0, max_sum16, max_sum32;
-        size_t run_id=0;
+        //uint64_t sum4=0, sum8=0, sum16=0, sum32=0;
+        //uint64_t max_sum4=0, max_sum8=0, max_sum16, max_sum32;
+        //size_t run_id=0;
+
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
                 run.first = packed_alphabet[run.first];
@@ -735,7 +736,7 @@ struct rl_node {//state of the compression
                 bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.second)), 8);
                 bfr_dist[bytes]++;
 
-                if(run_id % 4==0){
+                /*if(run_id % 4==0){
                     if(sum4>max_sum4) max_sum4=sum4;
                     sum4=0;
                 }
@@ -754,20 +755,19 @@ struct rl_node {//state of the compression
                     if(sum32>max_sum32) max_sum32=sum32;
                     sum32=0;
                 }
-
                 sum4+=run.second;
                 sum8+=run.second;
                 sum16+=run.second;
                 sum32+=run.second;
-                run_id++;
+                run_id++;*/
             }
         }
         assert(bfr_dist[0]==0);
 
-        if(sum4>max_sum4) max_sum4=sum4;
-        if(sum8>max_sum8) max_sum8=sum8;
-        if(sum16>max_sum16) max_sum16=sum16;
-        if(sum32>max_sum32) max_sum32=sum32;
+        //if(sum4>max_sum4) max_sum4=sum4;
+        //if(sum8>max_sum8) max_sum8=sum8;
+        //if(sum16>max_sum16) max_sum16=sum16;
+        //if(sum32>max_sum32) max_sum32=sum32;
 
         size_t total_vbytes=0, max_bytes=0;
         for(size_t b=1;b<9;b++){
@@ -776,10 +776,9 @@ struct rl_node {//state of the compression
         }
         assert(max_bytes>0 && max_bytes<6);
 
-        if(max_bytes==1 && max_sum32>256){
+        /*if(max_bytes==1 && max_sum32>256){
 
-        }
-
+        }*/
 
         if(max_bytes>1){
             //number of control masks of 1 byte for fast vbyte decoding;
@@ -1067,7 +1066,7 @@ struct rl_node {//state of the compression
         }
 
         //print the node information for debugging purposes
-        tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
+        //tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
         //
 
         //add the rank information of the active child node (tmp_node) to the
@@ -1217,10 +1216,9 @@ struct tree_dt{
         bwt_rep.tot_syms = acc;
         bwt_rep.sigma = sigma;
         bwt_rep.max_freq = max_freq;
-
-        for(size_t s=0;s<sigma;s++){
+        /*for(size_t s=0;s<sigma;s++){
             std::cout<<s<<" "<<C[s]<<std::endl;
-        }
+        }*/
         //
 
         root = new node_type(0, bwt_dt_type::block_size, bwt_rep, stats);
