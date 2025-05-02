@@ -1,5 +1,5 @@
 #include <iostream>
-#include "../rlbwt_small_alpha.h"
+#include "rlbwt_small_alpha.h"
 #include "sdsl/wavelet_trees.hpp"
 #include "sdsl/wt_algorithm.hpp"
 #include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"

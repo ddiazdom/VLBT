@@ -13,9 +13,9 @@
 #include <sdsl/wt_rlmn.hpp>
 #include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 
-#include "../rlbwt_small_alpha.h"
-#include "../construct_rlbwt_vlb.h"
-#include "../rlbwt_vlb.h"
+#include "../../rlbwt_small_alpha.h"
+#include "../../construct_rlbwt_vlb.h"
+#include "../../rlbwt_vlb.h"
 
 #include <unordered_set>
 #include <vector>
@@ -72,8 +72,8 @@ build_dt(sdsl::rlmn<>, "wt_rlmn");               \*/
 build_dt(sdsl::wt_rlmn<>, "wt_rlmn");\
 build_dt(sdsl::wt_huff<>, "wt_huff_bv");\
 build_dt(wt_fbb<sdsl::bit_vector>, "wt_fbb_bv");\
-build_dt(wt_fbb<sdsl::rrr_vector<>>, "wt_fbb_rrr");\
-build_dt(wt_fbb<sdsl::hyb_vector<>>, "wt_fbb_hyb");\
+//build_dt(wt_fbb<sdsl::rrr_vector<>>, "wt_fbb_rrr");\
+//build_dt(wt_fbb<sdsl::hyb_vector<>>, "wt_fbb_hyb");\
 //build_dt(wt_fbb<sdsl::bit_vector_il<>>, "wt_fbb_il");\
 
 void rl2plain(std::string& rl_file, std::string& output_plain_file){
@@ -190,7 +190,7 @@ time_answer += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).c
 }
 
 template<class bwt_type>
-void test_inverse_select(bwt_type& my_dt, std::string& input_file){
+void test_access(bwt_type& my_dt, std::string& input_file){
     //size_t samp_size = (wt_dt.size()*10)/100;
 
     sdsl::wt_huff<> wt_huff;
@@ -203,19 +203,69 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
     std::vector<uint64_t> samples = sample_unique(wt_huff.size(), samp_size);
 
     double acc_time=0;
-    std::vector<std::pair<uint8_t, uint64_t>> my_dt_ans(samp_size);
+    std::vector<uint8_t> my_dt_ans(samp_size);
     for(size_t j=0;j<samples.size();j++){
-        MEASURE(my_dt.inverse_select(samples[j]), acc_time, my_dt_ans[j]);
+        MEASURE(my_dt[samples[j]], acc_time, my_dt_ans[j]);
     }
     std::cout<<"inverse_select rlbwt_vlb:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     acc_time=0;
-    std::vector<std::pair<uint8_t, uint64_t>> wt_huff_ans(samp_size);
+    std::vector<uint8_t> wt_huff_ans(samp_size);
     for(size_t j=0;j<samples.size();j++){
-        MEASURE(wt_huff.inverse_select(samples[j]), acc_time, wt_huff_ans[j]);
+        MEASURE(wt_huff[samples[j]], acc_time, wt_huff_ans[j]);
     }
     std::cout<<"inverse_select wt_huff:";
+    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+
+    acc_time=0;
+    std::vector<uint8_t> wt_rlmn_ans(samp_size);
+    for(size_t j=0;j<samples.size();j++){
+        MEASURE(wt_rlmn[samples[j]], acc_time, wt_rlmn_ans[j]);
+    }
+    std::cout<<"inverse_select wt_rlmn:";
+    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+
+    for(size_t j=0;j<samples.size();j++){
+        if(wt_huff_ans[j]!=my_dt_ans[j]){
+            std::cout<<"wt_huff idx: "<<samples[j]<<" |\t sym: "<<int(wt_huff_ans[j])<<std::endl;
+            std::cout<<"my_dt   idx: "<<samples[j]<<" |\t sym: "<<int(my_dt_ans[j])<<std::endl;
+        }
+        assert(wt_huff_ans[j]==my_dt_ans[j]);
+    }
+
+    /*for(size_t j=0;j<my_dt.size();j++){
+        //size_t p = rand() % my_dt.size();
+        size_t p = j;
+
+        auto res1= wt_huff.inverse_select(p);
+        auto res2 = my_dt.inverse_select(p);
+
+        if(res1.first!=res2.first || res1.second!=my_dt.eff2byte(res2.second)){
+            std::cout<<"wt_huff idx: "<<p<<" |\t sym: "<<int(res1.second)<<" rank: "<<res1.first<<std::endl;
+            std::cout<<"my_dt   idx: "<<p<<" |\t sym: "<<int(my_dt.eff2byte(res2.second))<<" rank: "<<res2.first<<"\n"<<std::endl;
+        }
+        assert(res1.first==res2.first && res1.second==my_dt.eff2byte(res2.second));
+        //MEASURE(my_dt.inverse_select(p), acc_time, answers[0]);
+    }*/
+}
+
+template<class bwt_type>
+void test_inverse_select(bwt_type& my_dt, std::string& input_file){
+    //size_t samp_size = (wt_dt.size()*10)/100;
+
+    sdsl::wt_rlmn<> wt_rlmn;
+    sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
+
+    size_t samp_size = 1000000;
+    std::vector<uint64_t> samples = sample_unique(wt_rlmn.size(), samp_size);
+
+    double acc_time=0;
+    std::vector<std::pair<uint8_t, uint64_t>> my_dt_ans(samp_size);
+    for(size_t j=0;j<samples.size();j++){
+        MEASURE(my_dt.inverse_select(samples[j]), acc_time, my_dt_ans[j]);
+    }
+    std::cout<<"inverse_select rlbwt_vlb:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     acc_time=0;
@@ -226,14 +276,24 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
     std::cout<<"inverse_select wt_rlmn:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
+    //acc_time=0;
+    //sdsl::wt_huff<> wt_huff;
+    //sdsl::load_from_file(wt_huff, input_file+".wt_huff_bv");
+    //std::vector<std::pair<uint8_t, uint64_t>> wt_huff_ans(samp_size);
+    //for(size_t j=0;j<samples.size();j++){
+    //    MEASURE(wt_huff.inverse_select(samples[j]), acc_time, wt_huff_ans[j]);
+    //}
+    //std::cout<<"inverse_select wt_huff:";
+    //std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+
     for(size_t j=0;j<samples.size();j++){
-        if(wt_huff_ans[j].first!=my_dt_ans[j].first ||
-           wt_huff_ans[j].second!=my_dt.eff2byte(my_dt_ans[j].second)){
-            std::cout<<"wt_huff idx: "<<samples[j]<<" |\t sym: "<<int(wt_huff_ans[j].second)<<" rank: "<<wt_huff_ans[j].first<<std::endl;
-            std::cout<<"my_dt   idx: "<<samples[j]<<" |\t sym: "<<int(my_dt.eff2byte(my_dt_ans[j].second))<<" rank: "<<my_dt_ans[j].first<<"\n"<<std::endl;
+        if(wt_rlmn_ans[j].first!=my_dt_ans[j].first ||
+           wt_rlmn_ans[j].second!=my_dt.eff2byte(my_dt_ans[j].second)){
+            std::cout<<"wt_huff idx: "<<samples[j]<<" |\t sym: "<<int(wt_rlmn_ans[j].second)<<" rank: "<<int(wt_rlmn_ans[j].first)<<std::endl;
+            std::cout<<"my_dt   idx: "<<samples[j]<<" |\t sym: "<<int(my_dt.eff2byte(my_dt_ans[j].second))<<" rank: "<<int(my_dt_ans[j].first)<<"\n"<<std::endl;
         }
-        assert(wt_huff_ans[j].first==my_dt_ans[j].first &&
-               wt_huff_ans[j].second==my_dt.eff2byte(my_dt_ans[j].second));
+        assert(wt_rlmn_ans[j].first==my_dt_ans[j].first &&
+               wt_rlmn_ans[j].second==my_dt.eff2byte(my_dt_ans[j].second));
     }
 
     /*for(size_t j=0;j<my_dt.size();j++){
@@ -282,6 +342,13 @@ int main(int argc, char** argv){
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-    auto res = bwt_dt.inverse_select(29613627);
+    //sdsl::wt_rlmn<> wt_rlmn;
+    //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
+    //auto res2 = wt_rlmn.inverse_select(345866900);
+    //std::cout<<" /// "<<int(res2.first)<<" "<<res2.second<<std::endl;
+    //auto res = bwt_dt.inverse_select(365758474);
+    //auto res = bwt_dt.inverse_select(345866900);
+    auto res = bwt_dt.inverse_select(8309534115);
     test_inverse_select(bwt_dt, output_prefix);
+    //test_access(bwt_dt, output_prefix);
 }

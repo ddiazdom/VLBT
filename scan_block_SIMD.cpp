@@ -3,7 +3,7 @@
 //
 #include <iostream>
 #include <cassert>
-#include "benchmarks/perf_utils.h"
+#include "perf_utils.h"
 
 static inline uint64_t count_scalar(const uint16_t* stream, uint8_t sym, uint64_t idx){
 

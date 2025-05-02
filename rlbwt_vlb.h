@@ -6,6 +6,7 @@
 #define RLBWT_DYBL_H
 
 #include <cmath>
+#include <vector>
 #include "bitstream.h"
 
 template<bool vbyte_compressed>
@@ -84,21 +85,21 @@ static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, ui
 #define ACCESS_32 access_neon_32x4
 #define ACCESS_64 access_neon_64x2
 
-#elif defined(__AVX2__)
-#include "avx2_scan.h"
-
-#define INV_SELECT_8 inv_select_avx2_8x32
-#define INV_SELECT_16 inv_select_avx2_16x16
-#define INV_SELECT_32 inv_select_avx2_32x8
-#define INV_SELECT_64 inv_select_avx2_64x4
-
-#define ACCESS_8 access_avx2_8x32
-#define ACCESS_16 access_avx2_16x16
-#define ACCESS_32 access_avx2_32x8
-#define ACCESS_64 access_avx2_64x4
+//#elif defined(__AVX2__)
+//#include "avx2_scan.h"
+//
+//#define INV_SELECT_8 inv_select_avx2_8x32
+//#define INV_SELECT_16 inv_select_avx2_16x16
+//#define INV_SELECT_32 inv_select_avx2_32x8
+//#define INV_SELECT_64 inv_select_avx2_64x4
+//
+//#define ACCESS_8 access_avx2_8x32
+//#define ACCESS_16 access_avx2_16x16
+//#define ACCESS_32 access_avx2_32x8
+//#define ACCESS_64 access_avx2_64x4
 
 #elif defined(__SSE4_2__)
-#include "sse42_scan.h
+#include "sse42_scan.h"
 
 #define INV_SELECT_8 inv_select_sse42_8x16
 #define INV_SELECT_16 inv_select_sse42_16x8
@@ -109,7 +110,6 @@ static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, ui
 #define ACCESS_16 access_sse42_16x8
 #define ACCESS_32 access_sse42_32x4
 #define ACCESS_64 access_sse42_64x2
-
 #else
 
 #define INV_SELECT_8 inv_select_scl_8
@@ -300,34 +300,79 @@ struct rlbwt_vlb {
         const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(INT_CEIL(p.bit_pos, 8));
 
         std::pair<uint64_t, uint8_t> rank_answer;
+
+        //0 : 1 bpr, no overflow
+        //1 : 1 bpr, overflow window=16
+        //2 : 1 brp, overflow window=32
+
+        //3 : 2 bpr, no_vbyte, no overflow
+        //4 : 2 bpr, no_vbyte, overflow window=8
+        //5 : 2 bpr, no_vbyte, overflow window=16
+        //6 : 2 bpr, vbyte, no overflow
+        //7 : 2 bpr, vbyte, overflow window=8
+        //8 : 2 bpr, vbyte, overflow window=16
+
+        //9 : 3 bpr, no_vbyte
+        //10: 4 bpr, no_vbyte
+        //11: 3 bpr, vbyte
+        //12: 4 bpr, vbyte
+
+        //13: 5 bpr, vbyte
+        //14: 6 bpr, vbyte
+        //15: 7 bpr, vbyte
+
         //scan the runs in the leaf according to the leaf encoding
         switch(p.leaf_enc) {
+            case 0:
+                rank_answer = INV_SELECT_8<false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 1 byte (no vbyte)
+                break;
             case 1:
-                rank_answer = INV_SELECT_8(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 1 byte (no vbyte)
+                rank_answer = INV_SELECT_8<true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 1 byte (no vbyte)
                 break;
             case 2:
-                rank_answer = INV_SELECT_16<false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 2 bytes (no vbyte)
+                rank_answer = INV_SELECT_8<true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 2 bytes (no vbyte)
                 break;
-            case 3:
-                rank_answer = INV_SELECT_32<false, 3>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 3 bytes (no vbyte)
+
+            case 3://template param: vbyte?, overflow8?, overflow16?
+                rank_answer = INV_SELECT_16<false, false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 3 bytes (no vbyte)
                 break;
             case 4:
-                rank_answer = INV_SELECT_32<false, 4>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (no vbyte)
+                rank_answer = INV_SELECT_16<false, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (no vbyte)
                 break;
             case 5:
-                rank_answer = INV_SELECT_64<false, 5>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (no vbyte)
+                rank_answer = INV_SELECT_16<false, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (no vbyte)
+                break;
+            case 6:
+                rank_answer = INV_SELECT_16<true, false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 2 bytes (vbyte)
                 break;
             case 7:
-                rank_answer = INV_SELECT_16<true>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 2 bytes (vbyte)
+                rank_answer = INV_SELECT_16<true, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 3 bytes (vbyte)
                 break;
             case 8:
-                rank_answer = INV_SELECT_32<true, 3>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 3 bytes (vbyte)
+                rank_answer = INV_SELECT_16<true, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
                 break;
-            case 9:
-                rank_answer = INV_SELECT_32<true, 4>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+
+            case 9://template param: vbyte?, bpr
+                rank_answer = INV_SELECT_32<false,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
                 break;
             case 10:
-                rank_answer = INV_SELECT_64<true, 5>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
+                rank_answer = INV_SELECT_32<false,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+            case 11:
+                rank_answer = INV_SELECT_32<true,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+            case 12:
+                rank_answer = INV_SELECT_32<true,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+
+            case 13://template param: bpr
+                rank_answer = INV_SELECT_64<5>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
+                break;
+            case 14:
+                rank_answer = INV_SELECT_64<6>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
+                break;
+            case 15:
+                rank_answer = INV_SELECT_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
                 break;
             default:
                 std::cout<<"Undefined encoding"<<std::endl;
@@ -357,34 +402,80 @@ struct rlbwt_vlb {
         const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(INT_CEIL(p.bit_pos, 8));
 
         uint8_t symbol;
+        //LEAF encoding (bpr=bytes per run):
+
+        //0 : 1 bpr, no overflow
+        //1 : 1 bpr, overflow window=16
+        //2 : 1 brp, overflow window=32
+
+        //3 : 2 bpr, no_vbyte, no overflow
+        //4 : 2 bpr, no_vbyte, overflow window=8
+        //5 : 2 bpr, no_vbyte, overflow window=16
+        //6 : 2 bpr, vbyte, no overflow
+        //7 : 2 bpr, vbyte, overflow window=8
+        //8 : 2 bpr, vbyte, overflow window=16
+
+        //9 : 3 bpr, no_vbyte
+        //10: 4 bpr, no_vbyte
+        //11: 3 bpr, vbyte
+        //12: 4 bpr, vbyte
+
+        //13: 5 bpr, vbyte
+        //14: 6 bpr, vbyte
+        //15: 7 bpr, vbyte
+
         //scan the runs in the leaf according to the leaf encoding
         switch(p.leaf_enc) {
+            case 0:
+                symbol = ACCESS_8<false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 1 byte (no vbyte)
+                break;
             case 1:
-                symbol = ACCESS_8(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 1 byte (no vbyte)
+                symbol = ACCESS_8<true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 1 byte (no vbyte)
                 break;
             case 2:
-                symbol = ACCESS_16<false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 2 bytes (no vbyte)
+                symbol = ACCESS_8<true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 2 bytes (no vbyte)
                 break;
-            case 3:
-                symbol = ACCESS_32<false, 3>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 3 bytes (no vbyte)
+
+            case 3://template param: vbyte?, overflow8?, overflow16?
+                symbol = ACCESS_16<false, false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 3 bytes (no vbyte)
                 break;
             case 4:
-                symbol = ACCESS_32<false, 4>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (no vbyte)
+                symbol = ACCESS_16<false, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (no vbyte)
                 break;
             case 5:
-                symbol = ACCESS_64<false, 5>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (no vbyte)
+                symbol = ACCESS_16<false, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (no vbyte)
+                break;
+            case 6:
+                symbol = ACCESS_16<true, false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 2 bytes (vbyte)
                 break;
             case 7:
-                symbol = ACCESS_16<true>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 2 bytes (vbyte)
+                symbol = ACCESS_16<true, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 3 bytes (vbyte)
                 break;
             case 8:
-                symbol = ACCESS_32<true, 3>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 3 bytes (vbyte)
+                symbol = ACCESS_16<true, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
                 break;
-            case 9:
-                symbol = ACCESS_32<true, 4>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+
+            case 9://template param: vbyte?, bpr
+                symbol = ACCESS_32<false,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
                 break;
             case 10:
-                symbol = ACCESS_64<true, 5>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
+                symbol = ACCESS_32<false,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+            case 11:
+                symbol = ACCESS_32<true,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+            case 12:
+                symbol = ACCESS_32<true,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+
+            case 13://template param: bpr
+                symbol = ACCESS_64<5>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
+                break;
+            case 14:
+                symbol = ACCESS_64<6>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
+                break;
+            case 15:
+                symbol = ACCESS_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
                 break;
             default:
                 std::cout<<"Undefined encoding"<<std::endl;
