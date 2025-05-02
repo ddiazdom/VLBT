@@ -346,9 +346,7 @@ int main(int argc, char** argv){
     //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
     //auto res2 = wt_rlmn.inverse_select(345866900);
     //std::cout<<" /// "<<int(res2.first)<<" "<<res2.second<<std::endl;
-    //auto res = bwt_dt.inverse_select(365758474);
-    //auto res = bwt_dt.inverse_select(345866900);
-    auto res = bwt_dt.inverse_select(8309534115);
+    //auto res = bwt_dt.inverse_select(9238056170);
     test_inverse_select(bwt_dt, output_prefix);
     //test_access(bwt_dt, output_prefix);
 }

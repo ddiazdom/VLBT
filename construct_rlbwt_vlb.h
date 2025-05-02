@@ -651,14 +651,67 @@ struct rl_node {//state of the compression
         stats.lfs_offset+=bwt_rep.lfs_bits;
     }
 
+    void inline get_max_psum(uint64_t* tmp_psum, uint64_t* max_psum) const {
+        //max prefix sum within 4 blocks with 8 runs each
+        uint64_t tmp_max = std::max(std::max(tmp_psum[0], tmp_psum[1]),
+                                    std::max(tmp_psum[2], tmp_psum[3]));
+        if(tmp_max>max_psum[0]){
+            max_psum[0] = tmp_max;
+        }
+
+        //max prefix sum within 2 blocks with 16 runs each
+        tmp_psum[0]+=tmp_psum[1];
+        tmp_psum[2]+=tmp_psum[3];
+        tmp_max = std::max(tmp_psum[0], tmp_psum[2]);
+        if(tmp_max>max_psum[1]){
+            max_psum[1] = tmp_max;
+        }
+
+        //max prefix sum within one blocks withn 32 runs
+        tmp_psum[0]+=tmp_psum[2];
+        if(tmp_max>max_psum[2]){
+            max_psum[2] = tmp_psum[0];
+        }
+    }
+
+    inline uint8_t compute_leaf_enc_code(uint8_t max_bytes, bool vbyte_enc, const uint64_t *max_psum) const {
+
+        uint8_t code = 0;
+
+        switch (max_bytes) {
+            case 1:
+                code +=max_psum[1]>0xFF;
+                code +=max_psum[2]>0XFF;
+                return code;
+            case 2:
+                code =3;
+                code +=max_psum[0]>0xFFFF;
+                code +=max_psum[1]>0xFFFF;
+                code <<=vbyte_enc;
+                return code;
+            case 3:
+                code =9;
+                code +=vbyte_enc;
+                return code;
+            case 4:
+                code =11;
+                code +=vbyte_enc;
+                return code;
+            case 5:
+                return 13;
+            case 6:
+                return 14;
+            case 7:
+                return 15;
+        }
+    }
+
     inline void create_leaf(std::vector<block_type>& blocks,
                             size_t n_blocks,
                             const size_t parent_sigma,
                             const std::vector<bool>& parent_sigma_bv,
                             const std::vector<uint64_t>& parent_rank_info){
 
-        //TODO check the sum of runs fits the encoding
-        //that is:
         //for 1 byte: check that the sum of 16 (or 32 for AVX) consecutive run lens is <=256
         //for 2 bytes: check that the sum of 8 (or 16 for AVX) consecutive run lens is <=2^16-1
         //for 3-4 bytes: check that the sum of 4 (or 8 for AVX) consecutive run lens is <=2^32-1
@@ -725,9 +778,9 @@ struct rl_node {//state of the compression
         }
 
         size_t bfr_dist[9]={0}, bytes;
-        //uint64_t sum4=0, sum8=0, sum16=0, sum32=0;
-        //uint64_t max_sum4=0, max_sum8=0, max_sum16, max_sum32;
-        //size_t run_id=0;
+        uint64_t tmp_psum[4]={0};//8,16,24,32
+        uint64_t max_psum[3]={0};//8,16,32
+        uint64_t bk = 0;
 
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
@@ -735,39 +788,18 @@ struct rl_node {//state of the compression
                 //I need to use a fixed number of bits for the symbols (i.e., sym_width(node_sigma) bits)
                 bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.second)), 8);
                 bfr_dist[bytes]++;
+                tmp_psum[bk>>3] += run.second;
+                bk++;
 
-                /*if(run_id % 4==0){
-                    if(sum4>max_sum4) max_sum4=sum4;
-                    sum4=0;
+                if(bk==32){
+                    get_max_psum(tmp_psum, max_psum);
+                    memset(tmp_psum, 0, 32);
+                    bk=0;
                 }
-
-                if(run_id % 8==0){
-                    if(sum8>max_sum8) max_sum8=sum8;
-                    sum8=0;
-                }
-
-                if(run_id % 16==0){
-                    if(sum16>max_sum16) max_sum16=sum16;
-                    sum16=0;
-                }
-
-                if(run_id % 32==0){
-                    if(sum32>max_sum32) max_sum32=sum32;
-                    sum32=0;
-                }
-                sum4+=run.second;
-                sum8+=run.second;
-                sum16+=run.second;
-                sum32+=run.second;
-                run_id++;*/
             }
         }
+        get_max_psum(tmp_psum, max_psum);
         assert(bfr_dist[0]==0);
-
-        //if(sum4>max_sum4) max_sum4=sum4;
-        //if(sum8>max_sum8) max_sum8=sum8;
-        //if(sum16>max_sum16) max_sum16=sum16;
-        //if(sum32>max_sum32) max_sum32=sum32;
 
         size_t total_vbytes=0, max_bytes=0;
         for(size_t b=1;b<9;b++){
@@ -776,15 +808,10 @@ struct rl_node {//state of the compression
         }
         assert(max_bytes>0 && max_bytes<6);
 
-        /*if(max_bytes==1 && max_sum32>256){
-
-        }*/
-
         if(max_bytes>1){
             //number of control masks of 1 byte for fast vbyte decoding;
             total_vbytes += INT_CEIL(n_runs, (8/sym_width(max_bytes-1)));
         }
-
         //alternative encoding using a fixed number of bytes per run
         size_t total_fbytes = max_bytes*n_runs;
 
@@ -794,14 +821,13 @@ struct rl_node {//state of the compression
         if(total_vbytes<total_fbytes){
             assert(max_bytes>1);
             run_bits = total_vbytes*8;
-            stats.runs_overhead += run_bits;
-            leaf_enc=5+max_bytes;//+5 is to difference them from fix-length blocks
         }else{
             run_bits = total_fbytes*8;
-            stats.runs_overhead += run_bits;
-            leaf_enc=max_bytes;
             fix_len_enc = true;
         }
+
+        stats.runs_overhead += run_bits;
+        leaf_enc = compute_leaf_enc_code(max_bytes, !fix_len_enc, max_psum);
 
         //THE ENCODING STARTS HERE
         size_t r_width;
@@ -1281,13 +1307,56 @@ struct tree_dt{
         }
 
         std::cout<<"Leaf_encoding dist:"<<std::endl;
-        for(size_t i=0;i<20;i++){
-            if(stats.leaf_enc_freq[i]!=0){
-                if(i<=5){
-                    std::cout<<"\tFixed "<<i<<" bytes:\t\t\t\t"<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
-                }else{
-                    std::cout<<"\tVariable-length 1-"<<i-5<<" bytes: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
-                }
+        for(size_t i=0;i<16;i++){
+            switch(i) {
+                case 0:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t1 byte: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 1:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t1 byte, overflow 16: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 2:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t1 byte, overflow 32: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 3:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 4:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes, overflow 8: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 5:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes, overflow 16: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 6:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 7:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes, overflow 8, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 8:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes, overflow 16, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 9:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t3 bytes: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 10:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t3 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 11:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t4 bytes: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 12:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t4 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 13:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t5 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 14:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t6 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
+                case 15:
+                    if(stats.leaf_enc_freq[i]) std::cout<<"\t7 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    break;
             }
         }
 
