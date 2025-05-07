@@ -193,14 +193,14 @@ template<class bwt_type>
 void test_access(bwt_type& my_dt, std::string& input_file){
     //size_t samp_size = (wt_dt.size()*10)/100;
 
-    sdsl::wt_huff<> wt_huff;
-    sdsl::load_from_file(wt_huff, input_file+".wt_huff_bv");
-
     sdsl::wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
+    /*for(size_t i=0;i<wt_rlmn.size();i++){
+        assert(wt_rlmn[i]==my_dt[i]);
+    }*/
 
     size_t samp_size = 1000000;
-    std::vector<uint64_t> samples = sample_unique(wt_huff.size(), samp_size);
+    std::vector<uint64_t> samples = sample_unique(wt_rlmn.size(), samp_size);
 
     double acc_time=0;
     std::vector<uint8_t> my_dt_ans(samp_size);
@@ -210,13 +210,15 @@ void test_access(bwt_type& my_dt, std::string& input_file){
     std::cout<<"access rlbwt_vlb:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
-    acc_time=0;
+    /*acc_time=0;
     std::vector<uint8_t> wt_huff_ans(samp_size);
+    sdsl::wt_huff<> wt_huff;
+    sdsl::load_from_file(wt_huff, input_file+".wt_huff_bv");
     for(size_t j=0;j<samples.size();j++){
         MEASURE(wt_huff[samples[j]], acc_time, wt_huff_ans[j]);
     }
     std::cout<<"access wt_huff:";
-    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;*/
 
     acc_time=0;
     std::vector<uint8_t> wt_rlmn_ans(samp_size);
@@ -227,11 +229,11 @@ void test_access(bwt_type& my_dt, std::string& input_file){
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     for(size_t j=0;j<samples.size();j++){
-        if(wt_huff_ans[j]!=my_dt_ans[j]){
-            std::cout<<"wt_huff idx: "<<samples[j]<<" |\t sym: "<<int(wt_huff_ans[j])<<std::endl;
+        if(wt_rlmn_ans[j]!=my_dt_ans[j]){
+            std::cout<<"wt_huff idx: "<<samples[j]<<" |\t sym: "<<int(wt_rlmn_ans[j])<<std::endl;
             std::cout<<"my_dt   idx: "<<samples[j]<<" |\t sym: "<<int(my_dt_ans[j])<<std::endl;
         }
-        assert(wt_huff_ans[j]==my_dt_ans[j]);
+        assert(wt_rlmn_ans[j]==my_dt_ans[j]);
     }
 
     /*for(size_t j=0;j<my_dt.size();j++){
@@ -346,7 +348,6 @@ int main(int argc, char** argv){
     //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
     //auto res2 = wt_rlmn.inverse_select(345866900);
     //std::cout<<" /// "<<int(res2.first)<<" "<<res2.second<<std::endl;
-    //auto res = bwt_dt.inverse_select(126880997);
     test_inverse_select(bwt_dt, output_prefix);
-    test_access(bwt_dt, output_prefix);
+    //test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
 }

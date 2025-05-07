@@ -85,7 +85,7 @@ static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, ui
 #define ACCESS_32 access_neon_32x4
 #define ACCESS_64 access_neon_64x2
 
-#elif defined(__AVX2__)
+/*#elif defined(__AVX2__)
 #include "avx2_scan.h"
 
 #define INV_SELECT_8 inv_select_avx2_8x32
@@ -96,7 +96,7 @@ static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, ui
 #define ACCESS_8 access_avx2_8x32
 #define ACCESS_16 access_avx2_16x16
 #define ACCESS_32 access_avx2_32x8
-#define ACCESS_64 access_avx2_64x4
+#define ACCESS_64 access_avx2_64x4*/
 
 #elif defined(__SSE4_2__)
 #include "sse42_scan.h"
@@ -132,7 +132,7 @@ struct rlbwt_vlb {
     static constexpr size_t scale_factor = s_factor;
     static constexpr size_t max_block_runs = b_runs;
     static constexpr uint8_t int_pt_width=7;//number of bits we use to encode the number of bits we use to encode pointers
-    static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
+    static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs);
     static constexpr uint64_t run_mask = (1UL<<run_width)-1UL;
     static constexpr uint8_t leaf_enc_width=4;
 

@@ -520,7 +520,6 @@ struct rl_node {//state of the compression
         stats.header_overhead+=acc_bits;
         stats.ext_su_pr_overhead+=acc_bits;
         node_n_bits+=acc_bits;
-
     }
 
     inline void finish_tree(std::vector<uint64_t>& bk_boundaries) {
@@ -547,7 +546,8 @@ struct rl_node {//state of the compression
         //so far, node_n_bits considers:
         // * the sum of the tree sizes in bits (excluding the external su/pred information)
         // * the sum of the ext. succ/pred information for the trees
-        bwt_rep.ext_pt_width = sym_width(node_n_bits/8) + sym_width(b_runs-1);
+        //bwt_rep.ext_pt_width = sym_width(node_n_bits/8) + sym_width(b_runs-1);
+        bwt_rep.ext_pt_width = sym_width(node_n_bits/8) + run_width;
 
         //(pt_bits*n_blocks) for the pointers to the trees
         size_t tree_ptr_bits = (bwt_rep.ext_pt_width*n_blocks);
@@ -617,7 +617,8 @@ struct rl_node {//state of the compression
 
         bit_pos=bwt_rep.lfs_bits;
         w1 = sym_width(node_n_bits/8);
-        w2 = sym_width(b_runs-1);
+        //w2 = sym_width(b_runs-1);
+        w2 = run_width;
         size_t c=0, l=0, n_syms;
         for(size_t b=0;b<n_children;b++){
             buffer.write(bit_pos, bit_pos+w2-1, l);
