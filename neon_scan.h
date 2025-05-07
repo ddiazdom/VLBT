@@ -406,14 +406,17 @@ static inline uint8_t access_neon_8x16(const uint8_t **stream, uint8_t sigma, ui
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
+    const uint8_t *stream_start = *stream;
     const int8x16_t alpha_shift = vdupq_n_u8(-sigma_bits);
 
     size_t l=0;
     uint8x16_t block =  vld1q_u8(*stream);
     *stream+=16;
     uint8x16_t bk_lengths = vshlq_u8(block, alpha_shift);
+    uint64_t prev_acc=0;
+
     uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
-    uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    uint64_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
     while(acc<=idx){
         block =  vld1q_u8(*stream);
@@ -421,36 +424,39 @@ static inline uint8_t access_neon_8x16(const uint8_t **stream, uint8_t sigma, ui
         bk_lengths = vshlq_u8(block, alpha_shift);
 
         prev_acc = acc;
+
         tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
         acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
         l++;
     }
 
     idx-=prev_acc;
+    uint32_t idx_run;
+    uint8_t alpha_m = (1UL << sigma_bits)-1, run;
 
-    //prefix sum
-    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 15), bk_lengths);
-    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 14), bk_lengths);
-    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 12), bk_lengths);
-    bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 8), bk_lengths);
-    //
-
-    const uint8x16_t idx_mask = vcgtq_u8(bk_lengths, vdupq_n_u8(idx));//mask for >idx
-    const uint8x8_t res = vshrn_n_u16(vreinterpretq_u16_u8(idx_mask), 4);
-    const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
-    uint8_t idx_run = __builtin_ctzll(less_than)>>2;
-
-    uint8_t alpha_m = (1UL << sigma_bits)-1;
-    const uint8x16_t shuff = vdupq_n_u8(idx_run);
-    const uint8x16_t run_vec = vqtbl1q_u8(block, shuff);
-
-    return vgetq_lane_u8(run_vec, 0) & alpha_m;
+    if constexpr (overflow16){
+        uint32_t pf_sum;
+        psum_epi8_ovf(bk_lengths, idx, pf_sum, idx_run);
+    }else {
+        //prefix sum
+        bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 15), bk_lengths);
+        bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 14), bk_lengths);
+        bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 12), bk_lengths);
+        bk_lengths = vaddq_u8(vextq_u8(vdupq_n_u8(0), bk_lengths, 8), bk_lengths);
+        //
+        const uint8x16_t idx_mask = vcgtq_u8(bk_lengths, vdupq_n_u8(idx));//mask for >idx
+        const uint8x8_t res = vshrn_n_u16(vreinterpretq_u16_u8(idx_mask), 4);
+        const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
+        idx_run = __builtin_ctzll(less_than)>>2;
+    }
+    run = stream_start[(l*16)+idx_run];
+    return run & alpha_m;
 }
 
-template<bool vbyte_compressed, bool overflow16, bool overflow32=false>
+template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
 static inline uint8_t access_neon_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx){
 
-    //TODO: assert idx fits 2 bytes
     const uint8_t sigma_bits = sym_width(sigma);
     const int16x8_t alpha_shift = vdupq_n_u16(-sigma_bits);
 
@@ -465,29 +471,38 @@ static inline uint8_t access_neon_16x8(const uint8_t **stream, uint8_t sigma, ui
         bk_lengths = vshlq_u16(block, alpha_shift);
 
         prev_acc = acc;
+
         tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
         acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
         l++;
     }
 
     idx-=prev_acc;
-
-    //prefix sum
-    bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 7), bk_lengths);
-    bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 6), bk_lengths);
-    bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 4), bk_lengths);
-    //
-
-    const uint16x8_t idx_mask = vcgtq_u16(bk_lengths, vdupq_n_u16(idx));//mask for >idx
-    const uint8x8_t res = vshrn_n_u16(idx_mask, 4);
-    const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
-    uint8_t idx_run = __builtin_ctzll(less_than)>>3;
+    uint32_t idx_run;
 
     uint16_t alpha_m = (1UL << sigma_bits)-1;
+
+    if constexpr (overflow8){
+        uint32_t pf_sum;
+        psum_epi16_ovf(bk_lengths, idx, pf_sum, idx_run);
+    }else {
+        //prefix sum
+        bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 7), bk_lengths);
+        bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 6), bk_lengths);
+        bk_lengths = vaddq_u16(vextq_u16(vdupq_n_u16(0), bk_lengths, 4), bk_lengths);
+        //
+
+        const uint16x8_t idx_mask = vcgtq_u16(bk_lengths, vdupq_n_u16(idx));//mask for >idx
+        const uint8x8_t res = vshrn_n_u16(idx_mask, 4);
+        const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
+        idx_run = __builtin_ctzll(less_than) >> 3;
+    }
+
     const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
     const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(idx_run<<1));
-    const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
 
+    const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
     return vgetq_lane_u16(run_vec, 0) & alpha_m;
 }
 

@@ -71,6 +71,7 @@ struct rl_node {//state of the compression
     const size_t b_size;//block size for the level
     const size_t s_factor = bwt_dt_type::scale_factor;//shrinking factor for further subdivision
     const size_t b_runs = bwt_dt_type::max_block_runs;//maximum number of runs in a sequence of blocks
+    const uint8_t run_width = bwt_dt_type::run_width;//number of bits we require to encode symbols in the range [0..b_runs]
 
     rl_node *tmp_node = nullptr;
 
@@ -703,6 +704,9 @@ struct rl_node {//state of the compression
                 return 14;
             case 7:
                 return 15;
+            default:
+                std::cout<<"Unknown code for leaf encoding"<<std::endl;
+                exit(1);
         }
     }
 

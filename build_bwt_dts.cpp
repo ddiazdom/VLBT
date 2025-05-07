@@ -207,7 +207,7 @@ void test_access(bwt_type& my_dt, std::string& input_file){
     for(size_t j=0;j<samples.size();j++){
         MEASURE(my_dt[samples[j]], acc_time, my_dt_ans[j]);
     }
-    std::cout<<"inverse_select rlbwt_vlb:";
+    std::cout<<"access rlbwt_vlb:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     acc_time=0;
@@ -215,7 +215,7 @@ void test_access(bwt_type& my_dt, std::string& input_file){
     for(size_t j=0;j<samples.size();j++){
         MEASURE(wt_huff[samples[j]], acc_time, wt_huff_ans[j]);
     }
-    std::cout<<"inverse_select wt_huff:";
+    std::cout<<"access wt_huff:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     acc_time=0;
@@ -223,7 +223,7 @@ void test_access(bwt_type& my_dt, std::string& input_file){
     for(size_t j=0;j<samples.size();j++){
         MEASURE(wt_rlmn[samples[j]], acc_time, wt_rlmn_ans[j]);
     }
-    std::cout<<"inverse_select wt_rlmn:";
+    std::cout<<"access wt_rlmn:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     for(size_t j=0;j<samples.size();j++){
@@ -348,5 +348,5 @@ int main(int argc, char** argv){
     //std::cout<<" /// "<<int(res2.first)<<" "<<res2.second<<std::endl;
     //auto res = bwt_dt.inverse_select(126880997);
     test_inverse_select(bwt_dt, output_prefix);
-    //test_access(bwt_dt, output_prefix);
+    test_access(bwt_dt, output_prefix);
 }
