@@ -546,8 +546,8 @@ struct rl_node {//state of the compression
         //so far, node_n_bits considers:
         // * the sum of the tree sizes in bits (excluding the external su/pred information)
         // * the sum of the ext. succ/pred information for the trees
-        //bwt_rep.ext_pt_width = sym_width(node_n_bits/8) + sym_width(b_runs-1);
-        bwt_rep.ext_pt_width = sym_width(node_n_bits/8) + run_width;
+        //bwt_rep.ext_pt_width = sym_width(node_n_bits/8) + run_width;
+        bwt_rep.ext_pt_width = std::max<uint16_t>(sym_width(node_n_bits/8), 2*run_width)+1;
 
         //(pt_bits*n_blocks) for the pointers to the trees
         size_t tree_ptr_bits = (bwt_rep.ext_pt_width*n_blocks);
@@ -616,26 +616,24 @@ struct rl_node {//state of the compression
         block_ptr[n_children]=(header_bits-bit_pos)/8;
 
         bit_pos=bwt_rep.lfs_bits;
-        w1 = sym_width(node_n_bits/8);
-        //w2 = sym_width(b_runs-1);
-        w2 = run_width;
-        size_t c=0, l=0, n_syms;
+        size_t c=0, l=0, n_syms, r, offsets;
         for(size_t b=0;b<n_children;b++){
-            buffer.write(bit_pos, bit_pos+w2-1, l);
-            bit_pos+=w2;
-            buffer.write(bit_pos, bit_pos+w1-1, block_ptr[b]);
-            bit_pos+=w1;
+            buffer.write(bit_pos, bit_pos+bwt_rep.ext_pt_width-1, (block_ptr[b]<<1));
+            bit_pos+=bwt_rep.ext_pt_width;
+            r = (tree_offset[b+1]-tree_offset[b])/b_size;
             c++;
             l++;
+            r--;
             n_syms =tree_offset[b];
             while((n_syms+b_size)<tree_offset[b+1]){
-                buffer.write(bit_pos, bit_pos+w2-1, l);
-                bit_pos+=w2;
-                buffer.write(bit_pos, bit_pos+w1-1, block_ptr[b]);
-                bit_pos+=w1;
+                offsets = (l<<run_width) | r;
+                offsets = (offsets<<1) | 1;
+                buffer.write(bit_pos, bit_pos+bwt_rep.ext_pt_width-1, offsets);
+                bit_pos+=bwt_rep.ext_pt_width;
                 n_syms +=b_size;
                 c++;
                 l++;
+                r--;
             }
             l=0;
         }

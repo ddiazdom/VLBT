@@ -132,7 +132,7 @@ struct rlbwt_vlb {
     static constexpr size_t scale_factor = s_factor;
     static constexpr size_t max_block_runs = b_runs;
     static constexpr uint8_t int_pt_width=7;//number of bits we use to encode the number of bits we use to encode pointers
-    static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs);
+    static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
     static constexpr uint64_t run_mask = (1UL<<run_width)-1UL;
     static constexpr uint8_t leaf_enc_width=4;
 
