@@ -451,7 +451,7 @@ struct rl_node {//state of the compression
 
             //std::cout<<l_tree_bound<<", "<<r_tree_bound<<" -> "<<l_sa_bound<<", "<<r_sa_bound<<" "<<l_sym<<"/"<<r_sym<<std::endl;
             size_t pred_samp=0, succ_samp=0;
-            int64_t max_tree_dist=0;
+            int64_t max_tree_dist=0, real_dist;
             for(size_t s=0;s<bwt_rep.sigma;s++){
                 size_t sym_pos =(b*bwt_rep.sigma)+s;
                 ext_pred_info[sym_pos]=ext_pred_info[sym_pos] && !low_freq_syms[s];
@@ -463,9 +463,11 @@ struct rl_node {//state of the compression
 
                     ext_pred_info[sym_pos] = tree_dist>5 && !out_of_range;
                     if(ext_pred_info[sym_pos]){
-                        if(tree_dist>max_tree_dist) max_tree_dist = tree_dist;
-                        //std::cout<<"block:"<<b<<", symbol:"<<s<<", pred_tree:"<<p_tree<<" "<<dist<<std::endl;
-                        concat_ext_suc_pred_info.push_back(tree_dist);
+                        real_dist = (tree_offset[b]-tree_offset[b-tree_dist])/b_size;
+                        //std::cout<<"block:"<<b<<", symbol:"<<s<<", pred_tree:"<<tree_dist<<" eff_pred:"<<real_dist<<std::endl;
+                        //if(tree_dist>max_tree_dist) max_tree_dist = tree_dist;
+                        if(real_dist>max_tree_dist) max_tree_dist = real_dist;
+                        concat_ext_suc_pred_info.push_back(real_dist);
                         pred_samp++;
                     }
                 }
@@ -493,9 +495,11 @@ struct rl_node {//state of the compression
                     bool out_of_range = tree_offset[active_succ[s].second]>r_sa_bound;
                     ext_succ_info[sym_pos] = tree_dist>5 && !out_of_range;
                     if(ext_succ_info[sym_pos]){
-                        if(tree_dist>max_tree_dist) max_tree_dist = tree_dist;
+                        real_dist = (tree_offset[b+tree_dist]-tree_offset[b])/b_size;
+                        //if(tree_dist>max_tree_dist) max_tree_dist = tree_dist;
+                        if(real_dist>max_tree_dist) max_tree_dist = real_dist;
                         //std::cout<<"block:"<<b<<", symbol:"<<s<<", succ_tree:"<<s_tree<<" "<<dist<<std::endl;
-                        concat_ext_suc_pred_info.push_back(tree_dist);
+                        concat_ext_suc_pred_info.push_back(real_dist);
                         succ_samp++;
                     }
                 }
@@ -556,7 +560,7 @@ struct rl_node {//state of the compression
         header_bits = bwt_rep.header_bytes*8;
 
         bit_pos=header_bits;
-        size_t w1, w2;
+        size_t w2;
         buffer.reserve_in_bits(node_n_bits+header_bits);
 
         size_t p_sym_pos=0, s_sym_pos=0, p_trees, s_trees, pos=0, max_tree_dist, stream_byte_pos, tree_new_byte_pos;

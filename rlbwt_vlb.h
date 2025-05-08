@@ -143,6 +143,7 @@ struct rlbwt_vlb {
         uint64_t rank_pos[10]={0};
         uint8_t node_sigma[10]={0};
         uint8_t rank_width[10]={0};
+        uint8_t symbol[10]={0};
         uint8_t leaf_enc=0;
     };
 
@@ -204,67 +205,119 @@ struct rlbwt_vlb {
         stream.load(ifs);
     }
 
-    inline void find_path_with_symbol(tree_path_type& path, size_t i, uint8_t symbol){
+    inline size_t find_prev(size_t& child) const {
+        //get the effective block where i lies and its byte offset within the stream
+        //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
+        size_t p = lfs_bits + (ext_pt_width*child);
+        p = stream.read(p, p+ext_pt_width-1);
+        size_t offset = (p >> (run_width+1)) * ((p & 1)>0);
+        child -= offset;//eff child in the representation where i lies
+        size_t child_off = lfs_bits + (ext_pt_width*child);
+        p = stream.read(child_off, child_off+ext_pt_width-1)>>1;
+        return (header_bytes + p)*8;//bit position where child begins in the stream
+    }
+
+    inline size_t find_next(size_t& child) const {
+        size_t p = lfs_bits + (ext_pt_width*child);
+        p = stream.read(p, p+ext_pt_width-1);
+        size_t offset = ((p >> 1) & run_width) * ((p & 1)>0);
+        child += offset;//eff child in the representation where i lies
+        size_t child_off = lfs_bits + (ext_pt_width * child);
+        p = stream.read(child_off, child_off + ext_pt_width - 1) >> 1;
+        return (header_bytes + p) * 8;
+    }
+
+    [[nodiscard]] inline bool has_symbol(size_t bit_pos, uint8_t symbol) const {
+        return stream.read_bit(bit_pos+1+symbol);
+    }
+
+    inline void skip_succ_pred_info(size_t& bit_pos) const {
+        //skip ext succ/pred information
+        size_t n_samps = stream.pop_count(bit_pos, bit_pos+2*sigma-1);
+        bit_pos+=2*sigma;
+        uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for child
+        bit_pos+=mtd_bits;
+        bit_pos+=n_samps*w;//skip the n_samp tree distances
+        bit_pos= INT_CEIL(bit_pos, 8)*8;//next byte-aligned position
+        //
+    }
+
+    inline void decode_succ(size_t& bit_pos, size_t child, uint8_t symbol) const {
+        size_t succ_pos = stream.pop_count(bit_pos, sigma+symbol);//the position where the offset for the successor is located
+        bit_pos+=2*sigma;
+        uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for child
+        bit_pos+=mtd_bits + succ_pos*w;
+        size_t succ_child = child + stream.read(bit_pos, bit_pos+w-1);//read the offset of the successor
+        size_t p = lfs_bits + (ext_pt_width*succ_child);
+        p = stream.read(p, p+ext_pt_width-1)>>1;
+        bit_pos = (header_bytes+p)*8;
+    }
+
+    inline int64_t rank(size_t i, uint8_t symbol){
 
         //initialize the block size
         size_t bk_sz = block_size;
 
         //get the block where index i lies
         uint64_t child = i/bk_sz;
+        size_t bit_pos = find_prev(child);//bit position where child begins in the stream
+        size_t succ_b_pos=bit_pos;//bit position of successor/predecessor info
 
-        //skip the bits with the ext. succ/pred info of low-freq symbols
-        //here we are assuming the low-freq status was already checked
-        path.bit_pos = lfs_bits;
-        size_t p_start = path.bit_pos;
+        skip_succ_pred_info(bit_pos);
 
-        //get the effective block where i lies and its byte offset within the stream
-        //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
-        size_t p = path.bit_pos+(ext_pt_width*child);
-        p = stream.read(p, p+ext_pt_width-1);
-
-        //std::cout<<p<<" "<<int(run_mask)<<" "<<int(run_width)<<" byte_pos"<<int(p>>run_width)<<" offset:"<<int(p & run_mask)<<std::endl;
-
-        child = child-(p & run_mask);//eff child in the representation where i lies
-        path.bit_pos =  (header_bytes + (p >> run_width))*8;//bit position where child begins in the stream
-        bool has_succ = stream.read_bit(path.bit_pos+symbol); //access successor information
-
-        while(!has_succ){
-            p = p_start+(ext_pt_width*(++child));//TODO here I need to jump to the next
-            p = stream.read(p, p+ext_pt_width-1);
-
-            path.bit_pos = (header_bytes + (p >> run_width))*8;
-            has_succ = stream.read_bit(path.bit_pos+symbol);
-        }
-
-        //skip ext succ/pred information
-        size_t n_samps = stream.pop_count(path.bit_pos, path.bit_pos+2*sigma-1);
-        path.bit_pos+=2*sigma;
-        uint8_t w = stream.read(path.bit_pos, path.bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for child
-        path.bit_pos+=mtd_bits;
-        path.bit_pos+=n_samps*w;//skip the n_samp tree distances
-        path.bit_pos= INT_CEIL(path.bit_pos, 8)*8;//next byte-aligned position
-        //
-        path.node_sigma[path.lvl] = sigma;
+        int64_t rank = 0;
+        uint8_t node_sigma = sigma;
+        uint8_t rank_width = sym_width(max_freq);
 
         //read the node header
-        path.lvl++;
-        bool is_leaf = stream.read_bit(path.bit_pos++);
-        path.node_sigma[path.lvl] = stream.pop_count(path.bit_pos, path.bit_pos+path.node_sigma[path.lvl-1]-1);
-        path.sigma_pos[path.lvl]=path.bit_pos;
-        path.bit_pos+=path.node_sigma[path.lvl-1];
-        path.rank_pos[path.lvl] = path.bit_pos;
-        path.rank_width[path.lvl] = sym_width(max_freq);
-        path.bit_pos+=path.rank_width[path.lvl]*path.node_sigma[path.lvl];//skip rank information
+        bool is_leaf = stream.read_bit(bit_pos++);
+        bool has_symbol = stream.read_bit(bit_pos+symbol);
+
+        if(!has_symbol){
+            bool succ_found = stream.read_bit(succ_b_pos+sigma+symbol);
+            //find successor sibling containing sym
+            size_t succ_child;
+            if(!succ_found){
+                succ_child = child+1;
+                size_t steps = 0;
+                while(!succ_found && steps < 5) {
+                    succ_b_pos = find_next(succ_child);
+                    skip_succ_pred_info(succ_b_pos);
+                    succ_found = stream.read_bit(succ_b_pos+1+symbol);//does the tree have the symbol?
+                    steps++;
+                }
+                if(!succ_found && steps==5) return -1;
+            } else {
+                decode_succ(succ_b_pos, child, symbol);
+                skip_succ_pred_info(succ_b_pos);
+                assert(stream.read_bit(succ_b_pos+1+symbol));
+            }
+
+            symbol = stream.pop_count(succ_b_pos, succ_b_pos+symbol);
+            succ_b_pos+=node_sigma;
+            size_t r_pos = succ_b_pos + symbol*rank_width;
+            rank = stream.read(r_pos, r_pos+rank_width-1);
+            return rank;
+        }
 
         i-= child*bk_sz;//relative position of i within the child block
 
-        while(!is_leaf){
+        while(!is_leaf && has_symbol){
+            uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol);
+            bit_pos+=node_sigma;
+            size_t r_pos = bit_pos + symbol*rank_width;
+            rank+=stream.read(r_pos, r_pos+rank_width-1);
+            bit_pos+=new_sigma*rank_width;
+
+            node_sigma=new_sigma;
+
             bk_sz/=scale_factor;
             child = i/bk_sz;
             assert(child<scale_factor);
 
-            size_t child_info = stream.read(path.bit_pos, path.bit_pos+scale_factor-1);
-            path.bit_pos+=scale_factor;
+            size_t child_info = stream.read(bit_pos, bit_pos+scale_factor-1);
+            bit_pos+=scale_factor;
 
             size_t n_children = __builtin_popcount(child_info);//number of eff children
             assert(n_children>0);
@@ -274,33 +327,39 @@ struct rlbwt_vlb {
             size_t n_real_lsib = 63-__builtin_clzll(child_info);//= select_1(child_info, (eff child)+1)-1
             i-=n_real_lsib*bk_sz;//number of symbols before child within the node
 
-            path.bit_pos+=path.node_sigma[path.lvl]*n_children;//skip int succ/pred info
+            bit_pos+=new_sigma*n_children;//skip int succ/pred info
 
             //read how many bits we use to encode the pointers to the children
-            size_t p_width = stream.read(path.bit_pos, path.bit_pos+int_pt_width-1);
-            path.bit_pos+=int_pt_width;
+            size_t p_width = stream.read(bit_pos, bit_pos+int_pt_width-1);
+            bit_pos+=int_pt_width;
 
-            p = path.bit_pos+(child*p_width);
+            size_t p = bit_pos+(child*p_width);
             p = stream.read(p, p+p_width-1);
 
             //skip the pointer to the children and position the bit in the next byte-aligned position
-            path.bit_pos = INT_CEIL((path.bit_pos+(n_children*p_width)), 8)*8;
+            bit_pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
             //add the bit offset. Now bit_pos points to child
-            path.bit_pos+= p*8;
+            bit_pos+= p*8;
 
             //start reading the header of child (there is no ext succ/pred info)
-            path.lvl++;
-            is_leaf = stream.read_bit(path.bit_pos++);
-            path.node_sigma[path.lvl] = stream.pop_count(path.bit_pos, path.bit_pos+path.node_sigma[path.lvl-1]-1);
-            path.sigma_pos[path.lvl]=path.bit_pos;
-            path.bit_pos+=path.node_sigma[path.lvl-1];
-            path.rank_pos[path.lvl] = path.bit_pos;
-            path.rank_width[path.lvl] = sym_width(bk_sz*scale_factor);
-            path.bit_pos+=path.rank_width[path.lvl]*path.node_sigma[path.lvl];//skip rank information
+            is_leaf = stream.read_bit(bit_pos++);
+            has_symbol = stream.read_bit(bit_pos+symbol);
         }
 
-        path.leaf_enc = stream.read(path.bit_pos, path.bit_pos+leaf_enc_width-1);
-        path.bit_pos+= leaf_enc_width;
+        if(is_leaf && has_symbol){
+            uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol);
+            bit_pos+=node_sigma;
+            size_t r_pos = bit_pos + symbol*rank_width;
+            rank+=stream.read(r_pos, r_pos+rank_width-1);
+            bit_pos+=new_sigma*rank_width;
+
+            uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
+            bit_pos+= leaf_enc_width;
+            //TODO perform an scan
+        }
+
+        return rank;
     }
 
     inline void find_path_to_leaf(tree_path_type& path, size_t& i) const {
@@ -318,11 +377,14 @@ struct rlbwt_vlb {
         //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
         size_t p = path.bit_pos+(ext_pt_width*child);
         p = stream.read(p, p+ext_pt_width-1);
-
+        size_t offset = (p >> (run_width+1)) * ((p & 1)>0);
         //std::cout<<p<<" "<<int(run_mask)<<" "<<int(run_width)<<" byte_pos"<<int(p>>run_width)<<" offset:"<<int(p & run_mask)<<std::endl;
+        //child = child-(p & run_mask);//eff child in the representation where i lies
+        child = child-offset;//eff child in the representation where i lies
+        p = path.bit_pos + (ext_pt_width*child);
+        p = stream.read(p, p+ext_pt_width-1)>>1;
 
-        child = child-(p & run_mask);//eff child in the representation where i lies
-        path.bit_pos =  (header_bytes + (p >> run_width))*8;//bit position where child begins in the stream
+        path.bit_pos =  (header_bytes + p)*8;//bit position where child begins in the stream
 
         //skip ext succ/pred information
         size_t n_samps = stream.pop_count(path.bit_pos, path.bit_pos+2*sigma-1);

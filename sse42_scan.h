@@ -413,7 +413,6 @@ static inline std::pair<uint64_t, uint8_t> inv_select_sse42_16x8(const uint8_t *
 
     //some time the block has some garbage, so we have to assume overflow at the end
     acc = hsum_epi16_ovf(bk_lengths);
-    //print16x8(bk_lengths);
 
     while(acc<=idx){
         block = decode_block_sse42<vbyte_compressed,1,2>(stream);
