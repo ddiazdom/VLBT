@@ -394,6 +394,7 @@ struct rl_node {//state of the compression
         size_t data_start = bit_pos;
         for(size_t s=0;s<bwt_rep.sigma;s++){
             if(low_freq_syms[s]){
+                std::cout<<"symbol:"<<s<<" bit_pos:"<<bit_pos<<" c_bit_pos:"<<c_bit_pos<<" ";
                 buffer.write(c_bit_pos, c_bit_pos+39, bit_pos);
                 c_bit_pos+=40;
                 for(unsigned long tree_id : sigma_trees[s]){
@@ -403,7 +404,9 @@ struct rl_node {//state of the compression
                     //how many symbols we have in the text before this tree
                     buffer.write(bit_pos, bit_pos+w2-1, tree_offset[tree_id]);
                     bit_pos+=w2;
+                    std::cout<<tree_offset[tree_id]<<" "<<tree_id<<" ";
                 }
+                std::cout<<""<<std::endl;
             }
             buffer.write(sym_bit_pos, sym_bit_pos, low_freq_syms[s]);
             sym_bit_pos++;
@@ -593,15 +596,32 @@ struct rl_node {//state of the compression
             buffer.write(bit_pos, bit_pos+bwt_rep.mtd_bits-1, w2);
             bit_pos+=bwt_rep.mtd_bits;
 
+            /*
+            //TODO for debugging
+            if(b<5){
+                for(size_t s=0;s<bwt_rep.sigma;s++){
+                    std::cout<<ext_succ_info[s]<<"";
+                }
+                std::cout<<" "<<std::endl;
+            }
+            //*/
+
             for(size_t t=0;t<p_trees;t++){
                 buffer.write(bit_pos, bit_pos+w2-1, concat_exp_suc_pred_info[pos++]);
                 bit_pos+=w2;
             }
 
             for(size_t t=0;t<s_trees;t++){
+                /*
+                //TODO for debugging
+                if(b<5){
+                    std::cout<<concat_exp_suc_pred_info[pos]<<" "<<std::endl;
+                }
+                //*/
                 buffer.write(bit_pos, bit_pos+w2-1, concat_exp_suc_pred_info[pos++]);
                 bit_pos+=w2;
             }
+
             pos++;
             bit_pos = INT_CEIL(bit_pos, 8)*8;
             //
@@ -1099,7 +1119,7 @@ struct rl_node {//state of the compression
         }
 
         //print the node information for debugging purposes
-        //tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
+        tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
         //
 
         //add the rank information of the active child node (tmp_node) to the

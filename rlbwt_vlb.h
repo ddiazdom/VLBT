@@ -75,6 +75,7 @@ static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, ui
 
 #if defined(__ARM_NEON__)
 #include "neon_scan.h"
+
 #define INV_SELECT_8 inv_select_neon_8x16
 #define INV_SELECT_16 inv_select_neon_16x8
 #define INV_SELECT_32 inv_select_neon_32x4
@@ -101,7 +102,13 @@ static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, ui
 #define ACCESS_8 access_avx2_8x32
 #define ACCESS_16 access_avx2_16x16
 #define ACCESS_32 access_avx2_32x8
-#define ACCESS_64 access_avx2_64x4*/
+#define ACCESS_64 access_avx2_64x4
+
+#define RANK_8 rank_avx2_8x16
+#define RANK_16 rank_avx2_16x8
+#define RANK_32 rank_avx2_32x4
+#define RANK_64 rank_avx2_64x2
+*/
 
 #elif defined(__SSE4_2__)
 #include "sse42_scan.h"
@@ -115,8 +122,13 @@ static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, ui
 #define ACCESS_16 access_sse42_16x8
 #define ACCESS_32 access_sse42_32x4
 #define ACCESS_64 access_sse42_64x2
-#else
 
+#define RANK_8 rank_sse42_8x16
+#define RANK_16 rank_sse42_16x8
+#define RANK_32 rank_sse42_32x4
+#define RANK_64 rank_sse42_64x2
+
+#else
 #define INV_SELECT_8 inv_select_scl_8
 #define INV_SELECT_16 inv_select_scl_16
 #define INV_SELECT_32 inv_select_scl_32
@@ -126,6 +138,11 @@ static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, ui
 #define ACCESS_16 access_scl_16
 #define ACCESS_32 access_scl_32
 #define ACCESS_64 access_scl_64
+
+#define RANK_8 rank_scl_8
+#define RANK_16 rank_scl_16
+#define RANK_32 rank_scl_32
+#define RANK_64 rank_scl_64
 #endif
 
 typedef bitstream<size_t> stream_type;
@@ -210,7 +227,7 @@ struct rlbwt_vlb {
         stream.load(ifs);
     }
 
-    inline size_t find_prev(size_t& child) const {
+    inline size_t find_prev(uint64_t& child) const {
         //get the effective block where i lies and its byte offset within the stream
         //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
         size_t p = lfs_bits + (ext_pt_width*child);
@@ -222,10 +239,11 @@ struct rlbwt_vlb {
         return (header_bytes + p)*8;//bit position where child begins in the stream
     }
 
-    inline size_t find_next(size_t& child) const {
+    inline size_t find_next(uint64_t& child) const {
         size_t p = lfs_bits + (ext_pt_width*child);
         p = stream.read(p, p+ext_pt_width-1);
-        size_t offset = ((p >> 1) & run_width) * ((p & 1)>0);
+        //std::cout<<p<<" "<<int(run_width)<<" "<<" "<<(p>>1)<<" "<<((p >> 1) & run_width)<<std::endl;
+        size_t offset = ((p >> 1) & ((1<<run_width)-1)) * ((p & 1)>0);
         child += offset;//eff child in the representation where i lies
         size_t child_off = lfs_bits + (ext_pt_width * child);
         p = stream.read(child_off, child_off + ext_pt_width - 1) >> 1;
@@ -244,7 +262,7 @@ struct rlbwt_vlb {
     }
 
     inline void decode_succ(size_t& bit_pos, size_t child, uint8_t symbol) const {
-        size_t succ_pos = stream.pop_count(bit_pos, sigma+symbol);//the position where the offset for the successor is located
+        size_t succ_pos = stream.pop_count(bit_pos, sigma+symbol-1);//the position where the offset for the successor is located
         bit_pos+=2*sigma;
         uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for child
         bit_pos+=mtd_bits + succ_pos*w;
@@ -254,11 +272,45 @@ struct rlbwt_vlb {
         bit_pos = (header_bytes+p)*8;
     }
 
+    inline int64_t low_freq_rank(size_t i, uint8_t symbol){
+
+        size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
+
+        size_t n_blocks = INT_CEIL(tot_syms, block_size);
+        uint8_t w1 = sym_width(n_blocks);
+        uint8_t w2 = sym_width(tot_syms);
+        uint16_t w3 = w1+w2;
+
+        //read the area of the stream where the info of symbol lies
+        size_t ptr = c_bits + symbol*40;
+        size_t first = stream.read(ptr, ptr+39);
+        ptr+=40;
+        size_t last = stream.read(ptr, ptr+39);
+        size_t n = (last-first)/w3;
+
+        size_t idx, rank;
+        while(n>0){
+            size_t mid = first + ((n/2)*w3);
+            idx = stream.read(mid+w1, mid+w1+w2-1);
+            if(idx<i){
+                first = mid+w3;
+            }else{
+                last = mid;
+            }
+            n = (last-first)/w3;
+        }
+        //
+        return 0;
+    }
+
     inline int64_t rank(size_t i, uint8_t symbol){
-        //NOTE this is a partial rank, it can answer -1 for a valid query.
+        // NOTE this is a partial rank, it can answer -1 for a valid query.
         // However, its functionality is enough for backwardsearch
 
         //TODO check if the node is low-freq
+        if(stream.read_bit(symbol)){
+            return low_freq_rank(i, symbol);
+        }
         //
 
         //initialize the block size
@@ -282,12 +334,12 @@ struct rlbwt_vlb {
         if(!has_symbol){
             bool succ_found = stream.read_bit(succ_b_pos+sigma+symbol);
             //find successor sibling containing sym
-            size_t succ_child;
+            uint64_t succ_child;
             if(!succ_found){
-                succ_child = child+1;
+                succ_child = child;
                 size_t steps = 0;
                 while(!succ_found && steps < 5) {
-                    succ_b_pos = find_next(succ_child);
+                    succ_b_pos = find_next(++succ_child);
                     skip_succ_pred_info(succ_b_pos);
                     succ_found = stream.read_bit(succ_b_pos+1+symbol);//does the tree have the symbol?
                     steps++;
@@ -299,7 +351,8 @@ struct rlbwt_vlb {
                 assert(stream.read_bit(succ_b_pos+1+symbol));
             }
 
-            symbol = stream.pop_count(succ_b_pos, succ_b_pos+symbol);
+            succ_b_pos++;//the +1 is for the leaf bit vector
+            symbol = stream.pop_count(succ_b_pos, succ_b_pos+symbol-1);
             succ_b_pos+=node_sigma;
             size_t r_pos = succ_b_pos + symbol*rank_width;
             rank = stream.read(r_pos, r_pos+rank_width-1);
@@ -310,7 +363,7 @@ struct rlbwt_vlb {
 
         while(!is_leaf && has_symbol){
             uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);
-            symbol = stream.pop_count(bit_pos, bit_pos+symbol);
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol-1);
             bit_pos+=node_sigma;
             size_t r_pos = bit_pos + symbol*rank_width;
             rank+=stream.read(r_pos, r_pos+rank_width-1);
@@ -355,7 +408,7 @@ struct rlbwt_vlb {
 
         if(is_leaf && has_symbol){
             uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);
-            symbol = stream.pop_count(bit_pos, bit_pos+symbol);
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol-1);
             bit_pos+=node_sigma;
             size_t r_pos = bit_pos + symbol*rank_width;
             rank+=stream.read(r_pos, r_pos+rank_width-1);
@@ -424,7 +477,6 @@ struct rlbwt_vlb {
                     exit(1);
             }
         }
-
         return rank;
     }
 
