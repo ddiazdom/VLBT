@@ -345,7 +345,9 @@ int main(int argc, char** argv){
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
 
+    bwt_dt.rank(137527296, 1);
     bwt_dt.rank(122589194, 1);
+    bwt_dt.rank(10, 1);
     //sdsl::wt_rlmn<> wt_rlmn;
     //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
     /*uint64_t r1;

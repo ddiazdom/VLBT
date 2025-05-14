@@ -378,12 +378,8 @@ struct rl_node {//state of the compression
         }
         //
 
-        //original number of blocks in the first level of the tree
-        size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);
-
-        size_t w1=sym_width(n_blocks);
-        size_t w2=sym_width(bwt_rep.tot_syms);
-        size_t elm_bits = n_elms*(w1+w2);
+        size_t w=sym_width(bwt_rep.tot_syms);
+        size_t elm_bits = n_elms*w;
         size_t c_bit_pos=bit_pos;//control bits
 
         //40 bits to encode the bit offset(s) in the stream where the x elements of s lie
@@ -399,12 +395,9 @@ struct rl_node {//state of the compression
                 c_bit_pos+=40;
                 for(unsigned long tree_id : sigma_trees[s]){
                     //encode the tree where s occurs
-                    buffer.write(bit_pos, bit_pos+w1-1, tree_id);
-                    bit_pos+=w1;
-                    //how many symbols we have in the text before this tree
-                    buffer.write(bit_pos, bit_pos+w2-1, tree_offset[tree_id]);
-                    bit_pos+=w2;
-                    std::cout<<tree_offset[tree_id]<<" "<<tree_id<<" ";
+                    buffer.write(bit_pos, bit_pos+w-1, tree_offset[tree_id]);
+                    bit_pos+=w;
+                    std::cout<<tree_offset[tree_id]<<" ";
                 }
                 std::cout<<""<<std::endl;
             }
@@ -533,6 +526,10 @@ struct rl_node {//state of the compression
 
         assert(lvl==0);
         tree_offset[n_children]=bwt_rep.tot_syms;
+
+        for(size_t i=0;i<bwt_rep.sigma;i++){
+            std::cout<<"fake leaf symbol:"<<i<<" rank:"<<block_ranks[i]<<std::endl;
+        }
 
         //compute symbols with low frequency and their tree positions explicitly
         size_t bit_pos=0;

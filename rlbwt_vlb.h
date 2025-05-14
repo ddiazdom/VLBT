@@ -272,46 +272,40 @@ struct rlbwt_vlb {
         bit_pos = (header_bytes+p)*8;
     }
 
-    inline int64_t low_freq_rank(size_t i, uint8_t symbol){
+    inline size_t find_lf_succ(size_t i, uint8_t symbol){
 
         size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
-
-        size_t n_blocks = INT_CEIL(tot_syms, block_size);
-        uint8_t w1 = sym_width(n_blocks);
-        uint8_t w2 = sym_width(tot_syms);
-        uint16_t w3 = w1+w2;
+        uint8_t w = sym_width(tot_syms);
 
         //read the area of the stream where the info of symbol lies
         size_t ptr = c_bits + symbol*40;
         size_t first = stream.read(ptr, ptr+39);
         ptr+=40;
         size_t last = stream.read(ptr, ptr+39);
-        size_t n = (last-first)/w3;
+        size_t n = (last-first)/w;
 
-        size_t idx, rank;
+        size_t idx;
         while(n>0){
-            size_t mid = first + ((n/2)*w3);
-            idx = stream.read(mid+w1, mid+w1+w2-1);
+            size_t mid = first + ((n/2)*w);
+            idx = stream.read(mid, mid+w-1);
             if(idx<i){
-                first = mid+w3;
+                first = mid+w;
             }else{
                 last = mid;
             }
-            n = (last-first)/w3;
+            n = (last-first)/w;
         }
-        //
-        return 0;
+
+        size_t options[2] = {idx, tot_syms};
+        idx = options[idx<i];
+        uint64_t child = idx/block_size;
+
+        return find_next(child);
     }
 
     inline int64_t rank(size_t i, uint8_t symbol){
-        // NOTE this is a partial rank, it can answer -1 for a valid query.
-        // However, its functionality is enough for backwardsearch
-
-        //TODO check if the node is low-freq
-        if(stream.read_bit(symbol)){
-            return low_freq_rank(i, symbol);
-        }
-        //
+        // NOTE this is a partial rank, it can sometimes answer -1 for a valid query.
+        // However, rank operations in backwardsearch never return -1, so it is OK for pattern matching
 
         //initialize the block size
         size_t bk_sz = block_size;
@@ -344,7 +338,14 @@ struct rlbwt_vlb {
                     succ_found = stream.read_bit(succ_b_pos+1+symbol);//does the tree have the symbol?
                     steps++;
                 }
-                if(!succ_found && steps==5) return -1;
+
+                if(!succ_found && steps==5){
+                    if(stream.read_bit(symbol)){//check if the node is low-freq
+                        succ_b_pos = find_lf_succ(i, symbol);
+                    } else {
+                        return -1;
+                    }
+                }
             } else {
                 decode_succ(succ_b_pos, child, symbol);
                 skip_succ_pred_info(succ_b_pos);
