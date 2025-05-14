@@ -342,6 +342,7 @@ struct rlbwt_vlb {
                 if(!succ_found && steps==5){
                     if(stream.read_bit(symbol)){//check if the node is low-freq
                         succ_b_pos = find_lf_succ(i, symbol);
+                        skip_succ_pred_info(succ_b_pos);
                     } else {
                         return -1;
                     }

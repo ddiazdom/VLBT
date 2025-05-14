@@ -344,10 +344,6 @@ int main(int argc, char** argv){
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-
-    bwt_dt.rank(137527296, 1);
-    bwt_dt.rank(122589194, 1);
-    bwt_dt.rank(10, 1);
     //sdsl::wt_rlmn<> wt_rlmn;
     //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
     /*uint64_t r1;
@@ -358,6 +354,11 @@ int main(int argc, char** argv){
     //auto r1 = wt_rlmn.rank(4200, bwt_dt.eff2byte(2));
     //auto r2 = bwt_dt.rank(4200, 2);
     //std::cout<<r1<<" "<<r2<<std::endl;
-    //test_inverse_select(bwt_dt, output_prefix);
-    //test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
+
+    test_inverse_select(bwt_dt, output_prefix);
+    test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
+
+    bwt_dt.rank(137527296, 1);
+    //bwt_dt.rank(122589194, 1);
+    //bwt_dt.rank(10, 1);
 }

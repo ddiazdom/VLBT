@@ -130,7 +130,7 @@ struct rl_node {//state of the compression
         if(lvl==0){
             //number of blocks in the tree representation
             size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);
-            block_ptr.resize(n_blocks+1);
+            block_ptr.resize(n_blocks+2);
             block_ptr[0] = 0;
             node_sigma = bwt_rep.sigma;
             node_sigma_bv = std::vector<bool>(bwt_rep.sigma, true);
@@ -522,6 +522,44 @@ struct rl_node {//state of the compression
         node_n_bits+=acc_bits;
     }
 
+    inline void add_trailing_bits(size_t& bit_pos, std::vector<uint64_t>& parent_rank_info){
+
+        size_t r_width = sym_width(bwt_rep.max_freq);
+        size_t rank_bits = r_width*node_sigma;
+        size_t trailing_bits = (2*bwt_rep.sigma) + bwt_rep.mtd_bits + 1 + bwt_rep.sigma + rank_bits;
+        trailing_bits = INT_CEIL(trailing_bits, 8)*8;//byte-aligned
+
+        //fake succ/pred info
+        for(size_t i=0;i<2*bwt_rep.sigma;i++){
+            buffer.write(bit_pos, bit_pos, 0);
+            bit_pos++;
+        }
+
+        buffer.write(bit_pos, bit_pos+bwt_rep.mtd_bits-1, 0);
+        bit_pos+=bwt_rep.mtd_bits;
+
+        //start writing the in the buffer
+        //1 bit (true) to indicate this node is a leaf
+        buffer.write(bit_pos, bit_pos, 1);
+        bit_pos++;
+
+        //parent_sigma bits to encode the alphabet
+        for(size_t i=0;i<bwt_rep.sigma;i++){
+            buffer.write(bit_pos, bit_pos, 1);
+            bit_pos++;
+        }
+
+        //write the rank information
+        for(size_t i=0;i<bwt_rep.sigma;i++){
+            buffer.write(bit_pos, bit_pos+r_width-1, parent_rank_info[i]);
+            bit_pos+=r_width;
+        }
+        bit_pos= INT_CEIL(bit_pos, 8)*8;
+
+        stats.header_overhead+=trailing_bits;
+        stats.rank_overhead+=rank_bits;
+    }
+
     inline void finish_tree(std::vector<uint64_t>& bk_boundaries) {
 
         assert(lvl==0);
@@ -554,14 +592,24 @@ struct rl_node {//state of the compression
         bwt_rep.ext_pt_width = std::max<uint16_t>(sym_width(node_n_bits/8), 2*run_width)+1;
 
         //(pt_bits*n_blocks) for the pointers to the trees
-        size_t tree_ptr_bits = (bwt_rep.ext_pt_width*n_blocks);
+        //+1 because we add a dummy tree at end for consistency
+        size_t tree_ptr_bits = (bwt_rep.ext_pt_width*(n_blocks+1));
         size_t header_bits = bwt_rep.lfs_bits+tree_ptr_bits;
         bwt_rep.header_bytes = INT_CEIL(header_bits, 8);
         header_bits = bwt_rep.header_bytes*8;
-
         bit_pos=header_bits;
+
+        //the trailing bits include:
+        //2*bwt_rep.sigma bits indicating succ/pred info (all set to false) we need these bits for consistency.
+        //bwt_rep.mtd_bits indicate the width of the succ/pred info (fake)
+        //1 bit to indicate this is a (dummy) leaf
+        //bwt_rep.sigma to indicate which symbols has rank info (all set to true)
+        //bwt_rep.sigma* sym_width(bwt_rep.max_freq) to encode the ranks
+        size_t trailing_bits = 2*bwt_rep.sigma + bwt_rep.mtd_bits + 1 + bwt_rep.sigma + sym_width(bwt_rep.max_freq)*bwt_rep.sigma;
+        trailing_bits = INT_CEIL(trailing_bits, 8)*8;
+
         size_t w2;
-        buffer.reserve_in_bits(node_n_bits+header_bits);
+        buffer.reserve_in_bits(header_bits+node_n_bits+trailing_bits);
 
         size_t p_sym_pos=0, s_sym_pos=0, p_trees, s_trees, pos=0, max_tree_dist, stream_byte_pos, tree_new_byte_pos;
         std::streamsize tree_bytes;
@@ -632,13 +680,20 @@ struct rl_node {//state of the compression
             bit_pos+=tree_bytes*8;
             block_ptr[b]=tree_new_byte_pos;
         }
-        assert(pos==concat_exp_suc_pred_info.size());
-        assert(bit_pos==(node_n_bits+header_bits));
-        block_ptr[n_children]=(header_bits-bit_pos)/8;
+        //add a dummy block
+        assert((bit_pos-header_bits)==node_n_bits);
+        block_ptr[n_children]=(bit_pos-header_bits)/8;
+        add_trailing_bits(bit_pos, block_ranks);
 
+        assert(pos==concat_exp_suc_pred_info.size());
+        assert(bit_pos==(header_bits+node_n_bits+trailing_bits));
+        block_ptr[n_children+1]=(bit_pos-header_bits)/8;
+
+        //write the pointers to the trees
         bit_pos=bwt_rep.lfs_bits;
         size_t c=0, l=0, n_syms, r, offsets;
-        for(size_t b=0;b<n_children;b++){
+        for(size_t b=0;b<=n_children;b++){
+
             buffer.write(bit_pos, bit_pos+bwt_rep.ext_pt_width-1, (block_ptr[b]<<1));
             bit_pos+=bwt_rep.ext_pt_width;
             r = (tree_offset[b+1]-tree_offset[b])/b_size;
@@ -659,9 +714,10 @@ struct rl_node {//state of the compression
             l=0;
         }
         assert(bit_pos==(bwt_rep.lfs_bits+tree_ptr_bits));
-        assert(c==n_blocks);
+        assert(c==(n_blocks+1));
 
         node_n_bits+=header_bits;
+        node_n_bits+=trailing_bits;
         //move the information to the bwt
         bwt_rep.stream.swap(buffer);
 
