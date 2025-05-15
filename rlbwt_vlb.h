@@ -296,8 +296,7 @@ struct rlbwt_vlb {
             n = (last-first)/w;
         }
 
-        size_t options[2] = {idx/block_size, INT_CEIL(tot_syms, block_size)};
-        uint64_t child = options[idx<i];
+        uint64_t child = idx/block_size;
 
         return find_next(child);
     }

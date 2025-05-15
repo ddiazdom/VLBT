@@ -368,22 +368,25 @@ struct rl_node {//state of the compression
         assert(lvl==0);
         //compute how many (and which) symbols have low frequency
         //(i.e., symbol present in <=1% of the trees)
+        //we will include the extra value INT_CEIL(tot_syms, block_size)*block_size for consistency
         size_t n_syms=0, n_elms=0, sym_bit_pos=bit_pos;
         for(size_t s=0;s<bwt_rep.sigma;s++){
             double per =  double(sigma_trees[s].size())/double(n_children);
             low_freq_syms[s]= per<=0.01;
-            n_elms+=sigma_trees[s].size()*low_freq_syms[s];
+            n_elms+=(sigma_trees[s].size()+1)*low_freq_syms[s];
             n_syms+=per<=0.01;
             bit_pos++;
         }
         //
 
-        size_t w=sym_width(bwt_rep.tot_syms);
+        //a dummy limit>=tot_syms to access the dummy block (the one that is fake)
+        size_t limit = INT_CEIL(bwt_rep.tot_syms, b_size)*b_size;
+        size_t w=sym_width(limit);
         size_t elm_bits = n_elms*w;
         size_t c_bit_pos=bit_pos;//control bits
 
         //40 bits to encode the bit offset(s) in the stream where the x elements of s lie
-        //NOTE: (offset(s+1)-offset(s))/(w1+w2) is equal to x
+        //NOTE: (offset(s+1)-offset(s))/(w) is equal to x
         bit_pos+= (n_syms+1)*40;
         buffer.reserve_in_bits(bit_pos+elm_bits);
 
@@ -399,7 +402,9 @@ struct rl_node {//state of the compression
                     bit_pos+=w;
                     std::cout<<tree_offset[tree_id]<<" ";
                 }
-                std::cout<<""<<std::endl;
+                buffer.write(bit_pos, bit_pos+w-1, limit);
+                bit_pos+=w;
+                std::cout<<" "<<std::endl;
             }
             buffer.write(sym_bit_pos, sym_bit_pos, low_freq_syms[s]);
             sym_bit_pos++;
