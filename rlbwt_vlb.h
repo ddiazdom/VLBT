@@ -257,7 +257,7 @@ struct rlbwt_vlb {
         uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for child
         bit_pos+=mtd_bits;
         bit_pos+=n_samps*w;//skip the n_samp tree distances
-        bit_pos= INT_CEIL(bit_pos, 8)*8;//next byte-aligned position
+        bit_pos= INT_CEIL(bit_pos, 8)*8;//next byte-aligned position (trees are byte-aligned)
         //
     }
 
@@ -296,9 +296,8 @@ struct rlbwt_vlb {
             n = (last-first)/w;
         }
 
-        size_t options[2] = {idx, tot_syms};
-        idx = options[idx<i];
-        uint64_t child = idx/block_size;
+        size_t options[2] = {idx/block_size, INT_CEIL(tot_syms, block_size)};
+        uint64_t child = options[idx<i];
 
         return find_next(child);
     }

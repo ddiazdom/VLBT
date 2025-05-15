@@ -522,23 +522,38 @@ struct rl_node {//state of the compression
         node_n_bits+=acc_bits;
     }
 
+    inline size_t compute_number_of_trailing_bits(){
+        //the trailing bits include:
+        //2*bwt_rep.sigma bits indicating succ/pred info (all set to false) we need these bits for consistency.
+        //bwt_rep.mtd_bits indicate the width of the succ/pred info (fake)
+        //1 bit to indicate this is a (dummy) leaf
+        //bwt_rep.sigma to indicate which symbols has rank info (all set to true)
+        //bwt_rep.sigma* sym_width(bwt_rep.max_freq) to encode the ranks
+        size_t r_width = sym_width(bwt_rep.max_freq);
+        size_t rank_bits = r_width*bwt_rep.sigma;
+        size_t succ_pred_info = (2*bwt_rep.sigma) + bwt_rep.mtd_bits;
+        succ_pred_info = INT_CEIL(succ_pred_info, 8)*8;//trees are byte aligned by construction in the stream
+        size_t trailing_bits = succ_pred_info + 1 + bwt_rep.sigma + rank_bits;
+        return INT_CEIL(trailing_bits, 8)*8;//byte-align the trailing bits
+    }
+
     inline void add_trailing_bits(size_t& bit_pos, std::vector<uint64_t>& parent_rank_info){
 
+        size_t trailing_bits = compute_number_of_trailing_bits();
         size_t r_width = sym_width(bwt_rep.max_freq);
-        size_t rank_bits = r_width*node_sigma;
-        size_t trailing_bits = (2*bwt_rep.sigma) + bwt_rep.mtd_bits + 1 + bwt_rep.sigma + rank_bits;
-        trailing_bits = INT_CEIL(trailing_bits, 8)*8;//byte-aligned
+        size_t rank_bits = r_width*bwt_rep.sigma;
 
         //fake succ/pred info
-        for(size_t i=0;i<2*bwt_rep.sigma;i++){
+        for(size_t i=0;i<(2*bwt_rep.sigma);i++){
             buffer.write(bit_pos, bit_pos, 0);
             bit_pos++;
         }
 
         buffer.write(bit_pos, bit_pos+bwt_rep.mtd_bits-1, 0);
         bit_pos+=bwt_rep.mtd_bits;
+        bit_pos = INT_CEIL(bit_pos, 8)*8;
 
-        //start writing the in the buffer
+        //start writing rank info
         //1 bit (true) to indicate this node is a leaf
         buffer.write(bit_pos, bit_pos, 1);
         bit_pos++;
@@ -551,6 +566,7 @@ struct rl_node {//state of the compression
 
         //write the rank information
         for(size_t i=0;i<bwt_rep.sigma;i++){
+            std::cout<<"symbol:"<<i<<" rank_bit_pos:"<<bit_pos<<" r_width:"<<int(r_width)<<" rank:"<<parent_rank_info[i]<<std::endl;
             buffer.write(bit_pos, bit_pos+r_width-1, parent_rank_info[i]);
             bit_pos+=r_width;
         }
@@ -599,14 +615,7 @@ struct rl_node {//state of the compression
         header_bits = bwt_rep.header_bytes*8;
         bit_pos=header_bits;
 
-        //the trailing bits include:
-        //2*bwt_rep.sigma bits indicating succ/pred info (all set to false) we need these bits for consistency.
-        //bwt_rep.mtd_bits indicate the width of the succ/pred info (fake)
-        //1 bit to indicate this is a (dummy) leaf
-        //bwt_rep.sigma to indicate which symbols has rank info (all set to true)
-        //bwt_rep.sigma* sym_width(bwt_rep.max_freq) to encode the ranks
-        size_t trailing_bits = 2*bwt_rep.sigma + bwt_rep.mtd_bits + 1 + bwt_rep.sigma + sym_width(bwt_rep.max_freq)*bwt_rep.sigma;
-        trailing_bits = INT_CEIL(trailing_bits, 8)*8;
+        size_t trailing_bits = compute_number_of_trailing_bits();
 
         size_t w2;
         buffer.reserve_in_bits(header_bits+node_n_bits+trailing_bits);
@@ -682,7 +691,8 @@ struct rl_node {//state of the compression
         }
         //add a dummy block
         assert((bit_pos-header_bits)==node_n_bits);
-        block_ptr[n_children]=(bit_pos-header_bits)/8;
+        tree_new_byte_pos = (bit_pos-header_bits)/8;
+        block_ptr[n_children]=tree_new_byte_pos;
         add_trailing_bits(bit_pos, block_ranks);
 
         assert(pos==concat_exp_suc_pred_info.size());
@@ -695,6 +705,7 @@ struct rl_node {//state of the compression
         for(size_t b=0;b<=n_children;b++){
 
             buffer.write(bit_pos, bit_pos+bwt_rep.ext_pt_width-1, (block_ptr[b]<<1));
+            std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<std::endl;
             bit_pos+=bwt_rep.ext_pt_width;
             r = (tree_offset[b+1]-tree_offset[b])/b_size;
             c++;
