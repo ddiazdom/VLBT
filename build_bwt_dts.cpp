@@ -36,6 +36,32 @@ std::vector<uint64_t> sample_unique(uint64_t n, uint64_t x) {
     return {seen.begin(), seen.end()};
 }
 
+namespace std {
+    template<typename X, typename Y>
+    struct hash<std::pair<X, Y>> {
+        std::size_t operator()(const std::pair<X, Y> &pair) const {
+            return std::hash<X>()(pair.first) ^ std::hash<Y>()(pair.second);
+        }
+    };
+}
+
+std::vector<std::pair<uint64_t, uint8_t>> compute_random_rank_queries(uint64_t text_size, uint8_t alphabet_size, uint64_t n_samps) {
+
+    if(n_samps > text_size*alphabet_size) throw std::invalid_argument("invalid sample size");
+
+    std::unordered_set<std::pair<uint64_t, uint8_t>> seen;
+    std::mt19937_64 rng(std::random_device{}());
+    std::uniform_int_distribution<uint64_t> dist_idx(0, text_size - 1);
+    std::uniform_int_distribution<uint64_t> dist_sym(0, alphabet_size- 1);
+
+    while (seen.size() < n_samps) {
+        uint64_t idx = dist_idx(rng);
+        uint64_t symbol = dist_sym(rng);
+        seen.insert({idx, symbol});
+    }
+    return {seen.begin(), seen.end()};
+}
+
 #define build_dt(dt, suffix) \
 {                            \
 dt instance;                 \
@@ -100,86 +126,6 @@ void rl2plain(std::string& rl_file, std::string& output_plain_file){
     bwt_reader.close();
     ofs.close();
 }
-
-/*template<class bwt_type>
-void build_my_bwt(std::string& input_file, std::string& output_file){
-    auto t1 = std::chrono::high_resolution_clock::now();
-    bwt_type my_bwt(input_file);
-    auto t2 = std::chrono::high_resolution_clock::now();
-    size_t written_bytes = store_to_file(output_file+".my_simple_bwt", my_bwt);
-
-    int status;
-    const char * dt_name = typeid(bwt_type).name();
-    char* dem_name = abi::__cxa_demangle(dt_name, nullptr, nullptr, &status);
-
-    std::cout<<dem_name<<"  build_time:"<<report_time(t1, t2, 0)<<",  space_usage:"<<float(written_bytes*8)/float(my_bwt.size())<<" bps"<<std::endl;
-
-    //todo testing
-    / *std::vector<uint8_t> cs(6,0);
-    uint64_t k;
-    std::vector<uint64_t> rank_c_i(6,0);
-    std::vector<uint64_t> rank_c_j(6, 0);
-    my_bwt.interval_symbols(8756, 23065, k, cs, rank_c_i, rank_c_j);
-
-    rlbwt_small_alpha<sigma> tmp_bwt;
-    load_from_file(output_file+".my_simple_bwt", tmp_bwt);
-    std::vector<uint8_t> cs2(6,0);
-    uint64_t k2;
-    std::vector<uint64_t> rank_c_i2(6,0);
-    std::vector<uint64_t> rank_c_j2(6, 0);
-    std::cout<<sigma<<std::endl;
-    tmp_bwt.interval_symbols(8756, 23065, k2, cs2, rank_c_i2, rank_c_j2); * /
-    //
-    my_bwt.stats();
-
-    switch (alphabet) {
-        case 3:
-            build_my_bwt<rlbwt_small_alpha<3>>(input_file, output_file);
-            break;
-        case 4:
-            build_my_bwt<rlbwt_small_alpha<4>>(input_file, output_file);
-            break;
-        case 5:
-            build_my_bwt<rlbwt_small_alpha<5>>(input_file, output_file);
-            break;
-        case 6:
-            build_my_bwt<rlbwt_small_alpha<6>>(input_file, output_file);
-            break;
-        case 7:
-            build_my_bwt<rlbwt_small_alpha<7>>(input_file, output_file);
-            break;
-        case 8:
-            build_my_bwt<rlbwt_small_alpha<8>>(input_file, output_file);
-            break;
-        case 9:
-            build_my_bwt<rlbwt_small_alpha<9>>(input_file, output_file);
-            break;
-        case 10:
-            build_my_bwt<rlbwt_small_alpha<10>>(input_file, output_file);
-            break;
-        case 11:
-            build_my_bwt<rlbwt_small_alpha<11>>(input_file, output_file);
-            break;
-        case 12:
-            build_my_bwt<rlbwt_small_alpha<12>>(input_file, output_file);
-            break;
-        case 13:
-            build_my_bwt<rlbwt_small_alpha<13>>(input_file, output_file);
-            break;
-        case 14:
-            build_my_bwt<rlbwt_small_alpha<14>>(input_file, output_file);
-            break;
-        case 15:
-            build_my_bwt<rlbwt_small_alpha<15>>(input_file, output_file);
-            break;
-        case 16:
-            build_my_bwt<rlbwt_small_alpha<16>>(input_file, output_file);
-            break;
-        default:
-            std::cout<<"Alphabet size not supported"<<std::endl;
-            exit(1);
-    }
-}*/
 
 #define MEASURE(query, time_answer, query_answer) \
 {\
@@ -250,6 +196,42 @@ void test_access(bwt_type& my_dt, std::string& input_file){
         assert(res1.first==res2.first && res1.second==my_dt.eff2byte(res2.second));
         //MEASURE(my_dt.inverse_select(p), acc_time, answers[0]);
     }*/
+}
+
+template<class bwt_type>
+void test_rank(bwt_type& my_dt, std::string& input_file){
+
+    sdsl::wt_rlmn<> wt_rlmn;
+    sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
+
+    size_t samp_size = 1000000;
+    std::vector<std::pair<uint64_t, uint8_t>> tests = compute_random_rank_queries(wt_rlmn.size(), wt_rlmn.sigma, samp_size);
+
+    double acc_time=0;
+    std::vector<uint64_t> my_dt_ans(samp_size);
+    for(size_t j=0;j<tests.size();j++){
+        std::cout<<tests[j].first<<" "<<int(tests[j].second)<<std::endl;
+        MEASURE(my_dt.rank(tests[j].first, tests[j].second), acc_time, my_dt_ans[j]);
+    }
+    std::cout<<"rank rlbwt_vlb:";
+    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+
+    acc_time=0;
+    std::vector<uint64_t> wt_rlmn_ans(samp_size);
+    for(size_t j=0;j<tests.size();j++){
+        MEASURE(wt_rlmn.rank(tests[j].first, my_dt.eff2byte(tests[j].second)), acc_time, wt_rlmn_ans[j]);
+    }
+    std::cout<<"rank wt_rlmn:";
+    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
+
+    for(size_t j=0;j<tests.size();j++){
+        if(wt_rlmn_ans[j]!=uint64_t(my_dt_ans[j])){
+            std::cout<<"query:  idx:"<<tests[j].first<<" sym:"<<tests[j].second<<" ";
+            std::cout<<"wt_huff rank answer: "<<wt_rlmn_ans[j]<<std::endl;
+            std::cout<<"my_dt   rank answer: "<<my_dt_ans[j]<<"\n"<<std::endl;
+        }
+        assert(wt_rlmn_ans[j]==uint64_t(my_dt_ans[j]));
+    }
 }
 
 template<class bwt_type>
@@ -344,9 +326,12 @@ int main(int argc, char** argv){
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
+    std::cout<<bwt_dt.rank(285607381,48)<<std::endl;
+    std::cout<<bwt_dt.rank(250020433,126)<<std::endl;
 
     test_inverse_select(bwt_dt, output_prefix);
     test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
+    test_rank(bwt_dt, output_prefix);
 
     sdsl::wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
@@ -358,8 +343,7 @@ int main(int argc, char** argv){
     //auto r1 = wt_rlmn.rank(4200, bwt_dt.eff2byte(2));
     //auto r2 = bwt_dt.rank(4200, 2);
     //std::cout<<r1<<" "<<r2<<std::endl;
-    std::cout<<bwt_dt.rank(137527296, 1)<<std::endl;
-    std::cout<<wt_rlmn.rank(137527296, bwt_dt.eff2byte(1))<<std::endl;
+    //std::cout<<wt_rlmn.rank(137527296, bwt_dt.eff2byte(1))<<std::endl;
     //bwt_dt.rank(122589194, 1);
     //bwt_dt.rank(10, 1);
 }

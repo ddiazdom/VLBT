@@ -393,18 +393,20 @@ struct rl_node {//state of the compression
         size_t data_start = bit_pos;
         for(size_t s=0;s<bwt_rep.sigma;s++){
             if(low_freq_syms[s]){
-                std::cout<<"symbol:"<<s<<" bit_pos:"<<bit_pos<<" c_bit_pos:"<<c_bit_pos<<" ";
+
+                std::cout<<"symbol:"<<s<<" c_bit_pos:"<<c_bit_pos<<" b_pos:"<<bit_pos<<std::endl;
                 buffer.write(c_bit_pos, c_bit_pos+39, bit_pos);
                 c_bit_pos+=40;
                 for(unsigned long tree_id : sigma_trees[s]){
                     //encode the tree where s occurs
                     buffer.write(bit_pos, bit_pos+w-1, tree_offset[tree_id]);
+                    std::cout<<"\t b_pos:"<<bit_pos<<" "<<tree_offset[tree_id]<<std::endl;
                     bit_pos+=w;
-                    std::cout<<tree_offset[tree_id]<<" ";
+                    //std::cout<<tree_offset[tree_id]<<" ";
                 }
                 buffer.write(bit_pos, bit_pos+w-1, limit);
+                std::cout<<"\t b_pos:"<<bit_pos<<" "<<limit<<"\n"<<std::endl;
                 bit_pos+=w;
-                std::cout<<" "<<std::endl;
             }
             buffer.write(sym_bit_pos, sym_bit_pos, low_freq_syms[s]);
             sym_bit_pos++;
@@ -499,7 +501,9 @@ struct rl_node {//state of the compression
                         real_dist = (tree_offset[b+tree_dist]-tree_offset[b])/b_size;
                         //if(tree_dist>max_tree_dist) max_tree_dist = tree_dist;
                         if(real_dist>max_tree_dist) max_tree_dist = real_dist;
-                        //std::cout<<"block:"<<b<<", symbol:"<<s<<", succ_tree:"<<s_tree<<" "<<dist<<std::endl;
+                        //if(tree_offset[b]==285605888){
+                        //    std::cout<<"what wea? block:"<<b<<", symbol:"<<s<<", succ_tree:"<<real_dist<<" lo guarde en:"<<concat_ext_suc_pred_info.size()<<std::endl;
+                        //}
                         concat_ext_suc_pred_info.push_back(real_dist);
                         succ_samp++;
                     }
@@ -571,7 +575,7 @@ struct rl_node {//state of the compression
 
         //write the rank information
         for(size_t i=0;i<bwt_rep.sigma;i++){
-            std::cout<<"symbol:"<<i<<" rank_bit_pos:"<<bit_pos<<" r_width:"<<int(r_width)<<" rank:"<<parent_rank_info[i]<<std::endl;
+            //std::cout<<"symbol:"<<i<<" rank_bit_pos:"<<bit_pos<<" r_width:"<<int(r_width)<<" rank:"<<parent_rank_info[i]<<std::endl;
             buffer.write(bit_pos, bit_pos+r_width-1, parent_rank_info[i]);
             bit_pos+=r_width;
         }
@@ -586,9 +590,9 @@ struct rl_node {//state of the compression
         assert(lvl==0);
         tree_offset[n_children]=bwt_rep.tot_syms;
 
-        for(size_t i=0;i<bwt_rep.sigma;i++){
+        /*for(size_t i=0;i<bwt_rep.sigma;i++){
             std::cout<<"fake leaf symbol:"<<i<<" rank:"<<block_ranks[i]<<std::endl;
-        }
+        }*/
 
         //compute symbols with low frequency and their tree positions explicitly
         size_t bit_pos=0;
@@ -633,6 +637,10 @@ struct rl_node {//state of the compression
             assert(aligned<8>(bit_pos));
             tree_new_byte_pos = (bit_pos-header_bits)/8;
 
+            /*if(tree_offset[b]==285605888){
+                std::cout<<"This is the bit pos where I start to write: "<<bit_pos<<std::endl;
+            }*/
+
             //add the ext succ/pred information
             p_trees=0;
             for(size_t s=0;s<bwt_rep.sigma;s++){
@@ -655,28 +663,16 @@ struct rl_node {//state of the compression
             buffer.write(bit_pos, bit_pos+bwt_rep.mtd_bits-1, w2);
             bit_pos+=bwt_rep.mtd_bits;
 
-            /*
-            //TODO for debugging
-            if(b<5){
-                for(size_t s=0;s<bwt_rep.sigma;s++){
-                    std::cout<<ext_succ_info[s]<<"";
-                }
-                std::cout<<" "<<std::endl;
-            }
-            //*/
-
             for(size_t t=0;t<p_trees;t++){
                 buffer.write(bit_pos, bit_pos+w2-1, concat_exp_suc_pred_info[pos++]);
                 bit_pos+=w2;
             }
 
             for(size_t t=0;t<s_trees;t++){
-                /*
-                //TODO for debugging
-                if(b<5){
-                    std::cout<<concat_exp_suc_pred_info[pos]<<" "<<std::endl;
-                }
-                //*/
+
+                /*if(pos==326242){
+                    std::cout<<"should this be 255?"<<concat_exp_suc_pred_info[pos++]<<" bit_pos:"<<bit_pos<<" w:"<<int(w2)<<std::endl;
+                }*/
                 buffer.write(bit_pos, bit_pos+w2-1, concat_exp_suc_pred_info[pos++]);
                 bit_pos+=w2;
             }
@@ -710,7 +706,7 @@ struct rl_node {//state of the compression
         for(size_t b=0;b<=n_children;b++){
 
             buffer.write(bit_pos, bit_pos+bwt_rep.ext_pt_width-1, (block_ptr[b]<<1));
-            std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<std::endl;
+            //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<std::endl;
             bit_pos+=bwt_rep.ext_pt_width;
             r = (tree_offset[b+1]-tree_offset[b])/b_size;
             c++;

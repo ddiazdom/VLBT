@@ -262,7 +262,7 @@ struct rlbwt_vlb {
     }
 
     inline void decode_succ(size_t& bit_pos, size_t child, uint8_t symbol) const {
-        size_t succ_pos = stream.pop_count(bit_pos, sigma+symbol-1);//the position where the offset for the successor is located
+        size_t succ_pos = stream.pop_count(bit_pos, bit_pos+sigma+symbol-1);//the position where the offset for the successor is located
         bit_pos+=2*sigma;
         uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for child
         bit_pos+=mtd_bits + succ_pos*w;
@@ -274,8 +274,9 @@ struct rlbwt_vlb {
 
     inline size_t find_lf_succ(size_t i, uint8_t symbol){
 
+        symbol = stream.pop_count(0, symbol)-1;
         size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
-        uint8_t w = sym_width(tot_syms);
+        uint8_t w = sym_width(INT_CEIL(tot_syms, block_size)*block_size);
 
         //read the area of the stream where the info of symbol lies
         size_t ptr = c_bits + symbol*40;
@@ -291,7 +292,7 @@ struct rlbwt_vlb {
             if(idx<i){
                 first = mid+w;
             }else{
-                last = mid;
+                last = mid+w;
             }
             n = (last-first)/w;
         }
@@ -326,9 +327,8 @@ struct rlbwt_vlb {
         if(!has_symbol){
             bool succ_found = stream.read_bit(succ_b_pos+sigma+symbol);
             //find successor sibling containing sym
-            uint64_t succ_child;
             if(!succ_found){
-                succ_child = child;
+                uint64_t succ_child = child;
                 size_t steps = 0;
                 while(!succ_found && steps < 5) {
                     succ_b_pos = find_next(++succ_child);
@@ -337,7 +337,7 @@ struct rlbwt_vlb {
                     steps++;
                 }
 
-                if(!succ_found && steps==5){
+                if(!succ_found){
                     if(stream.read_bit(symbol)){//check if the node is low-freq
                         succ_b_pos = find_lf_succ(i, symbol);
                         skip_succ_pred_info(succ_b_pos);
