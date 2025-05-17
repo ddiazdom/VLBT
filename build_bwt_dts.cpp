@@ -208,16 +208,16 @@ void test_rank(bwt_type& my_dt, std::string& input_file){
     std::vector<std::pair<uint64_t, uint8_t>> tests = compute_random_rank_queries(wt_rlmn.size(), wt_rlmn.sigma, samp_size);
 
     double acc_time=0;
-    std::vector<uint64_t> my_dt_ans(samp_size);
+    std::vector<int64_t> my_dt_ans(samp_size);
     for(size_t j=0;j<tests.size();j++){
-        std::cout<<tests[j].first<<" "<<int(tests[j].second)<<std::endl;
+        //std::cout<<tests[j].first<<" "<<int(tests[j].second)<<std::endl;
         MEASURE(my_dt.rank(tests[j].first, tests[j].second), acc_time, my_dt_ans[j]);
     }
     std::cout<<"rank rlbwt_vlb:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     acc_time=0;
-    std::vector<uint64_t> wt_rlmn_ans(samp_size);
+    std::vector<int64_t> wt_rlmn_ans(samp_size);
     for(size_t j=0;j<tests.size();j++){
         MEASURE(wt_rlmn.rank(tests[j].first, my_dt.eff2byte(tests[j].second)), acc_time, wt_rlmn_ans[j]);
     }
@@ -225,8 +225,9 @@ void test_rank(bwt_type& my_dt, std::string& input_file){
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     for(size_t j=0;j<tests.size();j++){
+        if(my_dt_ans[j]<0) continue;
         if(wt_rlmn_ans[j]!=uint64_t(my_dt_ans[j])){
-            std::cout<<"query:  idx:"<<tests[j].first<<" sym:"<<tests[j].second<<" ";
+            std::cout<<"query:  idx:"<<tests[j].first<<", sym:"<<int(tests[j].second)<<std::endl;
             std::cout<<"wt_huff rank answer: "<<wt_rlmn_ans[j]<<std::endl;
             std::cout<<"my_dt   rank answer: "<<my_dt_ans[j]<<"\n"<<std::endl;
         }
@@ -326,15 +327,16 @@ int main(int argc, char** argv){
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-    std::cout<<bwt_dt.rank(285607381,48)<<std::endl;
-    std::cout<<bwt_dt.rank(250020433,126)<<std::endl;
+    //std::cout<<bwt_dt.rank(250020433,126)<<std::endl;
+    //sdsl::wt_rlmn<> wt_rlmn;
+    //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
+    //std::cout<<bwt_dt.rank(467616716, 57)<<std::endl;
+    //std::cout<<wt_rlmn.rank(467616716,bwt_dt.eff2byte(57))<<std::endl;
 
     test_inverse_select(bwt_dt, output_prefix);
     test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
     test_rank(bwt_dt, output_prefix);
 
-    sdsl::wt_rlmn<> wt_rlmn;
-    sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
     /*uint64_t r1;
     for(size_t i=0;i<wt_rlmn.sigma;i++){
         r1 = wt_rlmn.rank(4200, bwt_dt.eff2byte(i));

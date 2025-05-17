@@ -280,22 +280,25 @@ struct rlbwt_vlb {
 
         //read the area of the stream where the info of symbol lies
         size_t ptr = c_bits + symbol*40;
-        size_t first = stream.read(ptr, ptr+39);
+        int64_t first = stream.read(ptr, ptr+39);
         ptr+=40;
-        size_t last = stream.read(ptr, ptr+39);
-        size_t n = (last-first)/w;
+        int64_t last = stream.read(ptr, ptr+39)-w;
+        size_t n = ((last-first)/w)+1;
 
         size_t idx;
-        while(n>0){
-            size_t mid = first + ((n/2)*w);
+        while(first<=last){
+            int64_t mid = first + int64_t((n/2)*w);
             idx = stream.read(mid, mid+w-1);
             if(idx<i){
                 first = mid+w;
             }else{
-                last = mid+w;
+                last = mid-w;
             }
-            n = (last-first)/w;
+            n = ((last-first)/w)+1;
         }
+
+        last+=w;
+        idx = stream.read(last, last+w-1);
 
         uint64_t child = idx/block_size;
 
@@ -341,6 +344,7 @@ struct rlbwt_vlb {
                     if(stream.read_bit(symbol)){//check if the node is low-freq
                         succ_b_pos = find_lf_succ(i, symbol);
                         skip_succ_pred_info(succ_b_pos);
+                        assert(stream.read_bit(succ_b_pos+1+symbol));
                     } else {
                         return -1;
                     }
@@ -376,7 +380,7 @@ struct rlbwt_vlb {
             assert(child<scale_factor);
 
             size_t child_info = stream.read(bit_pos, bit_pos+scale_factor-1);
-            bit_pos+=scale_factor;
+            bit_pos += scale_factor;
 
             size_t n_children = __builtin_popcount(child_info);//number of eff children
             assert(n_children>0);
