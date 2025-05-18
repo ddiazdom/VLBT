@@ -305,6 +305,22 @@ struct rlbwt_vlb {
         return find_next(child);
     }
 
+    struct succ_info{
+        size_t bit_pos=0xffffffffffffffff;
+        uint64_t rank=0;
+        uint8_t symbol=0;
+        uint8_t r_width=0;
+        uint8_t node_sigma=0;
+
+        inline uint64_t get_rank(const stream_type& st) {
+            bit_pos++;//the +1 is for the leaf bit vector
+            symbol = st.pop_count(bit_pos, bit_pos+symbol-1);
+            bit_pos+=node_sigma;
+            size_t r_pos = bit_pos + (symbol*r_width);
+            rank += st.read(r_pos, r_pos+r_width-1);
+        }
+    };
+
     inline int64_t rank(size_t i, uint8_t symbol){
         // NOTE this is a partial rank, it can sometimes answer -1 for a valid query.
         // However, rank operations in backwardsearch never return -1, so it is OK for pattern matching
@@ -312,10 +328,40 @@ struct rlbwt_vlb {
         //initialize the block size
         size_t bk_sz = block_size;
 
+        //succ info
+        //s_info[1] contains the successor information
+        //s_info[2] is a temporary value that is discarded when there is no successor
+        //we use two variables to avoid branching as we descend over the tree
+        succ_info s_info[2];
+
         //get the block where index i lies
-        uint64_t child = i/bk_sz;
+        uint64_t child = i/bk_sz, succ_child;
         size_t bit_pos = find_prev(child);//bit position where child begins in the stream
-        size_t succ_b_pos=bit_pos;//bit position of successor/predecessor info
+
+        //find successor containing sym
+        bool succ_found = stream.read_bit(bit_pos+sigma+symbol);
+        size_t succ_bit_pos=-1;
+        if(!succ_found) {
+            succ_child = child;
+            size_t steps = 0;
+            while(!succ_found && steps < 5) {
+                succ_bit_pos = find_next(++succ_child);
+                skip_succ_pred_info(succ_bit_pos);
+                succ_found = stream.read_bit(succ_bit_pos+1+symbol);//does the tree have the symbol?
+                steps++;
+            }
+
+            if(!succ_found && stream.read_bit(symbol)) {//check if the node is low-freq
+                succ_bit_pos = find_lf_succ(i, symbol);
+                skip_succ_pred_info(succ_bit_pos);
+                assert(stream.read_bit(succ_bit_pos+1+symbol));
+            }
+        } else {
+            succ_bit_pos = bit_pos;
+            decode_succ(succ_bit_pos, child, symbol);
+            skip_succ_pred_info(succ_bit_pos);
+            assert(stream.read_bit(succ_bit_pos+1+symbol));
+        }
 
         skip_succ_pred_info(bit_pos);
 
@@ -323,49 +369,18 @@ struct rlbwt_vlb {
         uint8_t node_sigma = sigma;
         uint8_t rank_width = sym_width(max_freq);
 
+        s_info[succ_found].bit_pos = succ_bit_pos;
+        s_info[succ_found].node_sigma = node_sigma;
+        s_info[succ_found].symbol = symbol;
+        s_info[succ_found].r_width = rank_width;
+
         //read the node header
         bool is_leaf = stream.read_bit(bit_pos++);
         bool has_symbol = stream.read_bit(bit_pos+symbol);
 
-        if(!has_symbol){
-            bool succ_found = stream.read_bit(succ_b_pos+sigma+symbol);
-            //find successor sibling containing sym
-            if(!succ_found){
-                uint64_t succ_child = child;
-                size_t steps = 0;
-                while(!succ_found && steps < 5) {
-                    succ_b_pos = find_next(++succ_child);
-                    skip_succ_pred_info(succ_b_pos);
-                    succ_found = stream.read_bit(succ_b_pos+1+symbol);//does the tree have the symbol?
-                    steps++;
-                }
-
-                if(!succ_found){
-                    if(stream.read_bit(symbol)){//check if the node is low-freq
-                        succ_b_pos = find_lf_succ(i, symbol);
-                        skip_succ_pred_info(succ_b_pos);
-                        assert(stream.read_bit(succ_b_pos+1+symbol));
-                    } else {
-                        return -1;
-                    }
-                }
-            } else {
-                decode_succ(succ_b_pos, child, symbol);
-                skip_succ_pred_info(succ_b_pos);
-                assert(stream.read_bit(succ_b_pos+1+symbol));
-            }
-
-            succ_b_pos++;//the +1 is for the leaf bit vector
-            symbol = stream.pop_count(succ_b_pos, succ_b_pos+symbol-1);
-            succ_b_pos+=node_sigma;
-            size_t r_pos = succ_b_pos + symbol*rank_width;
-            rank = stream.read(r_pos, r_pos+rank_width-1);
-            return rank;
-        }
-
         i-= child*bk_sz;//relative position of i within the child block
 
-        while(!is_leaf && has_symbol){
+        while(!is_leaf && has_symbol) {
             uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);
             symbol = stream.pop_count(bit_pos, bit_pos+symbol-1);
             bit_pos+=node_sigma;
@@ -390,24 +405,53 @@ struct rlbwt_vlb {
             size_t n_real_lsib = 63-__builtin_clzll(child_info);//= select_1(child_info, (eff child)+1)-1
             i-=n_real_lsib*bk_sz;//number of symbols before child within the node
 
+            //read succ info
+            size_t succ_info = bit_pos + (symbol*n_children);
+            succ_info = stream.read(succ_info, succ_info+n_children-1);
+            //eg: succ_info=1010 for symbol with child=1
+            succ_info >>=child+1;//remove child and its left siblings
+            //succ_info = 10
+            succ_found = succ_info>0;
+            //succ_info>0=true, meaning there is a right sibling containing the symbol
+            succ_child = child+((__builtin_ctz(succ_info)+1)*succ_found);
+            //__builtin_ctz(succ_info=10)=1
+            //thus, succ_child = child + 1 + 1 = 3
             bit_pos+=new_sigma*n_children;//skip int succ/pred info
+            //
 
             //read how many bits we use to encode the pointers to the children
             size_t p_width = stream.read(bit_pos, bit_pos+int_pt_width-1);
             bit_pos+=int_pt_width;
+            //
 
+            //read the pointer to the child
             size_t p = bit_pos+(child*p_width);
             p = stream.read(p, p+p_width-1);
+            //
+
+            //read the pointer to the next sibling of child containing the symbol
+            size_t p_succ = bit_pos+(succ_child*p_width);
+            p_succ = stream.read(p_succ, p_succ+p_width-1);
+            //
 
             //skip the pointer to the children and position the bit in the next byte-aligned position
             bit_pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
+            rank_width = sym_width(bk_sz*scale_factor);
+
+            //conditionally calculate successor information
+            s_info[succ_found].bit_pos = bit_pos + (p_succ*8);
+            s_info[succ_found].symbol = symbol;
+            s_info[succ_found].node_sigma = node_sigma;
+            s_info[succ_found].rank = rank;
+            s_info[succ_found].r_width = rank_width;
+            //
+
             //add the bit offset. Now bit_pos points to child
             bit_pos+= p*8;
 
             //start reading the header of child (there is no ext succ/pred info)
             is_leaf = stream.read_bit(bit_pos++);
             has_symbol = stream.read_bit(bit_pos+symbol);
-            rank_width = sym_width(bk_sz*scale_factor);
         }
 
         if(is_leaf && has_symbol){
@@ -422,7 +466,6 @@ struct rlbwt_vlb {
             bit_pos+= leaf_enc_width;
             const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(INT_CEIL(bit_pos, 8));
 
-            //TODO perform an scan
             //scan the runs in the leaf according to the leaf encoding
             switch(leaf_enc) {
                 case 0:
@@ -480,8 +523,15 @@ struct rlbwt_vlb {
                     std::cout<<"Undefined encoding"<<std::endl;
                     exit(1);
             }
+            return rank;
         }
-        return rank;
+
+        if(s_info[1].bit_pos==0xffffffffffffffff){
+            return -1;
+        }
+
+        s_info[1].get_rank(stream);
+        return s_info[1].rank;
     }
 
     inline void find_path_to_leaf(tree_path_type& path, size_t& i) const {

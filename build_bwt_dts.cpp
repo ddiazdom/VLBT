@@ -327,11 +327,12 @@ int main(int argc, char** argv){
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-    //std::cout<<bwt_dt.rank(250020433,126)<<std::endl;
+    //std::cout<<bwt_dt.rank(8310359, 3)<<std::endl;
+    //std::cout<<bwt_dt.rank(356460552, 116)<<std::endl;
     //sdsl::wt_rlmn<> wt_rlmn;
     //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
     //std::cout<<bwt_dt.rank(467616716, 57)<<std::endl;
-    //std::cout<<wt_rlmn.rank(467616716,bwt_dt.eff2byte(57))<<std::endl;
+    //std::cout<<wt_rlmn.rank(10131630,bwt_dt.eff2byte(15))<<std::endl;
 
     test_inverse_select(bwt_dt, output_prefix);
     test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2

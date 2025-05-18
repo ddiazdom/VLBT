@@ -704,7 +704,7 @@ struct rl_node {//state of the compression
         for(size_t b=0;b<=n_children;b++){
 
             buffer.write(bit_pos, bit_pos+bwt_rep.ext_pt_width-1, (block_ptr[b]<<1));
-            std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<" tree_offset:"<<tree_offset[b]<<" "<<tree_offset[b+1]<<std::endl;
+            //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<" tree_offset:"<<tree_offset[b]<<" "<<tree_offset[b+1]<<std::endl;
             bit_pos+=bwt_rep.ext_pt_width;
             r = (tree_offset[b+1]-tree_offset[b])/b_size;
             c++;
@@ -714,7 +714,7 @@ struct rl_node {//state of the compression
             while((n_syms+b_size)<tree_offset[b+1]){
                 offsets = (l<<run_width) | r;
                 offsets = (offsets<<1) | 1;
-                std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" offsets:"<<l<<" "<<r<<std::endl;
+                //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" offsets:"<<l<<" "<<r<<std::endl;
                 buffer.write(bit_pos, bit_pos+bwt_rep.ext_pt_width-1, offsets);
                 bit_pos+=bwt_rep.ext_pt_width;
                 n_syms +=b_size;
