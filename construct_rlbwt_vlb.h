@@ -1183,7 +1183,7 @@ struct rl_node {//state of the compression
         }
 
         //print the node information for debugging purposes
-        tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
+        //tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
         //
 
         //add the rank information of the active child node (tmp_node) to the

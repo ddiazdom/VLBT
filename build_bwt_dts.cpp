@@ -16,6 +16,7 @@
 #include "../../rlbwt_small_alpha.h"
 #include "../../construct_rlbwt_vlb.h"
 #include "../../rlbwt_vlb.h"
+#include "fm_index.h"
 
 #include <unordered_set>
 #include <vector>
@@ -136,6 +137,11 @@ time_answer += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).c
 }
 
 template<class bwt_type>
+void test_count(bwt_type& my_dt, std::string& input_file){
+
+}
+
+template<class bwt_type>
 void test_access(bwt_type& my_dt, std::string& input_file){
     //size_t samp_size = (wt_dt.size()*10)/100;
 
@@ -242,7 +248,7 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
     sdsl::wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
 
-    size_t samp_size = 1000000;
+    size_t samp_size = 10000000;
     std::vector<uint64_t> samples = sample_unique(wt_rlmn.size(), samp_size);
 
     double acc_time=0;

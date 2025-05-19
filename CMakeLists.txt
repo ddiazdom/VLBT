@@ -73,6 +73,14 @@ include_directories(SYSTEM ${LIBSDSL_INCLUDE_DIRS} fb_wt/wt-fbb-0.1.0)
 #    target_compile_options(test_bwt_dts PUBLIC -march=native)
 #endif()
 
+#add_executable(gen_patterns genpatterns.c)
+#target_compile_options(gen_patterns PUBLIC -O3)
+#
+add_executable(gen_patterns gen_patterns.cpp)
+target_compile_options(gen_patterns PUBLIC -O3)
+target_link_libraries(gen_patterns LINK_PUBLIC ${LIBSDSL_LIBRARIES})
+target_include_directories(gen_patterns PUBLIC ${LIBSDSL_INCLUDE_DIRS})
+
 #Build the BWT data structures
 add_executable(build_bwt_dts build_bwt_dts.cpp)
 target_compile_options(build_bwt_dts

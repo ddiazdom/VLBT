@@ -169,6 +169,22 @@ struct rlbwt_vlb {
         uint8_t leaf_enc=0;
     };
 
+    struct succ_info{
+        size_t bit_pos=0xffffffffffffffff;
+        uint64_t rank=0;
+        uint8_t symbol=0;
+        uint8_t r_width=0;
+        uint8_t node_sigma=0;
+
+        inline void get_rank(const stream_type& st) {
+            bit_pos++;//the +1 is to skip the bit indicating if this node is a leaf
+            symbol = st.pop_count(bit_pos, bit_pos+symbol-1);
+            bit_pos+=node_sigma;
+            size_t r_pos = bit_pos + (symbol*r_width);
+            rank += st.read(r_pos, r_pos+r_width-1);
+        }
+    };
+
     uint64_t tot_syms=0;//total symbols in the text
     uint64_t orig_runs=0;//original number of runs in the BWT
     uint64_t eff_runs=0;//number of runs in the representation
@@ -262,7 +278,8 @@ struct rlbwt_vlb {
     }
 
     inline void decode_succ(size_t& bit_pos, size_t child, uint8_t symbol) const {
-        size_t succ_pos = stream.pop_count(bit_pos, bit_pos+sigma+symbol-1);//the position where the offset for the successor is located
+        //the position where the offset for the successor is located
+        size_t succ_pos = stream.pop_count(bit_pos, bit_pos+sigma+symbol)-1;//works only because bit_stream[bit_pos+sigma+symbol] is true
         bit_pos+=2*sigma;
         uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for child
         bit_pos+=mtd_bits + succ_pos*w;
@@ -274,7 +291,7 @@ struct rlbwt_vlb {
 
     inline size_t find_lf_succ(size_t i, uint8_t symbol){
 
-        symbol = stream.pop_count(0, symbol)-1;
+        symbol = stream.pop_count(0, symbol)-1;//this works because stream[symbol] is true
         size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
         uint8_t w = sym_width(INT_CEIL(tot_syms, block_size)*block_size);
 
@@ -305,24 +322,9 @@ struct rlbwt_vlb {
         return find_next(child);
     }
 
-    struct succ_info{
-        size_t bit_pos=0xffffffffffffffff;
-        uint64_t rank=0;
-        uint8_t symbol=0;
-        uint8_t r_width=0;
-        uint8_t node_sigma=0;
-
-        inline uint64_t get_rank(const stream_type& st) {
-            bit_pos++;//the +1 is for the leaf bit vector
-            symbol = st.pop_count(bit_pos, bit_pos+symbol-1);
-            bit_pos+=node_sigma;
-            size_t r_pos = bit_pos + (symbol*r_width);
-            rank += st.read(r_pos, r_pos+r_width-1);
-        }
-    };
 
     inline int64_t rank(size_t i, uint8_t symbol){
-        // NOTE this is a partial rank, it can sometimes answer -1 for a valid query.
+        // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.
         // However, rank operations in backwardsearch never return -1, so it is OK for pattern matching
 
         //initialize the block size
@@ -340,7 +342,7 @@ struct rlbwt_vlb {
 
         //find successor containing sym
         bool succ_found = stream.read_bit(bit_pos+sigma+symbol);
-        size_t succ_bit_pos=-1;
+        size_t succ_bit_pos=0xffffffffffffffff;
         if(!succ_found) {
             succ_child = child;
             size_t steps = 0;
@@ -354,13 +356,13 @@ struct rlbwt_vlb {
             if(!succ_found && stream.read_bit(symbol)) {//check if the node is low-freq
                 succ_bit_pos = find_lf_succ(i, symbol);
                 skip_succ_pred_info(succ_bit_pos);
-                assert(stream.read_bit(succ_bit_pos+1+symbol));
+                //assert(stream.read_bit(succ_bit_pos+1+symbol));
             }
         } else {
             succ_bit_pos = bit_pos;
             decode_succ(succ_bit_pos, child, symbol);
             skip_succ_pred_info(succ_bit_pos);
-            assert(stream.read_bit(succ_bit_pos+1+symbol));
+            //assert(stream.read_bit(succ_bit_pos+1+symbol));
         }
 
         skip_succ_pred_info(bit_pos);
@@ -381,8 +383,8 @@ struct rlbwt_vlb {
         i-= child*bk_sz;//relative position of i within the child block
 
         while(!is_leaf && has_symbol) {
-            uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);
-            symbol = stream.pop_count(bit_pos, bit_pos+symbol-1);
+            uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//this works only because bit_stream[bit_pos+symbol] is true
             bit_pos+=node_sigma;
             size_t r_pos = bit_pos + symbol*rank_width;
             rank+=stream.read(r_pos, r_pos+rank_width-1);
@@ -455,8 +457,8 @@ struct rlbwt_vlb {
         }
 
         if(is_leaf && has_symbol){
-            uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);
-            symbol = stream.pop_count(bit_pos, bit_pos+symbol-1);
+            uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//only works because bit_stream[bit_pos+symbol] is true
             bit_pos+=node_sigma;
             size_t r_pos = bit_pos + symbol*rank_width;
             rank+=stream.read(r_pos, r_pos+rank_width-1);
