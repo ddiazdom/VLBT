@@ -11,6 +11,8 @@
 #include <sdsl/wt_blcd.hpp>
 #include <sdsl/wt_int.hpp>
 #include <sdsl/wt_rlmn.hpp>
+#include <sdsl/suffix_arrays.hpp>
+#include <sdsl/suffix_array_algorithm.hpp>
 #include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 
 #include "../../rlbwt_small_alpha.h"
@@ -139,6 +141,62 @@ time_answer += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).c
 template<class bwt_type>
 void test_count(bwt_type& my_dt, std::string& input_file){
 
+    sdsl::wt_rlmn<> wt_rlmn;
+    sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
+
+    std::vector<uint64_t> C(wt_rlmn.sigma+1, 0);
+    for(size_t sym=0;sym<wt_rlmn.sigma;sym++){
+        C[sym] = wt_rlmn.rank(wt_rlmn.size(), my_dt.eff2byte(sym));
+    }
+
+    size_t acc=0, tmp;
+    for(size_t i=0;i<wt_rlmn.sigma;i++){
+        tmp = C[i];
+        C[i] = acc;
+        acc+=tmp;
+    }
+    C[wt_rlmn.sigma] = acc;
+
+    fm_index<sdsl::wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.packed_alpha, my_dt.unpacked_alpha);
+    fm_index<bwt_type> csa_mydt(my_dt, C, my_dt.packed_alpha, my_dt.unpacked_alpha);
+
+
+    std::string pat_file = input_file+".patterns";
+    std::ifstream ifs(pat_file);
+    std::string pat;
+
+    size_t n_pats = std::count(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>(), '\n');
+    ifs.seekg(std::ios::beg);
+
+    std::vector<std::string> pat_list;
+    pat_list.reserve(n_pats);
+    while(std::getline(ifs, pat)) {
+        pat_list.push_back(pat);
+    }
+
+    size_t j=0;
+    double acc_time=0;
+    std::vector<std::pair<uint64_t, uint64_t>> rlmn_ans(n_pats);
+    for(auto const& p : pat_list) {
+        MEASURE(csa_rlmn.backward_search(p), acc_time, rlmn_ans[j]);
+        j++;
+    }
+    std::cout<<"backward_search rlmn:";
+    std::cout<<acc_time/double(n_pats)<<" nanoseconds"<<std::endl;
+
+    ifs.seekg(std::ios::beg);
+    acc_time=0;
+    j=0;
+    std::vector<std::pair<uint64_t, uint64_t>> my_ans(n_pats);
+    for(auto const& p : pat_list) {
+        MEASURE(csa_mydt.backward_search(p), acc_time, my_ans[j]);
+        j++;
+    }
+    std::cout<<"backward_search my_dt:";
+    std::cout<<acc_time/double(n_pats)<<" nanoseconds"<<std::endl;
+    /*for(){
+        assert(res.first==res2.first && res.second==res2.second);
+    }*/
 }
 
 template<class bwt_type>
@@ -217,7 +275,7 @@ void test_rank(bwt_type& my_dt, std::string& input_file){
     std::vector<int64_t> my_dt_ans(samp_size);
     for(size_t j=0;j<tests.size();j++){
         //std::cout<<tests[j].first<<" "<<int(tests[j].second)<<std::endl;
-        MEASURE(my_dt.rank(tests[j].first, tests[j].second), acc_time, my_dt_ans[j]);
+        MEASURE(my_dt.rank(tests[j].first, my_dt.eff2byte(tests[j].second)), acc_time, my_dt_ans[j]);
     }
     std::cout<<"rank rlbwt_vlb:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
@@ -233,7 +291,7 @@ void test_rank(bwt_type& my_dt, std::string& input_file){
     for(size_t j=0;j<tests.size();j++){
         if(my_dt_ans[j]<0) continue;
         if(wt_rlmn_ans[j]!=uint64_t(my_dt_ans[j])){
-            std::cout<<"query:  idx:"<<tests[j].first<<", sym:"<<int(tests[j].second)<<std::endl;
+            std::cout<<"query:  idx:"<<tests[j].first<<", sym:"<<int(my_dt.eff2byte(tests[j].second))<<std::endl;
             std::cout<<"wt_huff rank answer: "<<wt_rlmn_ans[j]<<std::endl;
             std::cout<<"my_dt   rank answer: "<<my_dt_ans[j]<<"\n"<<std::endl;
         }
@@ -333,13 +391,13 @@ int main(int argc, char** argv){
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-    //std::cout<<bwt_dt.rank(8310359, 3)<<std::endl;
-    //std::cout<<bwt_dt.rank(356460552, 116)<<std::endl;
     //sdsl::wt_rlmn<> wt_rlmn;
     //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
+    //std::cout<<bwt_dt.rank(356460552, 116)<<std::endl;
     //std::cout<<bwt_dt.rank(467616716, 57)<<std::endl;
     //std::cout<<wt_rlmn.rank(10131630,bwt_dt.eff2byte(15))<<std::endl;
 
+    //test_count(bwt_dt, output_prefix);
     test_inverse_select(bwt_dt, output_prefix);
     test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
     test_rank(bwt_dt, output_prefix);

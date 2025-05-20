@@ -466,6 +466,8 @@ struct rl_node {//state of the compression
 
                     ext_pred_info[sym_pos] = tree_dist>5 && !out_of_range;
                     if(ext_pred_info[sym_pos]){
+                        //std::cout<<tree_dist<<" "<<b<<std::endl;
+                        //assert((b-tree_dist)>=0);
                         real_dist = (tree_offset[b]-tree_offset[b-tree_dist])/b_size;
                         //std::cout<<"block:"<<b<<", symbol:"<<s<<", pred_tree:"<<tree_dist<<" eff_pred:"<<real_dist<<std::endl;
                         //if(tree_dist>max_tree_dist) max_tree_dist = tree_dist;

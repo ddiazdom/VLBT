@@ -324,6 +324,9 @@ struct rlbwt_vlb {
 
 
     inline int64_t rank(size_t i, uint8_t symbol){
+
+        symbol = packed_alpha[symbol];
+
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.
         // However, rank operations in backwardsearch never return -1, so it is OK for pattern matching
 
