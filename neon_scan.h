@@ -460,7 +460,6 @@ static inline uint8_t access_neon_16x8(const uint8_t **stream, uint8_t sigma, ui
     const uint8_t sigma_bits = sym_width(sigma);
     const int16x8_t alpha_shift = vdupq_n_u16(-sigma_bits);
 
-    size_t l=0;
     uint16x8_t block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
     uint16x8_t bk_lengths = vshlq_u16(block, alpha_shift);
     uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(bk_lengths));
@@ -474,8 +473,6 @@ static inline uint8_t access_neon_16x8(const uint8_t **stream, uint8_t sigma, ui
 
         tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
         acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-
-        l++;
     }
 
     idx-=prev_acc;
@@ -509,11 +506,9 @@ static inline uint8_t access_neon_16x8(const uint8_t **stream, uint8_t sigma, ui
 template<bool vbyte_compressed, uint8_t bytes_per_run>
 static inline uint8_t access_neon_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
 
-    //TODO: assert idx fits 4 bytes
     const uint8_t sigma_bits = sym_width(sigma);
     const int32x4_t alpha_shift = vdupq_n_u32(-sigma_bits);
 
-    size_t l=0;
     uint32x4_t block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
     uint32x4_t bk_lengths = vshlq_u32(block, alpha_shift);
     uint64x2_t tmp = vpaddlq_u32(bk_lengths);
@@ -526,7 +521,6 @@ static inline uint8_t access_neon_32x4(const uint8_t ** stream, uint8_t sigma, u
         prev_acc = acc;
         tmp = vpaddlq_u32(bk_lengths);
         acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-        l++;
     }
 
     idx-=prev_acc;
@@ -572,13 +566,13 @@ static inline int64_t rank_neon_8x16(const uint8_t **stream, uint8_t sigma, uint
     uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
     uint32_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
-    uint32_t prev_rank=0;
-    uint8x16_t sym_lengths = vandq_u8(bk_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
-    tmp  = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(sym_lengths)));
-    uint32_t rank = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-
+    uint32_t rank=0;
     size_t l=0;
     while(acc<=idx){
+        bk_lengths = vandq_u8(bk_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
+        tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
+        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
         block =  vld1q_u8(*stream);
         *stream+=16;
         bk_lengths = vshlq_u8(block, alpha_shift);
@@ -587,10 +581,6 @@ static inline int64_t rank_neon_8x16(const uint8_t **stream, uint8_t sigma, uint
         tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
         acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
-        prev_rank = rank;
-        sym_lengths = vandq_u8(bk_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
-        tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(sym_lengths)));
-        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
         l++;
     }
 
@@ -621,12 +611,13 @@ static inline int64_t rank_neon_8x16(const uint8_t **stream, uint8_t sigma, uint
     uint8_t last_symbol = run & alpha_m;
 
     block = vld1q_u8(*stream);
-    sym_lengths = vshlq_u8(block, alpha_shift);
-    sym_lengths = vandq_u8(sym_lengths, vld1q_u8(mask8x16[idx_run+1]));
-    sym_lengths = vandq_u8(sym_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
+    bk_lengths = vshlq_u8(block, alpha_shift);
+    bk_lengths = vandq_u8(bk_lengths, vld1q_u8(mask8x16[idx_run+1]));
+    bk_lengths = vandq_u8(bk_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
 
-    tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(sym_lengths)));
-    rank = prev_rank + vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
+    rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
     rank -=(pf_sum-idx) * (last_symbol==symbol);
     return rank;
 }
@@ -644,17 +635,17 @@ static inline int64_t rank_neon_16x8(const uint8_t **stream, uint8_t sigma, uint
 
     uint16x8_t block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
     uint16x8_t bk_lengths = vshlq_u16(block, alpha_shift);
-    uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(bk_lengths));
 
     uint64_t prev_acc=0;
+    uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(bk_lengths));
     uint64_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-
-    uint64_t prev_rank=0;
-    uint16x8_t sym_lengths = vandq_u16(bk_lengths, vceqq_u16(vandq_u16(block, alpha_mask), sym_vec));
-    tmp = vpaddlq_u32(vpaddlq_u16(sym_lengths));
-    uint64_t rank = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    uint64_t rank = 0;
 
     while(acc<=idx){
+        bk_lengths = vandq_u16(bk_lengths, vceqq_u16(vandq_u16(block, alpha_mask), sym_vec));
+        tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
+        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
         prev_state = *stream;
         block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
         bk_lengths = vshlq_u16(block, alpha_shift);
@@ -662,11 +653,6 @@ static inline int64_t rank_neon_16x8(const uint8_t **stream, uint8_t sigma, uint
         prev_acc = acc;
         tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
         acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-
-        sym_lengths = vandq_u16(bk_lengths, vceqq_u16(vandq_u16(block, alpha_mask), sym_vec));
-        tmp = vpaddlq_u32(vpaddlq_u16(sym_lengths));
-        prev_rank = rank;
-        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     }
 
     idx-=prev_acc;
@@ -700,12 +686,12 @@ static inline int64_t rank_neon_16x8(const uint8_t **stream, uint8_t sigma, uint
 
     *stream = prev_state;
     block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
-    sym_lengths = vshlq_u16(block, alpha_shift);
-    sym_lengths = vandq_u16(sym_lengths, vld1q_u16(mask16x8[idx_run+1]));
-    sym_lengths = vandq_u16(sym_lengths, vceqq_u16(vandq_u16(block, alpha_mask), sym_vec));
+    bk_lengths = vshlq_u16(block, alpha_shift);
+    bk_lengths = vandq_u16(bk_lengths, vld1q_u16(mask16x8[idx_run+1]));
+    bk_lengths = vandq_u16(bk_lengths, vceqq_u16(vandq_u16(block, alpha_mask), sym_vec));
 
-    tmp = vpaddlq_u32(vpaddlq_u16(sym_lengths));
-    rank = prev_rank + vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
+    rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     rank -=(pf_sum-idx)*(last_symbol==symbol);
 
     return (int64_t)rank;
@@ -728,13 +714,13 @@ static inline int64_t rank_neon_32x4(const uint8_t ** stream, uint8_t sigma, uin
 
     uint64_t prev_acc=0;
     uint64_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-
-    uint64_t prev_rank=0;
-    uint32x4_t sym_lengths = vandq_u32(bk_lengths, vceqq_u32(vandq_u32(block, alpha_mask), sym_vec));
-    tmp = vpaddlq_u32(sym_lengths);
-    uint64_t rank = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    uint64_t rank = 0;
 
     while(acc<=idx){
+        bk_lengths = vandq_u32(bk_lengths, vceqq_u32(vandq_u32(block, alpha_mask), sym_vec));
+        tmp = vpaddlq_u32(bk_lengths);
+        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
         prev_state = *stream;
         block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
         bk_lengths = vshlq_u32(block, alpha_shift);
@@ -742,11 +728,6 @@ static inline int64_t rank_neon_32x4(const uint8_t ** stream, uint8_t sigma, uin
         prev_acc = acc;
         tmp = vpaddlq_u32(bk_lengths);
         acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-
-        prev_rank = rank;
-        sym_lengths = vandq_u32(bk_lengths, vceqq_u32(vandq_u32(block, alpha_mask), sym_vec));
-        tmp = vpaddlq_u32(sym_lengths);
-        rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     }
 
     idx-=prev_acc;
@@ -772,13 +753,13 @@ static inline int64_t rank_neon_32x4(const uint8_t ** stream, uint8_t sigma, uin
 
     *stream = prev_state;
     block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
-    sym_lengths = vshlq_u32(block, alpha_shift);
-    sym_lengths = vandq_u32(sym_lengths, vld1q_u32(mask32x4[idx_run+1]));
-    sym_lengths = vandq_u32(sym_lengths, vceqq_u32(vandq_u32(block, alpha_mask), sym_vec));
+    bk_lengths = vshlq_u32(block, alpha_shift);
+    bk_lengths = vandq_u32(bk_lengths, vld1q_u32(mask32x4[idx_run+1]));
+    bk_lengths = vandq_u32(bk_lengths, vceqq_u32(vandq_u32(block, alpha_mask), sym_vec));
 
-    tmp = vpaddlq_u32(sym_lengths);
-    rank = prev_rank + vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-    rank -=(pf_sum-idx)*(last_symbol==symbol);
+    tmp = vpaddlq_u32(bk_lengths);
+    rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    rank -= (pf_sum-idx)*(last_symbol==symbol);
 
     return (int64_t)rank;
 }

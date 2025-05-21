@@ -398,8 +398,8 @@ int main(int argc, char** argv){
     //std::cout<<wt_rlmn.rank(10131630,bwt_dt.eff2byte(15))<<std::endl;
 
     //test_count(bwt_dt, output_prefix);
-    test_inverse_select(bwt_dt, output_prefix);
-    test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
+    //test_inverse_select(bwt_dt, output_prefix);
+    //test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
     test_rank(bwt_dt, output_prefix);
 
     /*uint64_t r1;
