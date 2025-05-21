@@ -155,7 +155,6 @@ struct rlbwt_vlb {
     static constexpr size_t max_block_runs = b_runs;
     static constexpr uint8_t int_pt_width=7;//number of bits we use to encode the number of bits we use to encode pointers
     static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
-    static constexpr uint64_t run_mask = (1UL<<run_width)-1UL;
     static constexpr uint8_t leaf_enc_width=4;
 
     struct tree_path_type{
@@ -266,10 +265,10 @@ struct rlbwt_vlb {
         return (header_bytes + p) * 8;
     }
 
-    inline void skip_succ_pred_info(size_t& bit_pos) const {
+    inline void skip_ext_succ_info(size_t& bit_pos) const {
         //skip ext succ/pred information
-        size_t n_samps = stream.pop_count(bit_pos, bit_pos+2*sigma-1);
-        bit_pos+=2*sigma;
+        size_t n_samps = stream.pop_count(bit_pos, bit_pos+sigma-1);
+        bit_pos+=sigma;
         uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for child
         bit_pos+=mtd_bits;
         bit_pos+=n_samps*w;//skip the n_samp tree distances
@@ -277,12 +276,12 @@ struct rlbwt_vlb {
         //
     }
 
-    inline void decode_succ(size_t& bit_pos, size_t child, uint8_t symbol) const {
+    inline void decode_ext_succ_info(size_t& bit_pos, size_t child, uint8_t symbol) const {
         //the position where the offset for the successor is located
-        size_t succ_pos = stream.pop_count(bit_pos, bit_pos+sigma+symbol)-1;//works only because bit_stream[bit_pos+sigma+symbol] is true
-        bit_pos+=2*sigma;
+        size_t succ_pos = stream.pop_count(bit_pos, bit_pos+symbol)-1;//works only because bit_stream[bit_pos+symbol] is true
+        bit_pos+=sigma;
         uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for child
-        bit_pos+=mtd_bits + succ_pos*w;
+        bit_pos+=mtd_bits + (succ_pos*w);
         size_t succ_child = child + stream.read(bit_pos, bit_pos+w-1);//read the offset of the successor
         size_t p = lfs_bits + (ext_pt_width*succ_child);
         p = stream.read(p, p+ext_pt_width-1)>>1;
@@ -316,17 +315,13 @@ struct rlbwt_vlb {
 
         last+=w;
         idx = stream.read(last, last+w-1);
-
         uint64_t child = idx/block_size;
-
         return find_next(child);
     }
-
 
     inline int64_t rank(size_t i, uint8_t symbol){
 
         symbol = packed_alpha[symbol];
-
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.
         // However, rank operations in backwardsearch never return -1, so it is OK for pattern matching
 
@@ -344,31 +339,31 @@ struct rlbwt_vlb {
         size_t bit_pos = find_prev(child);//bit position where child begins in the stream
 
         //find successor containing sym
-        bool succ_found = stream.read_bit(bit_pos+sigma+symbol);
+        bool succ_found = stream.read_bit(bit_pos+symbol);
         size_t succ_bit_pos=0xffffffffffffffff;
         if(!succ_found) {
             succ_child = child;
             size_t steps = 0;
             while(!succ_found && steps < 5) {
                 succ_bit_pos = find_next(++succ_child);
-                skip_succ_pred_info(succ_bit_pos);
+                skip_ext_succ_info(succ_bit_pos);
                 succ_found = stream.read_bit(succ_bit_pos+1+symbol);//does the tree have the symbol?
                 steps++;
             }
 
             if(!succ_found && stream.read_bit(symbol)) {//check if the node is low-freq
                 succ_bit_pos = find_lf_succ(i, symbol);
-                skip_succ_pred_info(succ_bit_pos);
+                skip_ext_succ_info(succ_bit_pos);
                 //assert(stream.read_bit(succ_bit_pos+1+symbol));
             }
         } else {
             succ_bit_pos = bit_pos;
-            decode_succ(succ_bit_pos, child, symbol);
-            skip_succ_pred_info(succ_bit_pos);
+            decode_ext_succ_info(succ_bit_pos, child, symbol);
+            skip_ext_succ_info(succ_bit_pos);
             //assert(stream.read_bit(succ_bit_pos+1+symbol));
         }
 
-        skip_succ_pred_info(bit_pos);
+        skip_ext_succ_info(bit_pos);
 
         int64_t rank = 0;
         uint8_t node_sigma = sigma;
@@ -547,7 +542,7 @@ struct rlbwt_vlb {
         //get the block where index i lies
         uint64_t child = i/bk_sz;
 
-        //skip the bits with the ext. succ/pred info of low-freq symbols
+        //skip the bits with the ext. succ info of low-freq symbols
         path.bit_pos = lfs_bits;
 
         //get the effective block where i lies and its byte offset within the stream
@@ -563,9 +558,9 @@ struct rlbwt_vlb {
 
         path.bit_pos =  (header_bytes + p)*8;//bit position where child begins in the stream
 
-        //skip ext succ/pred information
-        size_t n_samps = stream.pop_count(path.bit_pos, path.bit_pos+2*sigma-1);
-        path.bit_pos+=2*sigma;
+        //skip ext succ. information
+        size_t n_samps = stream.pop_count(path.bit_pos, path.bit_pos+sigma-1);
+        path.bit_pos+=sigma;
         uint8_t w = stream.read(path.bit_pos, path.bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for child
         path.bit_pos+=mtd_bits;
         path.bit_pos+=n_samps*w;//skip the n_samp tree distances

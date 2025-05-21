@@ -6,7 +6,7 @@
 #define BWT_DTS_BENCHMARKS_AVX_SCAN_H
 
 #include <immintrin.h>
-#include "vbyte_simd_dec_tables.h"
+#include "simd_tables.h"
 #include "utils.h"
 
 #define _mm256_cmpge_epu8(a, b) \

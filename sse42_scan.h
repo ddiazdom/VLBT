@@ -6,7 +6,7 @@
 #define BWT_DTS_BENCHMARKS_SSE42_SCAN_H
 
 #include <x86intrin.h>
-#include "vbyte_simd_dec_tables.h"
+#include "simd_tables.h"
 #include "utils.h"
 
 #define _mm_cmpge_epu8(a, b) \

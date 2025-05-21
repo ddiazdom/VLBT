@@ -8,16 +8,16 @@
 #include <sdsl/wt_huff.hpp>
 #include <sdsl/construct.hpp>
 #include <sdsl/wt_rlmn.hpp>
-#include <sdsl/wt_blcd.hpp>
-#include <sdsl/wt_int.hpp>
+//#include <sdsl/wt_blcd.hpp>
+//#include <sdsl/wt_int.hpp>
 #include <sdsl/wt_rlmn.hpp>
 #include <sdsl/suffix_arrays.hpp>
 #include <sdsl/suffix_array_algorithm.hpp>
-#include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
+//#include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
+//#include "../../rlbwt_small_alpha.h"
 
-#include "../../rlbwt_small_alpha.h"
-#include "../../construct_rlbwt_vlb.h"
-#include "../../rlbwt_vlb.h"
+#include "construct_rlbwt_vlb.h"
+#include "rlbwt_vlb.h"
 #include "fm_index.h"
 
 #include <unordered_set>
@@ -100,7 +100,7 @@ build_dt(sdsl::rlmn<>, "wt_rlmn");               \*/
 #define TESTED_DTS \
 build_dt(sdsl::wt_rlmn<>, "wt_rlmn");\
 build_dt(sdsl::wt_huff<>, "wt_huff_bv");\
-build_dt(wt_fbb<sdsl::bit_vector>, "wt_fbb_bv");\
+//build_dt(wt_fbb<sdsl::bit_vector>, "wt_fbb_bv");\
 //build_dt(wt_fbb<sdsl::rrr_vector<>>, "wt_fbb_rrr");\
 //build_dt(wt_fbb<sdsl::hyb_vector<>>, "wt_fbb_hyb");\
 //build_dt(wt_fbb<sdsl::bit_vector_il<>>, "wt_fbb_il");\
@@ -398,8 +398,8 @@ int main(int argc, char** argv){
     //std::cout<<wt_rlmn.rank(10131630,bwt_dt.eff2byte(15))<<std::endl;
 
     //test_count(bwt_dt, output_prefix);
-    //test_inverse_select(bwt_dt, output_prefix);
-    //test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
+    test_inverse_select(bwt_dt, output_prefix);
+    test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
     test_rank(bwt_dt, output_prefix);
 
     /*uint64_t r1;

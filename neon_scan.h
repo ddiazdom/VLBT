@@ -6,7 +6,7 @@
 #define BWT_DTS_BENCHMARKS_NEON_SCAN_H
 
 #include <arm_neon.h>
-#include "vbyte_simd_dec_tables.h"
+#include "simd_tables.h"
 #include "utils.h"
 
 template<bool vbyte_compressed, uint8_t ctr_width, uint8_t bytes_per_run>

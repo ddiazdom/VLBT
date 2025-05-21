@@ -103,3 +103,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         target_compile_options(build_bwt_dts PUBLIC stdc++fs)
     endif()
 endif()
+
+add_executable(get_r_sa_samp scripts/get_r_sa_samples.cpp)
+target_link_libraries(get_r_sa_samp LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
+target_include_directories(get_r_sa_samp PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
+target_compile_options(get_r_sa_samp PUBLIC -O3 ${SIMD_FLAGS})
