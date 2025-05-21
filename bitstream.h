@@ -402,6 +402,16 @@ struct bitstream{
                 size_t left = 1+(j & (word_bits - 1UL));
                 return ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
             }
+
+            /*size_t cell_i = i >> word_shift;
+            size_t i_pos = (i & (word_bits - 1UL));
+            size_t cell_j = j >> word_shift;
+            size_t j_pos = (j & (word_bits - 1UL));
+
+            size_t diff_word = cell_i!=cell_j;
+            size_t l_end = (j_pos+1)*diff_word;
+            size_t r_end = (j-i+1)-(l_end*diff_word);
+            return ((stream[cell_j] & masks[l_end])<<r_end) | ((stream[cell_i]>>i_pos) & masks[r_end]);*/
         }
     }
 
