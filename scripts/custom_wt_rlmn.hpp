@@ -143,6 +143,7 @@ class custom_wt_rlmn
         C_bf_rank_type       m_C_bf_rank; // stores the number of 1s in m_bf for
         // the prefixes m_bf[0..m_C[0]],m_bf[0..m_C[1]],....,m_bf[0..m_C[255]];
         // named C_s in the original paper
+        value_type sep_symbol;
 
         void copy(const custom_wt_rlmn& wt) {
             m_size          = wt.m_size;
@@ -174,7 +175,7 @@ class custom_wt_rlmn
          *  \param size      The length of the prefix of the text, for which
          *                   the wavelet tree should be build.
          */
-        explicit custom_wt_rlmn(std::string& bwt_file){
+        explicit custom_wt_rlmn(std::string& bwt_file) {
 
             std::string temp_file = bwt_file + "_custom_wt_rlmn_"+util::to_string(util::pid())+"_"+util::to_string(util::id());
             size_type size=0;
@@ -201,6 +202,11 @@ class custom_wt_rlmn
                     j+=len;
                 }
                 condensed_wt.close();
+
+                //we are assuming the separator symbol is the smallest one in the collection
+                sep_symbol = 0;
+                while(C[sep_symbol]==0) sep_symbol++;
+
                 m_C = custom_wt_rlmn_trait<alphabet_category>::init_C(C, size);
 
                 for (size_type i=0, prefix_sum=0; i<m_C.size(); ++i) {
@@ -426,7 +432,7 @@ class custom_wt_rlmn
         }
 
         [[nodiscard]] inline size_t n_strings() const {
-            return m_C[1];
+            return m_C[sep_symbol+1];
         }
 
         [[nodiscard]] inline bool is_run_tail(size_type i) const {
@@ -434,8 +440,16 @@ class custom_wt_rlmn
             return i==(size()-1) || m_bl[i+1];
         }
 
+        [[nodiscard]] inline size_type n_runs() const {
+            return m_wt.size();
+        }
+
+        inline value_type sep_sym() const {
+            return sep_symbol;
+        }
+
         //one based
-        [[nodiscard]] inline bool pos2run(size_type i) const {
+        [[nodiscard]] inline size_t pos2run(size_type i) const {
             assert(i<size());
             size_t run = m_bl_rank(i);
             run+=m_bl[i];

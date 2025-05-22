@@ -5,7 +5,7 @@
 #ifndef RLBWT_VLB_CONSTRUCT_RLBWT_VLB_H
 #define RLBWT_VLB_CONSTRUCT_RLBWT_VLB_H
 
-#include "rlbwt_vlb.h"
+#include "vlbt_bwt.h"
 #include "bwt_io.h"
 #ifdef __linux__
 #include <malloc.h>

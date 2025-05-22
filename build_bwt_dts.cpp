@@ -8,18 +8,22 @@
 #include <sdsl/wt_huff.hpp>
 #include <sdsl/construct.hpp>
 #include <sdsl/wt_rlmn.hpp>
-//#include <sdsl/wt_blcd.hpp>
 //#include <sdsl/wt_int.hpp>
 #include <sdsl/wt_rlmn.hpp>
 #include <sdsl/suffix_arrays.hpp>
 #include <sdsl/suffix_array_algorithm.hpp>
 //#include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
-//#include "../../rlbwt_small_alpha.h"
 
-#include "construct_rlbwt_vlb.h"
-#include "rlbwt_vlb.h"
+//the framework
+#include "construct_vlbt_bwt.h"
+#include "construct_vlbt_bwt_th.h"
+#include "construct_vlbt_phi.h"
+#include "vlbt_bwt.h"
+#include "vlbt_bwt_th.h"
+#include "vlbt_phi.h"
+//
+
 #include "fm_index.h"
-
 #include <unordered_set>
 #include <vector>
 #include <random>
@@ -217,7 +221,7 @@ void test_access(bwt_type& my_dt, std::string& input_file){
     for(size_t j=0;j<samples.size();j++){
         MEASURE(my_dt[samples[j]], acc_time, my_dt_ans[j]);
     }
-    std::cout<<"access rlbwt_vlb:";
+    std::cout<<"access vlbt_bwt:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     /*acc_time=0;
@@ -277,7 +281,7 @@ void test_rank(bwt_type& my_dt, std::string& input_file){
         //std::cout<<tests[j].first<<" "<<int(tests[j].second)<<std::endl;
         MEASURE(my_dt.rank(tests[j].first, my_dt.eff2byte(tests[j].second)), acc_time, my_dt_ans[j]);
     }
-    std::cout<<"rank rlbwt_vlb:";
+    std::cout<<"rank vlbt_bwt:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     acc_time=0;
@@ -314,7 +318,7 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
     for(size_t j=0;j<samples.size();j++){
         MEASURE(my_dt.inverse_select(samples[j]), acc_time, my_dt_ans[j]);
     }
-    std::cout<<"inverse_select rlbwt_vlb:";
+    std::cout<<"inverse_select vlbt_bwt:";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     acc_time=0;
@@ -361,6 +365,78 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
     }*/
 }
 
+void test_vlbt(std::string& input_file, std::string& output_prefix){
+    using bwt_type = vlbt_bwt<4096, 64, 4>;
+    bwt_type bwt_dt;
+    build_rlbwt_vlb<bwt_type>(bwt_dt, input_file, INPUT_FORMAT::GRL_BWT);
+    std::string output_file = output_prefix+".vlbt_bwt";
+    size_t written_bytes = store_to_file(output_file, bwt_dt);
+    std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
+
+    //sdsl::wt_rlmn<> wt_rlmn;
+    //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
+    //std::cout<<bwt_dt.rank(356460552, 116)<<std::endl;
+    //std::cout<<bwt_dt.rank(467616716, 57)<<std::endl;
+    //std::cout<<wt_rlmn.rank(10131630,bwt_dt.eff2byte(15))<<std::endl;
+
+    //test_count(bwt_dt, output_prefix);
+    test_inverse_select(bwt_dt, output_prefix);
+    test_access(bwt_dt, output_prefix);
+    test_rank(bwt_dt, output_prefix);
+}
+
+void test_phi(std::string& input_file, std::string& output_prefix){
+    using phi_type = vlbt_phi<4096, 64, 4>;
+    phi_type phi_dt;
+    //build_vlbt_phi<phi_type, uint64_t>(phi_dt, input_file);
+
+    std::vector<std::pair<uint64_t, uint64_t>> block={ {12, 230010}, {300, 262144}, {14, 200010},
+                                                       {34, 5}, {1000, 3801091}, {3334, 29949491},
+                                                       {20000, 2}, {12, 40000}, {23, 1002020},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
+                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1}
+    };
+    build_vlbt_phi_in_memory<phi_type, uint64_t>(phi_dt, block);
+
+    std::string output_file = output_prefix+".vlbt_phi";
+    size_t written_bytes = store_to_file(output_file, phi_dt);
+    std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
+}
+
+void test_vlbt_th(){
+}
+
 int main(int argc, char** argv){
 
     if(argc!=4){
@@ -383,34 +459,5 @@ int main(int argc, char** argv){
     }else{
         std::cout<<"We will build only my BWT..."<<std::endl;
     }
-
-    using bwt_type = rlbwt_vlb<4096, 64, 4>;
-    bwt_type bwt_dt;
-    build_rlbwt_vlb<bwt_type>(bwt_dt, input_file, INPUT_FORMAT::GRL_BWT);
-    std::string output_file = output_prefix+".rlbwt_vlb";
-    size_t written_bytes = store_to_file(output_file, bwt_dt);
-    std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
-
-    //sdsl::wt_rlmn<> wt_rlmn;
-    //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
-    //std::cout<<bwt_dt.rank(356460552, 116)<<std::endl;
-    //std::cout<<bwt_dt.rank(467616716, 57)<<std::endl;
-    //std::cout<<wt_rlmn.rank(10131630,bwt_dt.eff2byte(15))<<std::endl;
-
-    //test_count(bwt_dt, output_prefix);
-    test_inverse_select(bwt_dt, output_prefix);
-    test_access(bwt_dt, output_prefix);//not implemented in SSE4.2 or AVX2
-    test_rank(bwt_dt, output_prefix);
-
-    /*uint64_t r1;
-    for(size_t i=0;i<wt_rlmn.sigma;i++){
-        r1 = wt_rlmn.rank(4200, bwt_dt.eff2byte(i));
-        std::cout<<r1<<std::endl;
-    }*/
-    //auto r1 = wt_rlmn.rank(4200, bwt_dt.eff2byte(2));
-    //auto r2 = bwt_dt.rank(4200, 2);
-    //std::cout<<r1<<" "<<r2<<std::endl;
-    //std::cout<<wt_rlmn.rank(137527296, bwt_dt.eff2byte(1))<<std::endl;
-    //bwt_dt.rank(122589194, 1);
-    //bwt_dt.rank(10, 1);
+    test_phi(input_file, output_prefix);
 }

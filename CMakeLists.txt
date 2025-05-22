@@ -88,7 +88,7 @@ target_compile_options(build_bwt_dts
         #-Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function
         #-O3 -funroll-loops -fomit-frame-pointer -ffast-math
         #-O3 -funroll-loops -mavx2
-        -O3
+        #-O3
         ${SIMD_FLAGS}
 )
 target_link_libraries(build_bwt_dts LINK_PUBLIC ${LIBSDSL_LIBRARIES})
@@ -107,4 +107,7 @@ endif()
 add_executable(get_r_sa_samp scripts/get_r_sa_samples.cpp)
 target_link_libraries(get_r_sa_samp LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
 target_include_directories(get_r_sa_samp PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
-target_compile_options(get_r_sa_samp PUBLIC -O3 ${SIMD_FLAGS})
+target_compile_options(get_r_sa_samp PUBLIC
+        -O3
+        ${SIMD_FLAGS}
+)

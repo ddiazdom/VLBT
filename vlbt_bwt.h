@@ -5,9 +5,11 @@
 #ifndef RLBWT_DYBL_H
 #define RLBWT_DYBL_H
 
+
 #include <cmath>
 #include <vector>
 #include "bitstream.h"
+#include "def_scan.h"
 
 template<bool vbyte_compressed>
 static inline uint64_t inv_select_scl_8(const uint16_t* stream, uint8_t sym, uint64_t idx){
@@ -73,82 +75,10 @@ static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, ui
     return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);
 }
 
-#if defined(__ARM_NEON__)
-#include "neon_scan.h"
-
-#define INV_SELECT_8 inv_select_neon_8x16
-#define INV_SELECT_16 inv_select_neon_16x8
-#define INV_SELECT_32 inv_select_neon_32x4
-#define INV_SELECT_64 inv_select_neon_64x2
-
-#define ACCESS_8 access_neon_8x16
-#define ACCESS_16 access_neon_16x8
-#define ACCESS_32 access_neon_32x4
-#define ACCESS_64 access_neon_64x2
-
-#define RANK_8 rank_neon_8x16
-#define RANK_16 rank_neon_16x8
-#define RANK_32 rank_neon_32x4
-#define RANK_64 rank_neon_64x2
-
-/*#elif defined(__AVX2__)
-#include "avx2_scan.h"
-
-#define INV_SELECT_8 inv_select_avx2_8x32
-#define INV_SELECT_16 inv_select_avx2_16x16
-#define INV_SELECT_32 inv_select_avx2_32x8
-#define INV_SELECT_64 inv_select_avx2_64x4
-
-#define ACCESS_8 access_avx2_8x32
-#define ACCESS_16 access_avx2_16x16
-#define ACCESS_32 access_avx2_32x8
-#define ACCESS_64 access_avx2_64x4
-
-#define RANK_8 rank_avx2_8x16
-#define RANK_16 rank_avx2_16x8
-#define RANK_32 rank_avx2_32x4
-#define RANK_64 rank_avx2_64x2
-*/
-
-#elif defined(__SSE4_2__)
-#include "sse42_scan.h"
-
-#define INV_SELECT_8 inv_select_sse42_8x16
-#define INV_SELECT_16 inv_select_sse42_16x8
-#define INV_SELECT_32 inv_select_sse42_32x4
-#define INV_SELECT_64 inv_select_sse42_64x2
-
-#define ACCESS_8 access_sse42_8x16
-#define ACCESS_16 access_sse42_16x8
-#define ACCESS_32 access_sse42_32x4
-#define ACCESS_64 access_sse42_64x2
-
-#define RANK_8 rank_sse42_8x16
-#define RANK_16 rank_sse42_16x8
-#define RANK_32 rank_sse42_32x4
-#define RANK_64 rank_sse42_64x2
-
-#else
-#define INV_SELECT_8 inv_select_scl_8
-#define INV_SELECT_16 inv_select_scl_16
-#define INV_SELECT_32 inv_select_scl_32
-#define INV_SELECT_64 inv_select_scl_64
-
-#define ACCESS_8 access_scl_8
-#define ACCESS_16 access_scl_16
-#define ACCESS_32 access_scl_32
-#define ACCESS_64 access_scl_64
-
-#define RANK_8 rank_scl_8
-#define RANK_16 rank_scl_16
-#define RANK_32 rank_scl_32
-#define RANK_64 rank_scl_64
-#endif
-
 typedef bitstream<size_t> stream_type;
 
 template<size_t b_size, size_t b_runs, size_t s_factor>
-struct rlbwt_vlb {
+struct vlbt_bwt {
 
     static constexpr size_t block_size = b_size;
     static constexpr size_t scale_factor = s_factor;
@@ -164,7 +94,6 @@ struct rlbwt_vlb {
         uint64_t rank_pos[10]={0};
         uint8_t node_sigma[10]={0};
         uint8_t rank_width[10]={0};
-        uint8_t symbol[10]={0};
         uint8_t leaf_enc=0;
     };
 
@@ -199,7 +128,7 @@ struct rlbwt_vlb {
     uint8_t levels=0;//maximum number of levels
     stream_type stream;//stream with the data
 
-    rlbwt_vlb():levels(size_t(ceil(log(b_size)/log(s_factor)) - ceil(log(b_runs)/log(s_factor)))+1){
+    vlbt_bwt(): levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1){
         //TODO static asserts in block_size, scale_factor, and b_runs
         // logarithm function to calculate value
         float lg = log(b_size) / log(s_factor);
