@@ -19,6 +19,8 @@ struct phi_stat_collector{
     uint64_t children_freq[100]={0};//children frequency = how many nodes with 1,2,...,x children
     uint64_t header_overhead=0;//number of bits used by the headers of the nodes
     uint64_t runs_overhead=0;
+    uint64_t sym_overhead=0;
+    uint64_t len_overhead=0;
     uint64_t tree_pointers_overhead=0;
     uint64_t trees_overhead=0;
     uint64_t max_n_blocks=0;
@@ -393,7 +395,7 @@ struct phi_node {//state of the compression
         //for 2 bytes: check that the sum of 8 (or 16 for AVX) consecutive run lens is <=2^16-1
         //for 3-4 bytes: check that the sum of 4 (or 8 for AVX) consecutive run lens is <=2^32-1
         //for 4-8 bytes: check that the sum of 2 (or 4 for AVX) consecutive run lens is <=2^64-1
-        //we need to do this check to work with SIMD instructions. It it does not fit, use the next encoding that can fits them
+        //we need to do this check to work with SIMD instructions. If it does not fit, use the next encoding that can fits them
 
         assert(node_n_bits==0);
         assert(lvl>0);
@@ -483,12 +485,11 @@ struct phi_node {//state of the compression
         //==HEADER DESCRIPTION:
         //1 bit to indicate it is a leaf node
         //phi_rep.len_enc_width bits to store the encoding of the run lengths
-        //sym_width(b_runs) to encode the number of runs
         //32 bits to store the value of (run_bits/8)
         //phi_rep.int_pt_width bits to store the value of sym_width(max_sym)
         //===
 
-        size_t header_bits = 1+phi_rep.len_enc_width+sym_width(b_runs)+32+phi_rep.int_pt_width;
+        size_t header_bits = 1+phi_rep.len_enc_width+32+phi_rep.int_pt_width;
         header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
 
         //allocate bytes for the information of this leaf
@@ -504,11 +505,6 @@ struct phi_node {//state of the compression
         buffer.write(bit_pos, bit_pos+phi_rep.len_enc_width-1, len_enc);
         bit_pos+=phi_rep.len_enc_width;
         //
-
-        //store the number of runs
-        size_t w = sym_width(b_runs);
-        buffer.write(bit_pos, bit_pos+w-1, n_runs);
-        bit_pos+=w;
 
         //store the number of bytes used by the run lengths
         buffer.write(bit_pos, bit_pos+31, len_bits/8);
@@ -528,7 +524,7 @@ struct phi_node {//state of the compression
         assert((written_bytes*8)==len_bits);
 
         bit_pos = (byte_pos*8)+len_bits;
-        w = sym_width(max_sym);
+        uint8_t w = sym_width(max_sym);
         for(size_t i=0;i<n_blocks;i++) {
             for (auto &run: blocks[i]) {
                 buffer.write(bit_pos, bit_pos+w-1, run.first);
@@ -544,6 +540,8 @@ struct phi_node {//state of the compression
         //gather statistics
         if(n_blocks>stats.max_n_blocks) stats.max_n_blocks = n_blocks;
 
+        stats.sym_overhead+=sym_bits;
+        stats.len_overhead+=len_bits;
         stats.runs_overhead+=len_bits+sym_bits;
         stats.header_overhead+=header_bits;
         stats.rpl_freq[n_runs]++;
@@ -926,14 +924,15 @@ struct phi_tree{
         std::cout<<"Percentage of removed nodes: "<<(double(del_nodes)/double(tot_nodes))*100<<"% "<<std::endl;
         std::cout<<"Written bytes in the data structure: "<<INT_CEIL(root->node_n_bits, 8)<<std::endl;
         std::cout<<"Space breakdown"<<std::endl;
-        std::cout<<"\tRuns: "<<INT_CEIL(stats.runs_overhead, 8)<<" ("<<(double(stats.runs_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
-        std::cout<<"\tHeaders: "<<INT_CEIL(stats.header_overhead, 8)<<" ("<<(double(stats.header_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
-        std::cout<<"\t\tTree pointers: "<<INT_CEIL(stats.tree_pointers_overhead, 8)<<" ("<<(double(stats.tree_pointers_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
+        std::cout<<"\tRuns: "<<INT_CEIL(stats.runs_overhead, 8)<<" bytes ("<<(double(stats.runs_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
+        std::cout<<"\t\tSymbols overhead: "<<INT_CEIL(stats.sym_overhead, 8)<<" bytes ("<<(double(stats.sym_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
+        std::cout<<"\t\tLengths overhead: "<<INT_CEIL(stats.len_overhead, 8)<<" bytes ("<<(double(stats.len_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
+        std::cout<<"\tHeaders: "<<INT_CEIL(stats.header_overhead, 8)<<" bytes ("<<(double(stats.header_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
+        std::cout<<"\t\tTree pointers: "<<INT_CEIL(stats.tree_pointers_overhead, 8)<<" bytes ("<<(double(stats.tree_pointers_overhead)/double(stats.header_overhead))*100<<"%)"<<std::endl;
         size_t ptr_bv_ov = stats.header_overhead - stats.tree_pointers_overhead;
-        std::cout<<"\t\tInt. Pointers and bitvectors: "<<INT_CEIL(ptr_bv_ov, 8)<<" ("<<(double(ptr_bv_ov)/double(root->node_n_bits))*100<<"%)"<<std::endl;
-
-        assert(stats.header_overhead+stats.runs_overhead==root->node_n_bits);
-        std::cout<<"\t\tTrees without tree pointers: "<<INT_CEIL(stats.trees_overhead, 8)<<std::endl;
+        std::cout<<"\t\tInt. Pointers, bitvectors, and extras: "<<INT_CEIL(ptr_bv_ov, 8)<<" bytes ("<<(double(ptr_bv_ov)/double(stats.header_overhead))*100<<"%)"<<std::endl;
+        assert((stats.header_overhead+stats.runs_overhead)==root->node_n_bits);
+        //std::cout<<"\t\tTrees pointers: "<<INT_CEIL(stats.trees_overhead, 8)<<std::endl;
         std::cout<<"space_usage:"<<float(root->node_n_bits)/float(phi_rep.tot_syms)<<" bps"<<std::endl;
     }
 };
@@ -953,4 +952,164 @@ void build_vlbt_phi_in_memory(phi_dt_type& phi_rep,
     tree.build_in_memory(block);
     tree.report_stats();
 }
+
+struct rsa_type {
+    uint64_t tail_val;
+    uint64_t next_head_val;
+    uint64_t run;
+};
+
+uint64_t get_diff(uint64_t first, uint64_t second) {
+    uint64_t abs_diff = (first > second) ? (first - second): (second - first);
+    assert(abs_diff<=INT64_MAX);
+    return abs_diff;
+}
+
+template<class size_type>
+void preprocess_rsa(std::string& rsa_file, std::string& rsa_per_str_file,
+                    size_t ssamp_val, std::string& ssamp_phi_file, std::string& ssamp_th_file){
+
+    size_t n_elements = std::filesystem::file_size(rsa_file)/sizeof(size_type);
+    std::cout<<"There are "<<n_elements<<" SA samples"<<std::endl;
+    std::vector<rsa_type> samples(n_elements/2);
+    size_t s_pos=0;
+
+    std::ifstream ifs(rsa_file, std::ios::binary);
+    size_t buffer_size = 4096;
+    std::vector<size_type> buffer(buffer_size+1, 0);
+    size_t n_blocks = n_elements/buffer_size;
+    size_t rem = n_elements;
+
+    //read samples from disk and reorganize them
+    ifs.read((char *)buffer.data(), off_t(sizeof(size_type)*buffer_size));
+    for(size_t i=0;i<(n_blocks-1);i++){
+        for(size_t j=1;j<buffer_size;j+=2){
+            samples[s_pos].tail_val = buffer[j];
+            samples[s_pos].next_head_val = buffer[j+1];
+            samples[s_pos].run = s_pos++;
+        }
+        assert(samples[s_pos-1].next_head_val==0);
+        rem -=buffer_size;
+        ifs.read((char *)buffer.data(), off_t(sizeof(size_type)*buffer_size));
+        samples[s_pos-1].next_head_val = buffer[0];
+    }
+
+    rem -=buffer_size;
+    for(size_t j=1;j<buffer_size;j+=2){
+        samples[s_pos].tail_val = buffer[j];
+        samples[s_pos].next_head_val = buffer[j+1];
+        samples[s_pos].run = s_pos++;
+    }
+    assert(samples[s_pos-1].next_head_val==0);
+
+    if(rem>0){
+        ifs.read((char *)buffer.data(), off_t(sizeof(size_type)*rem));
+        for(size_t j=1;j<rem;j+=2){
+            samples[s_pos].tail_val = buffer[j];
+            samples[s_pos].next_head_val = buffer[j+1];
+            samples[s_pos].run = s_pos++;
+        }
+    }
+    ifs.close();
+    assert(s_pos==samples.size());
+    assert(s_pos==(n_elements/2));
+    //
+
+    //sort the samples by text position
+    uint64_t last_run = s_pos-1;
+    std::sort(samples.begin(), samples.end(), [](auto const& a, auto const&b){
+        return a.tail_val<b.tail_val;
+    });
+    //
+
+    //compute and store the subsamples for phi
+    size_t f_size = std::filesystem::file_size(rsa_per_str_file);
+    n_elements = f_size/sizeof(size_type);
+    std::vector<size_type> str_ranges(n_elements, 0);
+    std::ifstream ifs2(rsa_per_str_file, std::ios::binary);
+    ifs2.read((char *)str_ranges.data(), off_t(f_size));
+    uint64_t discard_mark = std::numeric_limits<uint64_t>::max();
+    std::ofstream ifs_phi(ssamp_phi_file, std::ios::binary);
+
+    size_t best_comp=0;
+
+    size_t n_strings = n_elements-1, last_sampled, n_samp=0, len, acc_len=0, buff_pos=0;
+    size_type str_boundary;
+    s_pos=0;
+    for(size_t str=0;str<n_strings;str++){
+        str_boundary = str_ranges[str+1]-1;
+        last_sampled = s_pos;
+        n_samp++;
+        s_pos++;
+        while(samples[s_pos].tail_val<str_boundary){
+            if((samples[s_pos+1].tail_val-samples[last_sampled].tail_val>ssamp_val) ||
+                samples[s_pos].run==last_run){
+
+                len = samples[s_pos].tail_val-samples[last_sampled].tail_val;
+                buffer[buff_pos++] = samples[last_sampled].next_head_val;
+                buffer[buff_pos++] = len;
+                best_comp+=sym_width(get_diff(samples[last_sampled].next_head_val, samples[last_sampled].tail_val));
+
+                if(buff_pos==buffer_size){
+                    ifs_phi.write((char *)buffer.data(), sizeof(size_type)*buffer_size);
+                    buff_pos=0;
+                }
+                acc_len+=len;
+                //std::cout<<"tail_pos:"<<samples[last_sampled].tail_val<<", next_head_val:"<<samples[last_sampled].next_head_val<<", run:"<<samples[last_sampled].run<<std::endl;
+                //std::cout<<"run:("<<samples[last_sampled].next_head_val<<","<<len<<")"<<std::endl;
+                last_sampled = s_pos;
+                n_samp++;
+            } else {
+                samples[s_pos].next_head_val = discard_mark;
+            }
+            s_pos++;
+        }
+        len = (str_boundary+1)-samples[last_sampled].tail_val;
+        buffer[buff_pos++] = samples[last_sampled].next_head_val;
+        buffer[buff_pos++] = len;
+        best_comp+=sym_width(get_diff(samples[last_sampled].next_head_val, samples[last_sampled].tail_val));
+        if(buff_pos==buffer_size){
+            ifs_phi.write((char *)buffer.data(), sizeof(size_type)*buffer_size);
+            buff_pos=0;
+        }
+        acc_len += len;
+        //std::cout<<"tail_pos:"<<samples[last_sampled].tail_val<<", next_head_val:"<<samples[last_sampled].next_head_val<<", run:"<<samples[last_sampled].run<<std::endl;
+        //std::cout<<"run:("<<samples[last_sampled].next_head_val<<","<<len<<")"<<std::endl;
+    }
+    //
+    std::cout<<"The best compression we can achieve is "<<INT_CEIL(best_comp, 8)<<" bytes "<<std::endl;
+    assert(acc_len==str_ranges.back());
+    if(buff_pos>0){
+        ifs_phi.write((char *)buffer.data(), sizeof(size_type)*buff_pos);
+    }
+    ifs_phi.close();
+    //store them as runs
+    /*n_samp=0; s_pos=0;
+    for(size_t str=0;str<n_strings;str++){
+        str_boundary = str_ranges[str+1]-1;
+        last_sampled = s_pos;
+        n_samp++;
+        s_pos++;
+        while(samples[s_pos].tail_val<str_boundary){
+            if((samples[s_pos+1].tail_val-samples[last_sampled].tail_val>sub_samp_val) ||
+               samples[s_pos].run==last_run){
+                last_sampled = s_pos;
+                n_samp++;
+            }else{
+                samples[s_pos].next_head_val = discard_mark;
+            }
+            s_pos++;
+        }
+    }*/
+    //
+    /*std::cout<<" ==== sampled ==== "<<std::endl;
+    for(size_t i=0;i<20;i++){
+        if(samples[i].next_head_val!=discard_mark){
+            std::cout<<samples[i].tail_val<<" "<<samples[i].next_head_val<<std::endl;
+        }
+    }*/
+    std::cout<<"We subsampled "<<n_samp<<" elements out of "<<samples.size()<<" ("<<double(n_samp)/double(samples.size())*100<<"%)"<<std::endl;
+    //
+}
+
 #endif//VLBT_CONSTRUCT_VLBT_PHI

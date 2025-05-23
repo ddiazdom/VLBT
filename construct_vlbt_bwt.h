@@ -385,18 +385,18 @@ struct rl_node {//state of the compression
         for(size_t s=0;s<bwt_rep.sigma;s++){
             if(low_freq_syms[s]){
 
-                std::cout<<"symbol:"<<s<<" c_bit_pos:"<<c_bit_pos<<" b_pos:"<<bit_pos<<std::endl;
+                //std::cout<<"symbol:"<<s<<" c_bit_pos:"<<c_bit_pos<<" b_pos:"<<bit_pos<<std::endl;
                 buffer.write(c_bit_pos, c_bit_pos+39, bit_pos);
                 c_bit_pos+=40;
                 for(unsigned long tree_id : sigma_trees[s]){
                     //encode the tree where s occurs
                     buffer.write(bit_pos, bit_pos+w-1, tree_offset[tree_id]);
-                    std::cout<<"\t b_pos:"<<bit_pos<<" "<<tree_offset[tree_id]<<std::endl;
+                    //std::cout<<"\t b_pos:"<<bit_pos<<" "<<tree_offset[tree_id]<<std::endl;
                     bit_pos+=w;
                     //std::cout<<tree_offset[tree_id]<<" ";
                 }
                 buffer.write(bit_pos, bit_pos+w-1, limit);
-                std::cout<<"\t b_pos:"<<bit_pos<<" "<<limit<<"\n"<<std::endl;
+                //std::cout<<"\t b_pos:"<<bit_pos<<" "<<limit<<"\n"<<std::endl;
                 bit_pos+=w;
             }
             buffer.write(sym_bit_pos, sym_bit_pos, low_freq_syms[s]);

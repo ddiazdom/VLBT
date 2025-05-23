@@ -7,44 +7,77 @@
 #include "../utils.h"
 #include "custom_wt_rlmn.hpp"
 
-typedef std::tuple<uint64_t, uint64_t, uint64_t, bool> sa_samp_type;
+enum run_type{
+    NONE=0,
+    HEAD=1,
+    TAIL=2,
+};
+
+struct sa_samp_type{
+    uint32_t str=0;
+    uint64_t pos=0;
+    uint64_t run_id=0;
+    run_type annotation=NONE;
+
+    sa_samp_type(uint32_t str_, uint64_t pos_, uint64_t run_id_, run_type annot_): str(str_),
+                                                                                   pos(pos_),
+                                                                                   run_id(run_id_),
+                                                                                   annotation(annot_){}
+};
+
 typedef sdsl::custom_wt_rlmn<> index_type;
 
-void compute_samples(size_t n_threads, index_type& bwt, std::string& output_file) {
+void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, std::string& str_ranges_file) {
 
+    std::vector<uint64_t> str_lens(bwt.n_strings()+1);
     std::vector<std::vector<sa_samp_type>> thread_sa_samples(n_threads);
+
     auto lambda_worker = [&](size_t start, size_t end, size_t t) -> void {
 
-        // I am exploiting the fact that the strings in the BCR BWT
-        // can be decoded in text order.
+        // I am exploiting the fact that the strings in the BCR BWT can be decoded in text order.
+        std::vector<sa_samp_type> tmp;
+        bool is_tail;
+        size_t run;
+
         for(size_t i=start;i<=end;i++){
 
             size_t bwt_pos = i;
             uint64_t len = 1;
-            size_t n_insertions=0;
 
             while(true){
-                if(bwt.is_run_head(bwt_pos)){
-                    thread_sa_samples[t].emplace_back(i, len, bwt.pos2run(bwt_pos), false);
-                    n_insertions++;
+
+                is_tail = bwt.is_run_tail(bwt_pos);
+                run = bwt.pos2run(bwt_pos);
+
+                if(is_tail){
+                    tmp.emplace_back(i, len, run, TAIL);
                 }
 
-                if(bwt.is_run_tail(bwt_pos)){
-                    thread_sa_samples[t].emplace_back(i, len, bwt.pos2run(bwt_pos), true);
-                    n_insertions++;
+                bool is_head = bwt.is_run_tail(bwt_pos);
+                if(bwt.is_run_head(bwt_pos)){
+                    tmp.emplace_back(i, len, run, HEAD);
                 }
 
                 auto res = bwt.lf(bwt_pos);
                 if(res.first==bwt.sep_sym()){
+                    if(!is_tail && !is_head){
+                        tmp.emplace_back(i, len, run, HEAD);
+                        tmp.emplace_back(i, len, run, TAIL);
+                    }
                     assert(res.second<bwt.n_strings());
+                    str_lens[i] = len;
                     break;
                 }
                 len++;
                 bwt_pos = res.second;
             }
-            for(size_t j=0, k=thread_sa_samples[t].size()-n_insertions;j<n_insertions;j++,k++){
-                std::get<1>(thread_sa_samples[t][k]) = len-std::get<1>(thread_sa_samples[t][k]);
+
+            std::reverse(tmp.begin(), tmp.end());
+            for(auto &samp : tmp){
+                samp.pos = len-samp.pos;
+                thread_sa_samples[t].push_back(samp);
             }
+            tmp.clear();
         }
     };
 
@@ -71,38 +104,65 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& output_file
                           std::make_move_iterator(vec.end()));
     }
 
-    std::cout<<"Sorting the samples"<<std::endl;
-    std::sort(sa_samples.begin(), sa_samples.end(), [](const auto& a, const auto& b) {
-        uint64_t run_a = std::get<2>(a);
-        uint64_t run_b = std::get<2>(b);
-        if(run_a!=run_b){
-            return run_a<run_b;
-        }
-        return std::get<3>(a) < std::get<3>(b);
-    });
+    size_t acc=0, tmp;
+    for(auto &len : str_lens){
+        tmp = len;
+        len = acc;
+        acc+=tmp;
+    }
+    str_lens[n_strings] = acc;
 
-    assert((sa_samples.size()/2)==bwt.n_runs());
-    sdsl::int_vector_buffer<0> output;
-
-    std::ofstream ofs(output_file, std::ios::binary);
-    auto *buffer = (uint64_t *) malloc(sizeof(uint64_t)*4096);
-    size_t b_pos=0;
-
-    for(auto & sa_sample : sa_samples){
-        buffer[b_pos++] = std::get<0>(sa_sample);
-        buffer[b_pos++] = std::get<1>(sa_sample);
-        if(b_pos==4096){
-            ofs.write((char *)buffer, 4096*sizeof(uint64_t));
-            b_pos=0;
-        }
-        //std::cout<<"(str:"<<std::get<0>(sa_sample)<<":"<<std::get<1>(sa_sample)<<") run:"<<std::get<2>(sa_sample)<<" head/tail:"<<std::get<3>(sa_sample)<<std::endl;
+    for(auto &elm : sa_samples){
+        elm.pos+=str_lens[elm.str];
+        //std::cout<<elm.str<<" "<<elm.pos<<" "<<elm.run_id<<" "<<elm.annotation<<" next_samp:"<<elm.next_samp<<" str_len:"<<str_lens[elm.str]<<std::endl;
     }
 
+    std::cout<<"Sorting the samples"<<std::endl;
+    std::sort(sa_samples.begin(), sa_samples.end(), [](const sa_samp_type& a, const sa_samp_type& b) {
+        if(a.run_id!=b.run_id){
+            return a.run_id<b.run_id;
+        }
+        return a.annotation < b.annotation;
+    });
+
+    /*for(size_t j=0; j<(sa_samples.size()-1);j++){
+        //std::cout<<sa_samples[j].str<<" pos:"<<sa_samples[j].pos<<" run:"<<sa_samples[j].run_id<<" annot:"<<sa_samples[j].annotation<<" next_samp:"<<sa_samples[j].next_samp<<" str_len:"<<str_lens[sa_samples[j].str]<<std::endl;
+        if(sa_samples[j].annotation==TAIL){
+            assert(sa_samples[j+1].annotation==HEAD);
+            sa_samples[j].next_samp = sa_samples[j+1].pos;
+        }
+    }*/
+
+    assert((sa_samples.size()/2)==bwt.n_runs());
+
+    //we use 9 bytes per entry : 8 for the position, and 1 for the annotation (HEAD, TAIL, STR_START)
+
+    off_t buff_size = sizeof(uint64_t)*4096;
+    auto *buffer = (uint64_t *) malloc(buff_size);
+    std::ofstream ofs(rsa_file, std::ios::binary);
+    off_t b_pos=0;
+
+    for(auto & sa_sample : sa_samples){
+        buffer[b_pos] = sa_sample.pos;
+        //std::cout<<"run_id:"<<sa_sample.run_id<<" txt_pos:"<<sa_sample.pos<<" annotation:"<<sa_sample.annotation<<" code:"<<buffer[b_pos]<<std::endl;
+        b_pos++;
+        if(b_pos==4096){
+            ofs.write((char *)buffer, buff_size);
+            b_pos=0;
+        }
+    }
     if(b_pos!=0){
-        ofs.write((char *)buffer, std::streamsize(b_pos*sizeof(uint64_t)));
+        buff_size = off_t(b_pos*sizeof(uint64_t));
+        ofs.write((char *)buffer, buff_size);
     }
     ofs.close();
     free(buffer);
+
+    std::ofstream ofs2(str_ranges_file, std::ios::binary);
+    ofs2.write((char *)str_lens.data(), off_t(sizeof(uint64_t)*str_lens.size()));
+
+    std::cout<<"Total number of SA samples collected "<<sa_samples.size()<<std::endl;
+    std::cout<<"Extra samples collected due to BCR  "<<sa_samples.size()-(bwt.n_runs()*2)<<std::endl;
 }
 
 int main(int argc, char** argv) {
@@ -121,10 +181,12 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Invalid number of threads: %s\n", argv[1]);
         return 1;
     }
-    std::string output_file = std::string(argv[3]);
+    std::string rsa_file = std::string(argv[3])+".rsa";
+    std::string str_ranges_file = std::string(argv[3])+".str_ranges";
     std::cout<<"Building the RLBWT ..."<<std::endl;
     index_type bwt(input_file);
     std::cout<<"Input file:"<<input_file<<" has "<<bwt.n_strings()<<" strings and "<<bwt.n_runs()<<" BWT runs"<<std::endl;
-    compute_samples(n_threads, bwt, output_file);
-    std::cout<<"SA samples were stored in "<<output_file<<std::endl;
+    compute_samples(n_threads, bwt, rsa_file, str_ranges_file);
+    std::cout<<"SA samples were stored in "<<rsa_file<<std::endl;
+    std::cout<<"The ranges of the strings in the text were stored in "<<str_ranges_file<<std::endl;
 }

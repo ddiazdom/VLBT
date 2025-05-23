@@ -365,8 +365,8 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
     }*/
 }
 
-void test_vlbt(std::string& input_file, std::string& output_prefix){
-    using bwt_type = vlbt_bwt<4096, 64, 4>;
+void test_vlbt_bwt(std::string& input_file, std::string& output_prefix){
+    using bwt_type = vlbt_bwt<65536, 64, 4>;
     bwt_type bwt_dt;
     build_rlbwt_vlb<bwt_type>(bwt_dt, input_file, INPUT_FORMAT::GRL_BWT);
     std::string output_file = output_prefix+".vlbt_bwt";
@@ -385,12 +385,17 @@ void test_vlbt(std::string& input_file, std::string& output_prefix){
     test_rank(bwt_dt, output_prefix);
 }
 
-void test_phi(std::string& input_file, std::string& output_prefix){
-    using phi_type = vlbt_phi<4096, 64, 4>;
-    phi_type phi_dt;
-    //build_vlbt_phi<phi_type, uint64_t>(phi_dt, input_file);
+template<class size_type>
+void test_phi(std::string& rsa_file, std::string& rsa_per_str_file,
+              size_t ssamp_val, std::string& ssamp_phi_file, std::string& ssamp_th_file,
+              std::string& output_prefix){
 
-    std::vector<std::pair<uint64_t, uint64_t>> block={ {12, 230010}, {300, 262144}, {14, 200010},
+    preprocess_rsa<size_type>(rsa_file, rsa_per_str_file, ssamp_val, ssamp_phi_file, ssamp_th_file);
+    using phi_type = vlbt_phi<65536, 64, 4>;
+    phi_type phi_dt;
+    build_vlbt_phi<phi_type, uint64_t>(phi_dt, ssamp_phi_file);
+
+    /*std::vector<std::pair<uint64_t, uint64_t>> block={ {12, 230010}, {300, 262144}, {14, 200010},
                                                        {34, 5}, {1000, 3801091}, {3334, 29949491},
                                                        {20000, 2}, {12, 40000}, {23, 1002020},
                                                        {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
@@ -427,7 +432,7 @@ void test_phi(std::string& input_file, std::string& output_prefix){
                                                        {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
                                                        {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1}
     };
-    build_vlbt_phi_in_memory<phi_type, uint64_t>(phi_dt, block);
+    build_vlbt_phi_in_memory<phi_type, uint64_t>(phi_dt, block);*/
 
     std::string output_file = output_prefix+".vlbt_phi";
     size_t written_bytes = store_to_file(output_file, phi_dt);
@@ -459,5 +464,11 @@ int main(int argc, char** argv){
     }else{
         std::cout<<"We will build only my BWT..."<<std::endl;
     }
-    test_phi(input_file, output_prefix);
+
+    std::string rsa_file = output_prefix+".rsa";
+    std::string str_ranges_file = output_prefix+".str_ranges";
+    std::string ssamp_phi_file = output_prefix+".ssamps_phi";
+    std::string ssamp_th_file = output_prefix+".ssamps_th";
+    test_phi<uint64_t>(rsa_file, str_ranges_file, 4, ssamp_phi_file, ssamp_th_file, output_prefix);
+    test_vlbt_bwt(input_file, output_prefix);
 }
