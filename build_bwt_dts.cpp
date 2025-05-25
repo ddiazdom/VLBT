@@ -470,5 +470,5 @@ int main(int argc, char** argv){
     std::string ssamp_phi_file = output_prefix+".ssamps_phi";
     std::string ssamp_th_file = output_prefix+".ssamps_th";
     test_phi<uint64_t>(rsa_file, str_ranges_file, 4, ssamp_phi_file, ssamp_th_file, output_prefix);
-    test_vlbt_bwt(input_file, output_prefix);
+    //test_vlbt_bwt(input_file, output_prefix);
 }

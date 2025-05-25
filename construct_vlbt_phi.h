@@ -747,7 +747,7 @@ struct phi_tree{
             for(size_t j=0;j<buff_size;j++){
                 phi_rep.tot_syms+=rsa_samples_buff[j].second;
             }
-            rem_samples=-buff_size;
+            rem_samples-=buff_size;
         }
         rsa_samp_ifs.read((char *)rsa_samples_buff.data(), rem_samples*sizeof(run_type));
         for(size_t j=0;j<rem_samples;j++){
@@ -769,12 +769,13 @@ struct phi_tree{
         }
 
         //compute the tree
+        rem_samples = n_runs;
         for(size_t i=0;i<n_blocks;i++){
             rsa_samp_ifs.read((char *)rsa_samples_buff.data(), buff_size*sizeof(run_type));
             for(size_t j=0;j<buff_size;j++){
                 root->process_run(rsa_samples_buff[j].first, rsa_samples_buff[j].second);
             }
-            rem_samples=-buff_size;
+            rem_samples-=buff_size;
         }
         rsa_samp_ifs.read((char *)rsa_samples_buff.data(), rem_samples*sizeof(run_type));
         for(size_t j=0;j<rem_samples;j++){
@@ -1037,15 +1038,24 @@ void preprocess_rsa(std::string& rsa_file, std::string& rsa_per_str_file,
     size_type str_boundary;
     s_pos=0;
     for(size_t str=0;str<n_strings;str++){
+        assert(samples[s_pos].tail_val==str_ranges[str]);
         str_boundary = str_ranges[str+1]-1;
+        //std::cout<<"s_pos:"<<s_pos<<", tail_pos:"<<samples[s_pos].tail_val<<", str_boundary:"<<str_boundary<<std::endl;
         last_sampled = s_pos;
         n_samp++;
         s_pos++;
-        while(samples[s_pos].tail_val<str_boundary){
+        assert(s_pos<samples.size());
+
+        while((s_pos+1)<samples.size() && samples[s_pos+1].tail_val<=str_boundary){
+
+            //std::cout<<"s_pos:"<<s_pos<<", tail_pos:"<<samples[s_pos].tail_val<<", str_boundary:"<<str_boundary<<" ";
+
             if((samples[s_pos+1].tail_val-samples[last_sampled].tail_val>ssamp_val) ||
                 samples[s_pos].run==last_run){
-
                 len = samples[s_pos].tail_val-samples[last_sampled].tail_val;
+
+                //std::cout<<len<<" "<<(acc_len+len)<<std::endl;
+
                 buffer[buff_pos++] = samples[last_sampled].next_head_val;
                 buffer[buff_pos++] = len;
                 best_comp+=sym_width(get_diff(samples[last_sampled].next_head_val, samples[last_sampled].tail_val));
@@ -1061,10 +1071,14 @@ void preprocess_rsa(std::string& rsa_file, std::string& rsa_per_str_file,
                 n_samp++;
             } else {
                 samples[s_pos].next_head_val = discard_mark;
+                //std::cout<<""<<std::endl;
             }
             s_pos++;
         }
+        //std::cout<<"string: "<<str<<":"<<samples[last_sampled].tail_val<<" /  "<<samples[s_pos].tail_val<<" / "<<samples[s_pos+1].tail_val<<std::endl;
+        s_pos+=samples[s_pos].tail_val<=str_boundary;
         len = (str_boundary+1)-samples[last_sampled].tail_val;
+        //std::cout<<len<<" "<<(acc_len+len)<<std::endl;
         buffer[buff_pos++] = samples[last_sampled].next_head_val;
         buffer[buff_pos++] = len;
         best_comp+=sym_width(get_diff(samples[last_sampled].next_head_val, samples[last_sampled].tail_val));
@@ -1073,12 +1087,13 @@ void preprocess_rsa(std::string& rsa_file, std::string& rsa_per_str_file,
             buff_pos=0;
         }
         acc_len += len;
+        //std::cout<<"start_next_str:"<<str_ranges[str+1]<<" acc_len:"<<acc_len<<std::endl;
+        assert(acc_len==str_ranges[str+1]);
         //std::cout<<"tail_pos:"<<samples[last_sampled].tail_val<<", next_head_val:"<<samples[last_sampled].next_head_val<<", run:"<<samples[last_sampled].run<<std::endl;
         //std::cout<<"run:("<<samples[last_sampled].next_head_val<<","<<len<<")"<<std::endl;
     }
     //
     std::cout<<"The best compression we can achieve is "<<INT_CEIL(best_comp, 8)<<" bytes "<<std::endl;
-    assert(acc_len==str_ranges.back());
     if(buff_pos>0){
         ifs_phi.write((char *)buffer.data(), sizeof(size_type)*buff_pos);
     }

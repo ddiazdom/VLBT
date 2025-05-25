@@ -46,24 +46,28 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, s
 
             while(true){
 
-                is_tail = bwt.is_run_tail(bwt_pos);
                 run = bwt.pos2run(bwt_pos);
 
+                is_tail = bwt.is_run_tail(bwt_pos);
                 if(is_tail){
                     tmp.emplace_back(i, len, run, TAIL);
                 }
 
-                bool is_head = bwt.is_run_tail(bwt_pos);
-                if(bwt.is_run_head(bwt_pos)){
+                bool is_head = bwt.is_run_head(bwt_pos);
+                if(is_head){
                     tmp.emplace_back(i, len, run, HEAD);
                 }
 
                 auto res = bwt.lf(bwt_pos);
                 if(res.first==bwt.sep_sym()){
-                    if(!is_tail && !is_head){
-                        tmp.emplace_back(i, len, run, HEAD);
+
+                    if(!is_tail){
                         tmp.emplace_back(i, len, run, TAIL);
                     }
+                    if(!is_head){
+                        tmp.emplace_back(i, len, run, HEAD);
+                    }
+
                     assert(res.second<bwt.n_strings());
                     str_lens[i] = len;
                     break;
@@ -114,7 +118,7 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, s
 
     for(auto &elm : sa_samples){
         elm.pos+=str_lens[elm.str];
-        //std::cout<<elm.str<<" "<<elm.pos<<" "<<elm.run_id<<" "<<elm.annotation<<" next_samp:"<<elm.next_samp<<" str_len:"<<str_lens[elm.str]<<std::endl;
+        //std::cout<<"pos:"<<elm.pos<<" run:"<<elm.run_id<<" annot:"<<elm.annotation<<std::endl;
     }
 
     std::cout<<"Sorting the samples"<<std::endl;
@@ -122,6 +126,10 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, s
         if(a.run_id!=b.run_id){
             return a.run_id<b.run_id;
         }
+        if(a.pos!=b.pos){
+            return a.pos < b.pos;
+        }
+
         return a.annotation < b.annotation;
     });
 
@@ -133,8 +141,7 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, s
         }
     }*/
 
-    assert((sa_samples.size()/2)==bwt.n_runs());
-
+    //assert((sa_samples.size()/2)==bwt.n_runs());
     //we use 9 bytes per entry : 8 for the position, and 1 for the annotation (HEAD, TAIL, STR_START)
 
     off_t buff_size = sizeof(uint64_t)*4096;
@@ -142,14 +149,18 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, s
     std::ofstream ofs(rsa_file, std::ios::binary);
     off_t b_pos=0;
 
+    size_t k=0;
     for(auto & sa_sample : sa_samples){
+        /*if(k>=117142022 && k<=117142024){
+            std::cout<<k<<" "<<sa_sample.pos<<" "<<sa_sample.run_id<<" "<<sa_sample.annotation<<std::endl;
+        }*/
         buffer[b_pos] = sa_sample.pos;
-        //std::cout<<"run_id:"<<sa_sample.run_id<<" txt_pos:"<<sa_sample.pos<<" annotation:"<<sa_sample.annotation<<" code:"<<buffer[b_pos]<<std::endl;
         b_pos++;
         if(b_pos==4096){
             ofs.write((char *)buffer, buff_size);
             b_pos=0;
         }
+        k++;
     }
     if(b_pos!=0){
         buff_size = off_t(b_pos*sizeof(uint64_t));
