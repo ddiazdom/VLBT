@@ -391,7 +391,7 @@ void test_phi(std::string& rsa_file, std::string& rsa_per_str_file,
               std::string& output_prefix){
 
     preprocess_rsa<size_type>(rsa_file, rsa_per_str_file, ssamp_val, ssamp_phi_file, ssamp_th_file);
-    using phi_type = vlbt_phi<65536, 64, 4>;
+    using phi_type = vlbt_phi<4096, 64, 4>;
     phi_type phi_dt;
     build_vlbt_phi<phi_type, uint64_t>(phi_dt, ssamp_phi_file);
 

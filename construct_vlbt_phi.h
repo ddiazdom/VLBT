@@ -749,12 +749,14 @@ struct phi_tree{
             }
             rem_samples-=buff_size;
         }
+        assert(rem_samples<buff_size);
         rsa_samp_ifs.read((char *)rsa_samples_buff.data(), rem_samples*sizeof(run_type));
         for(size_t j=0;j<rem_samples;j++){
             phi_rep.tot_syms+=rsa_samples_buff[j].second;
         }
         phi_rep.orig_runs = n_runs;
         //
+        std::cout<<phi_rep.tot_syms<<" "<<phi_rep.orig_runs<<std::endl;
 
         root = new node_type(0, phi_dt_type::block_size, phi_rep, stats);
         std::ofstream ofs(twd.get_file("trees"), std::ios::binary);
@@ -769,6 +771,7 @@ struct phi_tree{
         }
 
         //compute the tree
+        rsa_samp_ifs.seekg(0, std::ios::beg);
         rem_samples = n_runs;
         for(size_t i=0;i<n_blocks;i++){
             rsa_samp_ifs.read((char *)rsa_samples_buff.data(), buff_size*sizeof(run_type));
@@ -1059,14 +1062,15 @@ void preprocess_rsa(std::string& rsa_file, std::string& rsa_per_str_file,
                 buffer[buff_pos++] = samples[last_sampled].next_head_val;
                 buffer[buff_pos++] = len;
                 best_comp+=sym_width(get_diff(samples[last_sampled].next_head_val, samples[last_sampled].tail_val));
-
                 if(buff_pos==buffer_size){
                     ifs_phi.write((char *)buffer.data(), sizeof(size_type)*buffer_size);
                     buff_pos=0;
                 }
                 acc_len+=len;
                 //std::cout<<"tail_pos:"<<samples[last_sampled].tail_val<<", next_head_val:"<<samples[last_sampled].next_head_val<<", run:"<<samples[last_sampled].run<<std::endl;
-                //std::cout<<"run:("<<samples[last_sampled].next_head_val<<","<<len<<")"<<std::endl;
+                if(s_pos<20){
+                    std::cout<<"run:("<<samples[last_sampled].next_head_val<<","<<len<<")"<<std::endl;
+                }
                 last_sampled = s_pos;
                 n_samp++;
             } else {
