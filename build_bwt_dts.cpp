@@ -15,12 +15,12 @@
 //#include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 
 //the framework
-#include "construct_vlbt_bwt.h"
-#include "construct_vlbt_bwt_th.h"
-#include "construct_vlbt_phi.h"
-#include "vlbt_bwt.h"
-#include "vlbt_bwt_th.h"
-#include "vlbt_phi.h"
+#include "include/construct_vlbt_bwt.h"
+#include "include/construct_vlbt_bwt_th.h"
+#include "include/construct_vlbt_phi.h"
+#include "include/vlbt_bwt.h"
+#include "include/vlbt_bwt_th.h"
+#include "include/vlbt_phi.h"
 //
 
 #include "fm_index.h"
@@ -386,11 +386,11 @@ void test_vlbt_bwt(std::string& input_file, std::string& output_prefix){
 }
 
 template<class size_type>
-void test_phi(std::string& rsa_file, std::string& rsa_per_str_file,
-              size_t ssamp_val, std::string& ssamp_phi_file, std::string& ssamp_th_file,
-              std::string& output_prefix){
+void test_phi(std::string& sa_samples_file, std::string& samples_per_str_file,
+              size_t ssamp_val, std::string& ssamp_phi_file,
+              std::string& ssamp_th_file, std::string& output_prefix){
 
-    preprocess_rsa<size_type>(rsa_file, rsa_per_str_file, ssamp_val, ssamp_phi_file, ssamp_th_file);
+    subsample_sa_samples<size_type>(sa_samples_file, samples_per_str_file, ssamp_val, ssamp_phi_file, ssamp_th_file);
     using phi_type = vlbt_phi<4096, 64, 4>;
     phi_type phi_dt;
     build_vlbt_phi<phi_type, uint64_t>(phi_dt, ssamp_phi_file);
@@ -469,6 +469,6 @@ int main(int argc, char** argv){
     std::string str_ranges_file = output_prefix+".str_ranges";
     std::string ssamp_phi_file = output_prefix+".ssamps_phi";
     std::string ssamp_th_file = output_prefix+".ssamps_th";
-    test_phi<uint64_t>(rsa_file, str_ranges_file, 4, ssamp_phi_file, ssamp_th_file, output_prefix);
-    //test_vlbt_bwt(input_file, output_prefix);
+    //test_phi<uint64_t>(rsa_file, str_ranges_file, 4, ssamp_phi_file, ssamp_th_file, output_prefix);
+    test_vlbt_bwt(input_file, output_prefix);
 }

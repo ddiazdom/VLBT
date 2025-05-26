@@ -5,7 +5,7 @@
 #ifndef TEST_RL_BCR_BWT_FM_INDEX_H
 #define TEST_RL_BCR_BWT_FM_INDEX_H
 
-#include "bwt_io.h"
+#include "include/bwt_io.h"
 
 template<class bwt_type>
 struct fm_index{

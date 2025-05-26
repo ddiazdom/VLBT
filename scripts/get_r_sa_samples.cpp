@@ -2,9 +2,9 @@
 // Created by Diaz, Diego on 21.5.2025.
 //
 #include<iostream>
-#include "../bwt_io.h"
+#include "../include/bwt_io.h"
 #include<thread>
-#include "../utils.h"
+#include "../include/utils.h"
 #include "custom_wt_rlmn.hpp"
 
 enum run_type{

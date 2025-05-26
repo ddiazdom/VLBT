@@ -2,17 +2,16 @@
 // Created by Diaz, Diego on 20.11.2024.
 //
 
-#ifndef RLBWT_DYBL_H
-#define RLBWT_DYBL_H
-
+#ifndef VLBT_PHI_H
+#define VLBT_PHI_H
 
 #include <cmath>
 #include <vector>
 #include "bitstream.h"
-#include "def_scan.h"
 
+/*
 template<bool vbyte_compressed>
-static inline uint64_t inv_select_scl_8(const uint16_t* stream, uint8_t sym, uint64_t idx){
+static inline uint64_t phi_inv_select_scl_8(const uint16_t* stream, uint8_t sym, uint64_t idx){
     uint8_t alpha_bits = 4;
     uint8_t alpha_mask = 15;
 
@@ -28,7 +27,7 @@ static inline uint64_t inv_select_scl_8(const uint16_t* stream, uint8_t sym, uin
 }
 
 template<bool vbyte_compressed>
-static inline uint64_t inv_select_scl_16(const uint16_t* stream, uint8_t sym, uint64_t idx){
+static inline uint64_t phi_inv_select_scl_16(const uint16_t* stream, uint8_t sym, uint64_t idx){
     uint8_t alpha_bits = 4;
     uint8_t alpha_mask = 15;
 
@@ -44,7 +43,7 @@ static inline uint64_t inv_select_scl_16(const uint16_t* stream, uint8_t sym, ui
 }
 
 template<bool vbyte_compressed>
-static inline uint64_t inv_select_scl_32(const uint16_t* stream, uint8_t sym, uint64_t idx){
+static inline uint64_t phi_inv_select_scl_32(const uint16_t* stream, uint8_t sym, uint64_t idx){
     uint8_t alpha_bits = 4;
     uint8_t alpha_mask = 15;
 
@@ -60,7 +59,7 @@ static inline uint64_t inv_select_scl_32(const uint16_t* stream, uint8_t sym, ui
 }
 
 template<bool vbyte_compressed>
-static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, uint64_t idx){
+static inline uint64_t phi_inv_select_scl_64(const uint16_t* stream, uint8_t sym, uint64_t idx){
     uint8_t alpha_bits = 4;
     uint8_t alpha_mask = 15;
 
@@ -74,26 +73,97 @@ static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, ui
     }
     return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);
 }
+
+#if defined(__ARM_NEON__)
+#include "neon_scan.h"
+
+#define INV_SELECT_8 inv_select_neon_8x16
+#define INV_SELECT_16 inv_select_neon_16x8
+#define INV_SELECT_32 inv_select_neon_32x4
+#define INV_SELECT_64 inv_select_neon_64x2
+
+#define ACCESS_8 access_neon_8x16
+#define ACCESS_16 access_neon_16x8
+#define ACCESS_32 access_neon_32x4
+#define ACCESS_64 access_neon_64x2
+
+#define RANK_8 rank_neon_8x16
+#define RANK_16 rank_neon_16x8
+#define RANK_32 rank_neon_32x4
+#define RANK_64 rank_neon_64x2
+
+#elif defined(__AVX2__)
+#include "avx2_scan.h"
+
+#define INV_SELECT_8 inv_select_avx2_8x32
+#define INV_SELECT_16 inv_select_avx2_16x16
+#define INV_SELECT_32 inv_select_avx2_32x8
+#define INV_SELECT_64 inv_select_avx2_64x4
+
+#define ACCESS_8 access_avx2_8x32
+#define ACCESS_16 access_avx2_16x16
+#define ACCESS_32 access_avx2_32x8
+#define ACCESS_64 access_avx2_64x4
+
+#define RANK_8 rank_avx2_8x16
+#define RANK_16 rank_avx2_16x8
+#define RANK_32 rank_avx2_32x4
+#define RANK_64 rank_avx2_64x2
+
+
+#elif defined(__SSE4_2__)
+#include "sse42_scan.h"
+
+#define INV_SELECT_8 inv_select_sse42_8x16
+#define INV_SELECT_16 inv_select_sse42_16x8
+#define INV_SELECT_32 inv_select_sse42_32x4
+#define INV_SELECT_64 inv_select_sse42_64x2
+
+#define ACCESS_8 access_sse42_8x16
+#define ACCESS_16 access_sse42_16x8
+#define ACCESS_32 access_sse42_32x4
+#define ACCESS_64 access_sse42_64x2
+
+#define RANK_8 rank_sse42_8x16
+#define RANK_16 rank_sse42_16x8
+#define RANK_32 rank_sse42_32x4
+#define RANK_64 rank_sse42_64x2
+
+#else
+#define INV_SELECT_8 inv_select_scl_8
+#define INV_SELECT_16 inv_select_scl_16
+#define INV_SELECT_32 inv_select_scl_32
+#define INV_SELECT_64 inv_select_scl_64
+
+#define ACCESS_8 access_scl_8
+#define ACCESS_16 access_scl_16
+#define ACCESS_32 access_scl_32
+#define ACCESS_64 access_scl_64
+
+#define RANK_8 rank_scl_8
+#define RANK_16 rank_scl_16
+#define RANK_32 rank_scl_32
+#define RANK_64 rank_scl_64
+#endif*/
 
 typedef bitstream<size_t> stream_type;
 
 template<size_t b_size, size_t b_runs, size_t s_factor>
-struct vlbt_bwt {
+struct vlbt_phi {
 
     static constexpr size_t block_size = b_size;
     static constexpr size_t scale_factor = s_factor;
     static constexpr size_t max_block_runs = b_runs;
+
     static constexpr uint8_t int_pt_width=7;//number of bits we use to encode the number of bits we use to encode pointers
-    static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
-    static constexpr uint8_t leaf_enc_width=4;
+    static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);//number of bits we use to encode the nearest valid tree in representation
+    static constexpr uint8_t len_enc_width=4;//number of bits to encode the leaf encoding
+    static constexpr uint8_t run_bytes = (sizeof(unsigned long)*8) - __builtin_clzl((b_runs*8) + (b_runs/8));//number of bits we use to encode the number of bytes that the run lengths use in a leaf
 
     struct tree_path_type{
         uint8_t lvl=0;
         uint64_t bit_pos=0;
-        uint64_t sigma_pos[10]={0};
-        uint64_t rank_pos[10]={0};
         uint8_t node_sigma[10]={0};
-        uint8_t rank_width[10]={0};
         uint8_t leaf_enc=0;
     };
 
@@ -114,21 +184,14 @@ struct vlbt_bwt {
     };
 
     uint64_t tot_syms=0;//total symbols in the text
+    uint16_t ext_pt_width=0;//number of bits we use store the pointers to the trees
     uint64_t orig_runs=0;//original number of runs in the BWT
     uint64_t eff_runs=0;//number of runs in the representation
-    uint64_t max_freq=0;//frequency of the most frequent symbol
     uint64_t header_bytes=0;//bytes used for the header
-    uint64_t lfs_bits=0;//number of bits at the beginning of the stream used by the ext succ/pred info of the low freq symbols.
-    uint8_t sigma=0;//size of the effective text alphabet
-    uint16_t ext_pt_width=0;//number of bits we use store the pointers to the trees
-    uint8_t mtd_bits=0;//number of bits to encode the maximum tree distance
-    std::vector<uint8_t> packed_alpha;//map the symbols from byte to eff alphabet
-    std::vector<uint8_t> unpacked_alpha;//map eff alphabet to the original alphabet
-
     uint8_t levels=0;//maximum number of levels
     stream_type stream;//stream with the data
 
-    vlbt_bwt(): levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1){
+    vlbt_phi(): levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1){
         //TODO static asserts in block_size, scale_factor, and b_runs
         // logarithm function to calculate value
         float lg = log(b_size) / log(s_factor);
@@ -142,16 +205,7 @@ struct vlbt_bwt {
         written_bytes += serialize_elm(ofs, tot_syms);
         written_bytes += serialize_elm(ofs, orig_runs);
         written_bytes += serialize_elm(ofs, eff_runs);
-        written_bytes += serialize_elm(ofs, max_freq);
         written_bytes += serialize_elm(ofs, header_bytes);
-        written_bytes += serialize_elm(ofs, lfs_bits);
-        written_bytes += serialize_elm(ofs, sigma);
-        written_bytes += serialize_elm(ofs, ext_pt_width);
-        written_bytes += serialize_elm(ofs, mtd_bits);
-
-        written_bytes += serialize_plain_vector(ofs, packed_alpha);
-        written_bytes += serialize_plain_vector(ofs, unpacked_alpha);
-
         written_bytes+=stream.serialize(ofs);
         return written_bytes;
     }
@@ -160,17 +214,11 @@ struct vlbt_bwt {
         load_elm(ifs, tot_syms);
         load_elm(ifs, orig_runs);
         load_elm(ifs, eff_runs);
-        load_elm(ifs, max_freq);
         load_elm(ifs, header_bytes);
-        load_elm(ifs, lfs_bits);
-        load_elm(ifs, sigma);
-        load_elm(ifs, ext_pt_width);
-        load_elm(ifs, mtd_bits);
-        load_plain_vector(ifs, packed_alpha);
-        load_plain_vector(ifs, unpacked_alpha);
         stream.load(ifs);
     }
 
+    /*
     inline size_t find_prev(uint64_t& child) const {
         //get the effective block where i lies and its byte offset within the stream
         //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
@@ -391,8 +439,8 @@ struct vlbt_bwt {
             rank+=stream.read(r_pos, r_pos+rank_width-1);
             bit_pos+=new_sigma*rank_width;
 
-            uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
-            bit_pos+= leaf_enc_width;
+            uint8_t leaf_enc = stream.read(bit_pos, bit_pos+len_enc_width-1);
+            bit_pos+= len_enc_width;
             const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(INT_CEIL(bit_pos, 8));
 
             //scan the runs in the leaf according to the leaf encoding
@@ -550,8 +598,8 @@ struct vlbt_bwt {
             path.bit_pos+=path.rank_width[path.lvl]*path.node_sigma[path.lvl];//skip rank information
         }
 
-        path.leaf_enc = stream.read(path.bit_pos, path.bit_pos+leaf_enc_width-1);
-        path.bit_pos+= leaf_enc_width;
+        path.leaf_enc = stream.read(path.bit_pos, path.bit_pos+len_enc_width-1);
+        path.bit_pos+= len_enc_width;
     }
 
     [[nodiscard]] inline std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {
@@ -765,7 +813,7 @@ struct vlbt_bwt {
 
     [[nodiscard]] inline uint64_t size() const {
         return tot_syms;
-    }
+    }*/
 };
 
-#endif //RLBWT_DYBL_H
+#endif //VLBT_PHI_H

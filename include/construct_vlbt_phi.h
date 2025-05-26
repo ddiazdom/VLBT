@@ -17,6 +17,7 @@ struct phi_stat_collector{
     uint64_t leaf_depth_freq[20]={0};//the depth of each leaf
     uint64_t leaf_enc_freq[20]={0};//encoding of each leaf
     uint64_t children_freq[100]={0};//children frequency = how many nodes with 1,2,...,x children
+    uint64_t sym_bits[65]={0};
     uint64_t header_overhead=0;//number of bits used by the headers of the nodes
     uint64_t runs_overhead=0;
     uint64_t sym_overhead=0;
@@ -347,7 +348,7 @@ struct phi_node {//state of the compression
             max_psum[1] = tmp_max;
         }
 
-        //max prefix sum within one blocks withn 32 runs
+        //max prefix sum within one blocks within 32 runs
         tmp_psum[0]+=tmp_psum[2];
         if(tmp_max>max_psum[2]){
             max_psum[2] = tmp_psum[0];
@@ -485,11 +486,11 @@ struct phi_node {//state of the compression
         //==HEADER DESCRIPTION:
         //1 bit to indicate it is a leaf node
         //phi_rep.len_enc_width bits to store the encoding of the run lengths
-        //32 bits to store the value of (run_bits/8)
+        //phi_rep.run_bytes bits to store the value of (run_bits/8)
         //phi_rep.int_pt_width bits to store the value of sym_width(max_sym)
         //===
 
-        size_t header_bits = 1+phi_rep.len_enc_width+32+phi_rep.int_pt_width;
+        size_t header_bits = 1+phi_rep.len_enc_width+phi_rep.run_bytes+phi_rep.int_pt_width;
         header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
 
         //allocate bytes for the information of this leaf
@@ -507,8 +508,9 @@ struct phi_node {//state of the compression
         //
 
         //store the number of bytes used by the run lengths
-        buffer.write(bit_pos, bit_pos+31, len_bits/8);
-        bit_pos+=32;
+        assert(sym_width(len_bits/8)<=phi_rep.run_bytes);
+        buffer.write(bit_pos, bit_pos+phi_rep.run_bytes-1, len_bits/8);
+        bit_pos+=phi_rep.run_bytes;
         //
 
         //store the number of bits we use to encode the symbols
@@ -540,6 +542,7 @@ struct phi_node {//state of the compression
         //gather statistics
         if(n_blocks>stats.max_n_blocks) stats.max_n_blocks = n_blocks;
 
+        stats.sym_bits[w]++;
         stats.sym_overhead+=sym_bits;
         stats.len_overhead+=len_bits;
         stats.runs_overhead+=len_bits+sym_bits;
@@ -756,7 +759,6 @@ struct phi_tree{
         }
         phi_rep.orig_runs = n_runs;
         //
-        std::cout<<phi_rep.tot_syms<<" "<<phi_rep.orig_runs<<std::endl;
 
         root = new node_type(0, phi_dt_type::block_size, phi_rep, stats);
         std::ofstream ofs(twd.get_file("trees"), std::ios::binary);
@@ -917,6 +919,13 @@ struct phi_tree{
             }
         }
 
+        std::cout<<"Bits_for_sym dist:"<<std::endl;
+        for(size_t i=0;i<65;i++){
+            if(stats.sym_bits[i]!=0){
+                std::cout<<"\t"<<i<<": "<<stats.sym_bits[i]<<std::endl;
+            }
+        }
+
         size_t n_blocks = INT_CEIL(phi_rep.tot_syms, phi_rep.block_size);//original number of blocks in the first level of the tree
         std::cout<<"Effective number of trees versus full number of trees (n/b): "<<root->n_children<<" / "<<n_blocks<<std::endl;
         std::cout<<"Percentage of removed trees: "<<(1-double(root->n_children)/double(n_blocks))*100<<"% "<<std::endl;
@@ -957,35 +966,36 @@ void build_vlbt_phi_in_memory(phi_dt_type& phi_rep,
     tree.report_stats();
 }
 
-struct rsa_type {
+struct sample_type {
     uint64_t tail_val;
     uint64_t next_head_val;
     uint64_t run;
 };
 
 uint64_t get_diff(uint64_t first, uint64_t second) {
-    uint64_t abs_diff = (first > second) ? (first - second): (second - first);
+    uint64_t abs_diff = (first > second) ? (first - second) : (second - first);
     assert(abs_diff<=INT64_MAX);
     return abs_diff;
 }
 
 template<class size_type>
-void preprocess_rsa(std::string& rsa_file, std::string& rsa_per_str_file,
-                    size_t ssamp_val, std::string& ssamp_phi_file, std::string& ssamp_th_file){
+void subsample_sa_samples(std::string& sa_samples_file, std::string& samples_per_str_file,
+                          size_t ssamp_val, std::string& ssamp_phi_file,
+                          std::string& ssamp_th_file){
 
-    size_t n_elements = std::filesystem::file_size(rsa_file)/sizeof(size_type);
-    std::cout<<"There are "<<n_elements<<" SA samples"<<std::endl;
-    std::vector<rsa_type> samples(n_elements/2);
+    size_t n_elements = std::filesystem::file_size(sa_samples_file)/sizeof(size_type);
+    std::cout<<"Subsampling SA samples"<<std::endl;
+    std::vector<sample_type> samples(n_elements/2);
     size_t s_pos=0;
 
-    std::ifstream ifs(rsa_file, std::ios::binary);
+    std::ifstream ifs_orig_samples(sa_samples_file, std::ios::binary);
     size_t buffer_size = 4096;
     std::vector<size_type> buffer(buffer_size+1, 0);
     size_t n_blocks = n_elements/buffer_size;
     size_t rem = n_elements;
 
     //read samples from disk and reorganize them
-    ifs.read((char *)buffer.data(), off_t(sizeof(size_type)*buffer_size));
+    ifs_orig_samples.read((char *)buffer.data(), off_t(sizeof(size_type)*buffer_size));
     for(size_t i=0;i<(n_blocks-1);i++){
         for(size_t j=1;j<buffer_size;j+=2){
             samples[s_pos].tail_val = buffer[j];
@@ -994,7 +1004,7 @@ void preprocess_rsa(std::string& rsa_file, std::string& rsa_per_str_file,
         }
         assert(samples[s_pos-1].next_head_val==0);
         rem -=buffer_size;
-        ifs.read((char *)buffer.data(), off_t(sizeof(size_type)*buffer_size));
+        ifs_orig_samples.read((char *)buffer.data(), off_t(sizeof(size_type)*buffer_size));
         samples[s_pos-1].next_head_val = buffer[0];
     }
 
@@ -1007,16 +1017,16 @@ void preprocess_rsa(std::string& rsa_file, std::string& rsa_per_str_file,
     assert(samples[s_pos-1].next_head_val==0);
 
     if(rem>0){
-        ifs.read((char *)buffer.data(), off_t(sizeof(size_type)*rem));
+        ifs_orig_samples.read((char *)buffer.data(), off_t(sizeof(size_type)*rem));
         for(size_t j=1;j<rem;j+=2){
             samples[s_pos].tail_val = buffer[j];
             samples[s_pos].next_head_val = buffer[j+1];
             samples[s_pos].run = s_pos++;
         }
     }
-    ifs.close();
     assert(s_pos==samples.size());
     assert(s_pos==(n_elements/2));
+    ifs_orig_samples.close();
     //
 
     //sort the samples by text position
@@ -1027,50 +1037,44 @@ void preprocess_rsa(std::string& rsa_file, std::string& rsa_per_str_file,
     //
 
     //compute and store the subsamples for phi
-    size_t f_size = std::filesystem::file_size(rsa_per_str_file);
+    size_t f_size = std::filesystem::file_size(samples_per_str_file);
     n_elements = f_size/sizeof(size_type);
     std::vector<size_type> str_ranges(n_elements, 0);
-    std::ifstream ifs2(rsa_per_str_file, std::ios::binary);
+    std::ifstream ifs2(samples_per_str_file, std::ios::binary);
     ifs2.read((char *)str_ranges.data(), off_t(f_size));
     uint64_t discard_mark = std::numeric_limits<uint64_t>::max();
     std::ofstream ifs_phi(ssamp_phi_file, std::ios::binary);
 
-    size_t best_comp=0;
-
-    size_t n_strings = n_elements-1, last_sampled, n_samp=0, len, acc_len=0, buff_pos=0;
+    size_t n_strings = n_elements-1, last_sampled, n_samp=0, len, acc_len=0, buff_pos=0, diff;
     size_type str_boundary;
     s_pos=0;
+    bool is_diff_neg;
+
     for(size_t str=0;str<n_strings;str++){
         assert(samples[s_pos].tail_val==str_ranges[str]);
         str_boundary = str_ranges[str+1]-1;
         //std::cout<<"s_pos:"<<s_pos<<", tail_pos:"<<samples[s_pos].tail_val<<", str_boundary:"<<str_boundary<<std::endl;
         last_sampled = s_pos;
-        n_samp++;
         s_pos++;
         assert(s_pos<samples.size());
 
         while((s_pos+1)<samples.size() && samples[s_pos+1].tail_val<=str_boundary){
-
             //std::cout<<"s_pos:"<<s_pos<<", tail_pos:"<<samples[s_pos].tail_val<<", str_boundary:"<<str_boundary<<" ";
-
-            if((samples[s_pos+1].tail_val-samples[last_sampled].tail_val>ssamp_val) ||
-                samples[s_pos].run==last_run){
+            if((samples[s_pos+1].tail_val-samples[last_sampled].tail_val>ssamp_val) || samples[s_pos].run==last_run){
+                assert(samples[last_sampled].next_head_val!=discard_mark);
                 len = samples[s_pos].tail_val-samples[last_sampled].tail_val;
+                diff = get_diff(samples[last_sampled].tail_val, samples[last_sampled].next_head_val);
+                is_diff_neg = samples[last_sampled].tail_val>samples[last_sampled].next_head_val;
 
                 //std::cout<<len<<" "<<(acc_len+len)<<std::endl;
-
-                buffer[buff_pos++] = samples[last_sampled].next_head_val;
+                buffer[buff_pos++] = (diff<<1) | is_diff_neg;
                 buffer[buff_pos++] = len;
-                best_comp+=sym_width(get_diff(samples[last_sampled].next_head_val, samples[last_sampled].tail_val));
                 if(buff_pos==buffer_size){
                     ifs_phi.write((char *)buffer.data(), sizeof(size_type)*buffer_size);
                     buff_pos=0;
                 }
                 acc_len+=len;
                 //std::cout<<"tail_pos:"<<samples[last_sampled].tail_val<<", next_head_val:"<<samples[last_sampled].next_head_val<<", run:"<<samples[last_sampled].run<<std::endl;
-                if(s_pos<20){
-                    std::cout<<"run:("<<samples[last_sampled].next_head_val<<","<<len<<")"<<std::endl;
-                }
                 last_sampled = s_pos;
                 n_samp++;
             } else {
@@ -1079,54 +1083,76 @@ void preprocess_rsa(std::string& rsa_file, std::string& rsa_per_str_file,
             }
             s_pos++;
         }
+
         //std::cout<<"string: "<<str<<":"<<samples[last_sampled].tail_val<<" /  "<<samples[s_pos].tail_val<<" / "<<samples[s_pos+1].tail_val<<std::endl;
-        s_pos+=samples[s_pos].tail_val<=str_boundary;
+        if(samples[s_pos].tail_val<=str_boundary){
+            samples[s_pos].next_head_val=discard_mark;
+            s_pos++;
+        }
+
         len = (str_boundary+1)-samples[last_sampled].tail_val;
+        diff = get_diff(samples[last_sampled].tail_val, samples[last_sampled].next_head_val);
+        is_diff_neg = samples[last_sampled].tail_val>samples[last_sampled].next_head_val;
         //std::cout<<len<<" "<<(acc_len+len)<<std::endl;
-        buffer[buff_pos++] = samples[last_sampled].next_head_val;
+        buffer[buff_pos++] = (diff<<1) | is_diff_neg;
         buffer[buff_pos++] = len;
-        best_comp+=sym_width(get_diff(samples[last_sampled].next_head_val, samples[last_sampled].tail_val));
         if(buff_pos==buffer_size){
             ifs_phi.write((char *)buffer.data(), sizeof(size_type)*buffer_size);
             buff_pos=0;
         }
         acc_len += len;
+        n_samp++;
+
         //std::cout<<"start_next_str:"<<str_ranges[str+1]<<" acc_len:"<<acc_len<<std::endl;
         assert(acc_len==str_ranges[str+1]);
         //std::cout<<"tail_pos:"<<samples[last_sampled].tail_val<<", next_head_val:"<<samples[last_sampled].next_head_val<<", run:"<<samples[last_sampled].run<<std::endl;
         //std::cout<<"run:("<<samples[last_sampled].next_head_val<<","<<len<<")"<<std::endl;
     }
     //
-    std::cout<<"The best compression we can achieve is "<<INT_CEIL(best_comp, 8)<<" bytes "<<std::endl;
+
     if(buff_pos>0){
         ifs_phi.write((char *)buffer.data(), sizeof(size_type)*buff_pos);
     }
     ifs_phi.close();
-    //store them as runs
-    /*n_samp=0; s_pos=0;
-    for(size_t str=0;str<n_strings;str++){
-        str_boundary = str_ranges[str+1]-1;
-        last_sampled = s_pos;
-        n_samp++;
-        s_pos++;
-        while(samples[s_pos].tail_val<str_boundary){
-            if((samples[s_pos+1].tail_val-samples[last_sampled].tail_val>sub_samp_val) ||
-               samples[s_pos].run==last_run){
-                last_sampled = s_pos;
-                n_samp++;
+
+    //sort by run again
+    std::sort(samples.begin(), samples.end(), [](sample_type const& a, sample_type const& b){
+        return a.run < b.run;
+    });
+
+    n_blocks = samples.size()/buffer_size;
+    std::ofstream ofs_ssamp_th(ssamp_th_file, std::ios::binary);
+    s_pos = 0, rem=samples.size();
+    size_t d =0;
+    for(size_t i=0;i<n_blocks;i++){
+        for(size_t j=0;j<buffer_size;j++){
+            if(samples[s_pos].next_head_val==discard_mark){
+                buffer[j] = discard_mark;
+                d++;
             }else{
-                samples[s_pos].next_head_val = discard_mark;
+                buffer[j] = samples[s_pos].tail_val;
             }
             s_pos++;
         }
-    }*/
-    //
-    /*std::cout<<" ==== sampled ==== "<<std::endl;
-    for(size_t i=0;i<20;i++){
-        if(samples[i].next_head_val!=discard_mark){
-            std::cout<<samples[i].tail_val<<" "<<samples[i].next_head_val<<std::endl;
+        rem-=buffer_size;
+        ofs_ssamp_th.write((char *)buffer.data(), buffer_size*sizeof(size_type));
+    }
+    assert(rem<buffer_size);
+    for(size_t j=0;j<rem;j++){
+        if(samples[s_pos].next_head_val==discard_mark){
+            buffer[j] = discard_mark;
+            d++;
+        }else{
+            buffer[j] = samples[s_pos].tail_val;
         }
-    }*/
+        s_pos++;
+    }
+    assert(s_pos==samples.size());
+    assert(n_samp==(samples.size()-d));
+    ofs_ssamp_th.write((char *)buffer.data(), rem*sizeof(size_type));
+    assert(ofs_ssamp_th.tellp()/sizeof(size_type)==samples.size());
+    ofs_ssamp_th.close();
+
     std::cout<<"We subsampled "<<n_samp<<" elements out of "<<samples.size()<<" ("<<double(n_samp)/double(samples.size())*100<<"%)"<<std::endl;
     //
 }

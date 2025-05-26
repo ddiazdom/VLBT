@@ -2,80 +2,14 @@
 // Created by Diaz, Diego on 20.11.2024.
 //
 
-#ifndef RLBWT_DYBL_H
-#define RLBWT_DYBL_H
+#ifndef VLBT_BWT_TH_H
+#define VLBT_BWT_TH_H
 
 #include <cmath>
 #include <vector>
 #include "bitstream.h"
 #include "def_scan.h"
 
-template<bool vbyte_compressed>
-static inline uint64_t inv_select_scl_8(const uint16_t* stream, uint8_t sym, uint64_t idx){
-    uint8_t alpha_bits = 4;
-    uint8_t alpha_mask = 15;
-
-    uint64_t r_len[2]={0};
-    r_len[1] = stream[0]>>alpha_bits;
-    size_t acc = r_len[1], i=0, rank=0;
-    while(acc<idx){
-        rank+= r_len[(stream[i] & alpha_mask)==sym];
-        r_len[1] = stream[++i]>>alpha_bits;
-        acc+= r_len[1];
-    }
-    return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);
-}
-
-template<bool vbyte_compressed>
-static inline uint64_t inv_select_scl_16(const uint16_t* stream, uint8_t sym, uint64_t idx){
-    uint8_t alpha_bits = 4;
-    uint8_t alpha_mask = 15;
-
-    uint64_t r_len[2]={0};
-    r_len[1] = stream[0]>>alpha_bits;
-    size_t acc = r_len[1], i=0, rank=0;
-    while(acc<idx){
-        rank+= r_len[(stream[i] & alpha_mask)==sym];
-        r_len[1] = stream[++i]>>alpha_bits;
-        acc+= r_len[1];
-    }
-    return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);
-}
-
-template<bool vbyte_compressed>
-static inline uint64_t inv_select_scl_32(const uint16_t* stream, uint8_t sym, uint64_t idx){
-    uint8_t alpha_bits = 4;
-    uint8_t alpha_mask = 15;
-
-    uint64_t r_len[2]={0};
-    r_len[1] = stream[0]>>alpha_bits;
-    size_t acc = r_len[1], i=0, rank=0;
-    while(acc<idx){
-        rank+= r_len[(stream[i] & alpha_mask)==sym];
-        r_len[1] = stream[++i]>>alpha_bits;
-        acc+= r_len[1];
-    }
-    return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);
-}
-
-template<bool vbyte_compressed>
-static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sym, uint64_t idx){
-    uint8_t alpha_bits = 4;
-    uint8_t alpha_mask = 15;
-
-    uint64_t r_len[2]={0};
-    r_len[1] = stream[0]>>alpha_bits;
-    size_t acc = r_len[1], i=0, rank=0;
-    while(acc<idx){
-        rank+= r_len[(stream[i] & alpha_mask)==sym];
-        r_len[1] = stream[++i]>>alpha_bits;
-        acc+= r_len[1];
-    }
-    return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);
-}
-
-
-typedef bitstream<size_t> stream_type;
 
 template<size_t b_size, size_t b_runs, size_t s_factor>
 struct vlbt_bwt_th {
@@ -86,6 +20,7 @@ struct vlbt_bwt_th {
     static constexpr uint8_t int_pt_width=7;//number of bits we use to encode the number of bits we use to encode pointers
     static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
     static constexpr uint8_t leaf_enc_width=4;
+    typedef bitstream<size_t> stream_type;
 
     struct tree_path_type{
         uint8_t lvl=0;
@@ -767,5 +702,4 @@ struct vlbt_bwt_th {
         return tot_syms;
     }
 };
-
-#endif //RLBWT_DYBL_H
+#endif //VLBT_BWT_TH_H

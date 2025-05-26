@@ -534,10 +534,6 @@ struct bitstream{
         }
     }
 
-    inline size_t rank(size_t i, size_t j, size_t p){
-
-    }
-
     inline void read_chunk(void* dst, size_t i, size_t j) const{
         size_t tot_bits = j-i+1;
         size_t n_words = INT_CEIL(tot_bits, word_bits);

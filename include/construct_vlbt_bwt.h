@@ -26,9 +26,9 @@ enum node_type {
 };
 
 //statistics about the data structure
-template<class bwt_dt_type>
+template<class bwt_type>
 struct stat_collector{
-    uint64_t rpl_freq[bwt_dt_type::max_block_runs+1]={0};//number of runs in a leaf
+    uint64_t rpl_freq[bwt_type::max_block_runs+1]={0};//number of runs in a leaf
     uint64_t leaf_depth_freq[20]={0};//the depth of each leaf
     uint64_t leaf_enc_freq[20]={0};//encoding of each leaf
     uint64_t children_freq[100]={0};//children frequency = how many nodes with 1,2,...,x children
@@ -44,7 +44,7 @@ struct stat_collector{
     uint64_t ext_succ_freq[257]={0};
 };
 
-template<class bwt_dt_type>
+template<class bwt_type>
 struct rl_node {//state of the compression
 
     size_t bk_len=0;//length of the active block
@@ -68,16 +68,16 @@ struct rl_node {//state of the compression
 
     const size_t lvl;//level of the subtree
     const size_t b_size;//block size for the level
-    const size_t s_factor = bwt_dt_type::scale_factor;//shrinking factor for further subdivision
-    const size_t b_runs = bwt_dt_type::max_block_runs;//maximum number of runs in a sequence of blocks
-    const uint8_t run_width = bwt_dt_type::run_width;//number of bits we require to encode symbols in the range [0..b_runs]
+    const size_t s_factor = bwt_type::scale_factor;//shrinking factor for further subdivision
+    const size_t b_runs = bwt_type::max_block_runs;//maximum number of runs in a sequence of blocks
+    const uint8_t run_width = bwt_type::run_width;//number of bits we require to encode symbols in the range [0..b_runs]
 
     rl_node *tmp_node = nullptr;
 
-    stream_type buffer;
-    stream_type children_buffer;
+    typename bwt_type::stream_type buffer;
+    typename bwt_type::stream_type children_buffer;
 
-    bwt_dt_type& bwt_rep; //data structure encoding the representation
+    bwt_type& bwt_rep; //data structure encoding the representation
     std::vector<block_type> active_blocks; //run-length compressed blocks conforming a tree node
     std::vector<bool> node_sigma_bv; //buffer to compute the leaf's effective alphabet
     std::vector<std::vector<bool>> int_succ_pred_info; //bits indicating internal successor/predecessor info for each symbol in the alphabet
@@ -107,9 +107,9 @@ struct rl_node {//state of the compression
     //
 
     //a struct to collect statistics about the data structure
-    stat_collector<bwt_dt_type>& stats;
+    stat_collector<bwt_type>& stats;
 
-    explicit rl_node(size_t _lvl, size_t _b_size, bwt_dt_type& _bwt_rep, stat_collector<bwt_dt_type>& st):
+    explicit rl_node(size_t _lvl, size_t _b_size, bwt_type& _bwt_rep, stat_collector<bwt_type>& st):
             lvl(_lvl),
             b_size(_b_size),
             bwt_rep(_bwt_rep),
@@ -806,7 +806,7 @@ struct rl_node {//state of the compression
         block_ranks[sym]+=len;
         n_runs++;
 
-        assert(n_runs<=bwt_dt_type::max_block_runs);
+        assert(n_runs<=bwt_type::max_block_runs);
         //compute the block's alphabet size
         size_t tmp_s=0;
         node_sigma=0;
@@ -1203,18 +1203,18 @@ struct rl_node {//state of the compression
     }
 };
 
-template<class bwt_dt_type, class node_type>
+template<class bwt_type, class node_type>
 struct tree_dt{
 
-    stat_collector<bwt_dt_type> stats;
+    stat_collector<bwt_type> stats;
     tmp_workspace twd;
-    bwt_dt_type& bwt_rep;
+    bwt_type& bwt_rep;
     std::vector<uint64_t> C;
     node_type *root= nullptr;
 
-    explicit tree_dt(const std::string& tmp_dir, bwt_dt_type& _bwt_rep): twd(tmp_dir),
-                                                                         bwt_rep(_bwt_rep),
-                                                                         C(256, 0){}
+    explicit tree_dt(const std::string& tmp_dir, bwt_type& _bwt_rep): twd(tmp_dir),
+                                                                      bwt_rep(_bwt_rep),
+                                                                      C(256, 0){}
 
     void build_from_grlbwt(std::string& bwt_file){
 
@@ -1262,16 +1262,16 @@ struct tree_dt{
         }*/
         //
 
-        root = new node_type(0, bwt_dt_type::block_size, bwt_rep, stats);
+        root = new node_type(0, bwt_type::block_size, bwt_rep, stats);
         std::ofstream ofs(twd.get_file("trees"), std::ios::binary);
         root->ofs = &ofs;
 
         node_type *current = root;
-        size_t b_size=bwt_dt_type::block_size/bwt_dt_type::scale_factor;
+        size_t b_size=bwt_type::block_size/bwt_type::scale_factor;
         for(size_t i=1;i<=bwt_rep.levels;i++){
             current->tmp_node = new node_type(i, b_size, bwt_rep, stats);
             current = current->tmp_node;
-            b_size/=bwt_dt_type::scale_factor;
+            b_size/=bwt_type::scale_factor;
         }
 
         //compute the tree
@@ -1304,7 +1304,7 @@ struct tree_dt{
 
         std::cout<<"Number_of_runs_in_a_leaf dist:"<<std::endl;
         assert(stats.rpl_freq[0]==0);
-        for(size_t r=1;r<=bwt_dt_type::max_block_runs;r++){
+        for(size_t r=1;r<=bwt_type::max_block_runs;r++){
             std::cout<<"\t"<<r<<" : "<<stats.rpl_freq[r]<<std::endl;
         }
         std::cout<<"Total number of runs versus original number of runs: "<<bwt_rep.eff_runs<<" / "<<bwt_rep.orig_runs<<std::endl;
@@ -1419,9 +1419,9 @@ struct tree_dt{
 };
 
 
-template<class bwt_dt_type>
-void build_rlbwt_vlb(bwt_dt_type& bwt_rep, std::string& bwt_file, INPUT_FORMAT f, std::string tmp_dir="./"){
-    tree_dt<bwt_dt_type, rl_node<bwt_dt_type>> tree(tmp_dir, bwt_rep);
+template<class bwt_type>
+void build_rlbwt_vlb(bwt_type& bwt_rep, std::string& bwt_file, INPUT_FORMAT f, std::string tmp_dir="./"){
+    tree_dt<bwt_type, rl_node<bwt_type>> tree(tmp_dir, bwt_rep);
     switch (f) {
         case INPUT_FORMAT::GRL_BWT:
             tree.build_from_grlbwt(bwt_file);
