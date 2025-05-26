@@ -192,7 +192,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Invalid number of threads: %s\n", argv[1]);
         return 1;
     }
-    std::string rsa_file = std::string(argv[3])+".rsa";
+    std::string rsa_file = std::string(argv[3])+".sa_samples";
     std::string str_ranges_file = std::string(argv[3])+".str_ranges";
     std::cout<<"Building the RLBWT ..."<<std::endl;
     index_type bwt(input_file);

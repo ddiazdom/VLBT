@@ -11,8 +11,15 @@
 #include <malloc.h>
 #endif
 
-using run_type = std::pair<uint32_t, size_t>;
-using block_type = std::vector<run_type>;
+struct run_th_type{
+    uint8_t sym=0;
+    uint32_t len=0;
+    uint64_t sa_samp=0;
+    run_th_type(uint8_t sym_, uint32_t len_, uint64_t sa_samp_): sym(sym_), len(len_), sa_samp(sa_samp_){}
+    run_th_type()= default;
+};
+
+using block_th_type = std::vector<run_th_type>;
 
 template<class bwt_th_type>
 struct rl_node_th {//state of the compression
@@ -29,6 +36,8 @@ struct rl_node_th {//state of the compression
     size_t cov_symbols=0;//how many symbols of the input BWT does this node cover
     size_t child_mark_acc=0;
     size_t leaf_enc=0;
+
+    static constexpr uint64_t unsamp_mark = std::numeric_limits<uint64_t>::max();
 
     bool lm_tree_branch=true;//true if this node in the leftmost branch of its tree
     bool rm_tree_branch=true;//true if this node in the rightmost branch of its tree
@@ -48,7 +57,7 @@ struct rl_node_th {//state of the compression
     typename bwt_th_type::stream_type children_buffer;
 
     bwt_th_type& bwt_rep; //data structure encoding the representation
-    std::vector<block_type> active_blocks; //run-length compressed blocks conforming a tree node
+    std::vector<block_th_type> active_blocks; //run-length compressed blocks conforming a tree node
     std::vector<bool> node_sigma_bv; //buffer to compute the leaf's effective alphabet
     std::vector<std::vector<bool>> int_succ_pred_info; //bits indicating internal successor/predecessor info for each symbol in the alphabet
 
@@ -180,18 +189,18 @@ struct rl_node_th {//state of the compression
         assert(aligned<8>(node_n_bits));
     }
 
-    inline void process_run(const size_t& sym, size_t& len) {
-        while(len>0){
-            if((bk_len+len)<b_size){
+    inline void process_run(run_th_type run) {
+        while(run.len>0){
+            if((bk_len+run.len)<b_size){
                 //the run fits the block size
-                assert(len<=b_size);
-                bk_len+=len;
-                active_blocks[bk_id].emplace_back(sym, len);
-                len=0;
+                assert(run.len<=b_size);
+                bk_len+=run.len;
+                active_blocks[bk_id].emplace_back(run.sym, run.len, run.sa_samp);
+                run.len=0;
             } else {// we complete a new block
                 //last run of the active block
                 size_t split_run_len = b_size-bk_len;
-                active_blocks[bk_id].emplace_back(sym, split_run_len);
+                active_blocks[bk_id].emplace_back(run.sym, split_run_len, unsamp_mark);
                 bk_len+=split_run_len;
                 assert(split_run_len>0 && bk_len==b_size);
                 acc_runs+=active_blocks[bk_id].size();
@@ -201,7 +210,7 @@ struct rl_node_th {//state of the compression
                 if(acc_runs>=b_runs){
                     process_block_seq();
                 }
-                len -=split_run_len;
+                run.len -=split_run_len;
                 bk_len=0;
             }
         }
@@ -714,7 +723,7 @@ struct rl_node_th {//state of the compression
         }
     }
 
-    inline void create_leaf(std::vector<block_type>& blocks,
+    inline void create_leaf(std::vector<block_th_type>& blocks,
                             size_t n_blocks,
                             const size_t parent_sigma,
                             const std::vector<bool>& parent_sigma_bv,
@@ -731,8 +740,8 @@ struct rl_node_th {//state of the compression
 
         size_t sym, len, n_runs=0;
         for(size_t j=0;j<(blocks[0].size()-1);j++){
-            sym = blocks[0][j].first;
-            len = blocks[0][j].second;
+            sym = blocks[0][j].sym;
+            len = blocks[0][j].len;
             assert(sym<bwt_rep.sigma);
             node_sigma_bv[sym]=true;
             block_ranks[sym]+=len;
@@ -742,13 +751,13 @@ struct rl_node_th {//state of the compression
         for(size_t i=1;i<n_blocks;i++){
 
             //read the rightmost run of the previous block
-            sym = blocks[i-1].back().first;
-            len = blocks[i-1].back().second;
+            sym = blocks[i-1].back().sym;
+            len = blocks[i-1].back().len;
 
             //collapse the run with the first run of the current block if they have the same symbol
-            if(sym==blocks[i][0].first){
+            if(sym==blocks[i][0].sym){
                 //collapse the runs as they are the same
-                blocks[i][0].second +=len;
+                blocks[i][0].len +=len;
                 blocks[i-1].pop_back();
             } else {
                 //otherwise process the last run of the previous block as an independent run
@@ -759,8 +768,8 @@ struct rl_node_th {//state of the compression
             }
 
             for(size_t j=0;j<(blocks[i].size()-1);j++){
-                sym = blocks[i][j].first;
-                len = blocks[i][j].second;
+                sym = blocks[i][j].sym;
+                len = blocks[i][j].len;
                 assert(sym<bwt_rep.sigma);
                 node_sigma_bv[sym]=true;
                 block_ranks[sym]+=len;
@@ -769,8 +778,8 @@ struct rl_node_th {//state of the compression
         }
 
         //process the last run
-        sym = blocks[n_blocks-1].back().first;
-        len = blocks[n_blocks-1].back().second;
+        sym = blocks[n_blocks-1].back().sym;
+        len = blocks[n_blocks-1].back().len;
         assert(sym<bwt_rep.sigma);
         node_sigma_bv[sym]=true;
         block_ranks[sym]+=len;
@@ -792,11 +801,11 @@ struct rl_node_th {//state of the compression
 
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
-                run.first = packed_alphabet[run.first];
+                run.sym = packed_alphabet[run.sym];
                 //I need to use a fixed number of bits for the symbols (i.e., sym_width(node_sigma) bits)
-                bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.second)), 8);
+                bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.len)), 8);
                 bfr_dist[bytes]++;
-                tmp_psum[bk>>3] += run.second;
+                tmp_psum[bk>>3] += run.len;
                 bk++;
 
                 if(bk==32){
@@ -910,7 +919,7 @@ struct rl_node_th {//state of the compression
         stats.leaf_enc_freq[leaf_enc]++;//the encoding type for a leaf
     }
 
-    size_t insert_runs(std::vector<block_type>& blocks, size_t n_blocks, uint8_t *stream, size_t sigma_bits,
+    size_t insert_runs(std::vector<block_th_type>& blocks, size_t n_blocks, uint8_t *stream, size_t sigma_bits,
                        size_t max_bytes, bool fix_len_enc){
 
         assert(sigma_bits== sym_width(node_sigma));
@@ -920,7 +929,7 @@ struct rl_node_th {//state of the compression
             size_t enc_run;
             for(size_t i=0;i<n_blocks;i++){
                 for(auto & run : blocks[i]){
-                    enc_run =  run.second<<sigma_bits | run.first;
+                    enc_run =  run.len<<sigma_bits | run.sym;
                     memcpy(stream, &enc_run, max_bytes);
                     stream+=max_bytes;
                     written_bytes+=max_bytes;
@@ -939,8 +948,8 @@ struct rl_node_th {//state of the compression
             for(size_t i=0;i<n_blocks;i++){
                 for(auto & run : blocks[i]){
 
-                    vb_lens[p] = INT_CEIL((sigma_bits+sym_width(run.second)), 8);
-                    code = run.second<<sigma_bits | run.first;
+                    vb_lens[p] = INT_CEIL((sigma_bits+sym_width(run.len)), 8);
+                    code = run.len<<sigma_bits | run.sym;
                     memcpy(&tmp_stream[byte_pos], &code, vb_lens[p]);
                     ctrl_bits |= ((vb_lens[p]-1U) << acc_width);
                     byte_pos+=vb_lens[p];
@@ -972,11 +981,11 @@ struct rl_node_th {//state of the compression
         return written_bytes;
     }
 
-    inline void get_node_alphabet(const block_type& block){
+    inline void get_node_alphabet(const block_th_type& block){
         //compute the alphabet of the block first.
         // We need it beforehand
         for(auto & run : block){
-            node_sigma_bv[run.first] = true;
+            node_sigma_bv[run.sym] = true;
         }
         node_sigma = 0;
         for(auto const& bit : node_sigma_bv){
@@ -984,7 +993,7 @@ struct rl_node_th {//state of the compression
         }
     }
 
-    void print_node_info(std::vector<block_type> bkl, size_t n_blocks, std::vector<uint64_t>& parent_rank_info){
+    void print_node_info(std::vector<block_th_type> bkl, size_t n_blocks, std::vector<uint64_t>& parent_rank_info){
 
         std::string pad = std::string(lvl+1, '\t');
 
@@ -1038,7 +1047,7 @@ struct rl_node_th {//state of the compression
             std::cout<<pad<<"runs: ";
             for(size_t k=0;k<n_blocks;k++){
                 for(auto & l : bkl[k]){
-                    std::cout<<"(packed_sym:"<<int(l.first)<<",len:"<<l.second<<") ";
+                    std::cout<<"(packed_sym:"<<int(l.sym)<<",len:"<<l.len<<") ";
                 }
             }
             std::cout<<""<<std::endl;
@@ -1076,7 +1085,7 @@ struct rl_node_th {//state of the compression
             assert(n_blocks==1);
             tmp_node->get_node_alphabet(active_blocks[0]);
             for(auto & run : active_blocks[0]){
-                tmp_node->process_run(run.first, run.second);
+                tmp_node->process_run(run);
             }
             tmp_node->finish_run_scan();
             tmp_node->finish_int_node(node_sigma, node_sigma_bv, block_ranks);
@@ -1245,9 +1254,13 @@ struct tree_dt_th {
         }
 
         //compute the tree
+        run_th_type run;
         for(size_t i=0;i<n_runs;i++){
             bwt_buff.read_run(i, sym, len);
-            root->process_run(bwt_rep.packed_alpha[sym], len);
+            run.sym = bwt_rep.packed_alpha[sym];
+            run.len = len;
+            run.sa_samp = 0;
+            root->process_run(run);
         }
         root->finish_run_scan();
         ofs.close();
@@ -1389,16 +1402,19 @@ struct tree_dt_th {
 };
 
 template<class bwt_th_type>
-void build_vlbt_bwt_th(bwt_th_type& bwt_rep, std::string& bwt_file, INPUT_FORMAT f, std::string tmp_dir="./"){
+void build_vlbt_bwt_th(bwt_th_type& bwt_rep, std::string& bwt_file, BWT_FORMAT f,
+                       std::string& ssamples_file, std::string tmp_dir="./"){
+
     tree_dt_th<bwt_th_type, rl_node_th<bwt_th_type>> tree(tmp_dir, bwt_rep);
+
     switch (f) {
-        case INPUT_FORMAT::GRL_BWT:
+        case BWT_FORMAT::GRL_BWT:
             tree.build_from_grlbwt(bwt_file);
             break;
-        case INPUT_FORMAT::RL_PLAIN:
+        case BWT_FORMAT::RL_PLAIN:
             tree.build_from_rl_plain(bwt_file);
             break;
-        case INPUT_FORMAT::PLAIN:
+        case BWT_FORMAT::PLAIN:
             tree.build_from_plain(bwt_file);
             break;
         default:

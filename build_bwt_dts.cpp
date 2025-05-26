@@ -365,10 +365,12 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
     }*/
 }
 
-void test_vlbt_bwt(std::string& input_file, std::string& output_prefix){
+void test_vlbt_bwt(std::string& input_prefix, std::string& output_prefix){
+
+    std::string input_bwt = input_prefix+".rl_bwt";
     using bwt_type = vlbt_bwt<65536, 64, 4>;
     bwt_type bwt_dt;
-    build_rlbwt_vlb<bwt_type>(bwt_dt, input_file, INPUT_FORMAT::GRL_BWT);
+    build_rlbwt_vlb<bwt_type>(bwt_dt, input_bwt, BWT_FORMAT::GRL_BWT);
     std::string output_file = output_prefix+".vlbt_bwt";
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
@@ -386,9 +388,38 @@ void test_vlbt_bwt(std::string& input_file, std::string& output_prefix){
 }
 
 template<class size_type>
+void test_vlbt_bwt_th(std::string& input_prefix, size_t ssamp_val,
+                      std::string& output_prefix){
+
+    std::string bwt_file = input_prefix+".rl_bwt";
+    std::string sa_samples_file = input_prefix+".sa_samples";
+    std::string str_ranges_file = input_prefix+".str_ranges";
+    std::string ssamp_phi_file = output_prefix+".ssamps_phi";
+    std::string ssamp_th_file = output_prefix+".ssamps_th";
+
+    subsample_sa_samples<size_type>(sa_samples_file, str_ranges_file, ssamp_val,
+                                    ssamp_phi_file, ssamp_th_file);
+
+    using bwt_th_type = vlbt_bwt_th<65536, 64, 4>;
+    bwt_th_type bwt_dt;
+    build_vlbt_bwt_th<bwt_th_type>(bwt_dt, bwt_file, BWT_FORMAT::GRL_BWT, ssamp_th_file);
+
+    std::string output_file = output_prefix+".vlbt_bwt_th";
+    size_t written_bytes = store_to_file(output_file, bwt_dt);
+    std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
+
+    //test_count(bwt_dt, output_prefix);
+    //test_inverse_select(bwt_dt, output_prefix);
+    //test_access(bwt_dt, output_prefix);
+    //test_rank(bwt_dt, output_prefix);
+}
+
+template<class size_type>
 void test_phi(std::string& sa_samples_file, std::string& samples_per_str_file,
-              size_t ssamp_val, std::string& ssamp_phi_file,
-              std::string& ssamp_th_file, std::string& output_prefix){
+              size_t ssamp_val, std::string& output_prefix){
+
+    std::string ssamp_phi_file = output_prefix+".ssamps_phi";
+    std::string ssamp_th_file = output_prefix+".ssamps_th";
 
     subsample_sa_samples<size_type>(sa_samples_file, samples_per_str_file, ssamp_val, ssamp_phi_file, ssamp_th_file);
     using phi_type = vlbt_phi<4096, 64, 4>;
@@ -445,30 +476,26 @@ void test_vlbt_th(){
 int main(int argc, char** argv){
 
     if(argc!=4){
-        std::cout<<"usage: ./build_bwt_dts input_bwt.rl_bwt build_other_dts=0|1 output_prefix"<<std::endl;
+        std::cout<<"usage: ./build_bwt_dts input_prefix build_other_dts=0|1 output_prefix"<<std::endl;
         exit(1);
     }
 
-    std::string input_file = std::string(argv[1]);
+    std::string input_prefix = std::string(argv[1]);
     char *pend;
     long int other_dts = strtol(argv[2], &pend, 10);
     assert(other_dts>=0 && other_dts<=1);
     std::string output_prefix = std::string(argv[3]);
 
     if(other_dts){
-        std::cout<<"We will build other DTs for the BWT..."<<std::endl;
+        std::cout<<"We will build other DTs for "<<output_prefix<<std::endl;
         std::string plain_input_file = "tmp_plain.txt";
-        rl2plain(input_file, plain_input_file);
-        std::cout<<"Creating wavelet trees for "<<input_file<<std::endl;
+        std::string bwt_file = input_prefix+".rl_bwt";
+        rl2plain(bwt_file, plain_input_file);
+        std::cout<<"Creating wavelet trees for "<<input_prefix<<std::endl;
         TESTED_DTS
-    }else{
-        std::cout<<"We will build only my BWT..."<<std::endl;
     }
 
-    std::string rsa_file = output_prefix+".rsa";
-    std::string str_ranges_file = output_prefix+".str_ranges";
-    std::string ssamp_phi_file = output_prefix+".ssamps_phi";
-    std::string ssamp_th_file = output_prefix+".ssamps_th";
-    //test_phi<uint64_t>(rsa_file, str_ranges_file, 4, ssamp_phi_file, ssamp_th_file, output_prefix);
-    test_vlbt_bwt(input_file, output_prefix);
+    //test_phi<uint64_t>(sa_samples_file, str_ranges_file, 4, output_prefix);
+    //test_vlbt_bwt(input_prefix, output_prefix);
+    test_vlbt_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
 }

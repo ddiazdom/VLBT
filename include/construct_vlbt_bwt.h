@@ -14,7 +14,7 @@
 using run_type = std::pair<uint32_t, size_t>;
 using block_type = std::vector<run_type>;
 
-enum INPUT_FORMAT{
+enum BWT_FORMAT{
     GRL_BWT=0,
     RL_PLAIN=1,
     PLAIN=2
@@ -1420,16 +1420,16 @@ struct tree_dt{
 
 
 template<class bwt_type>
-void build_rlbwt_vlb(bwt_type& bwt_rep, std::string& bwt_file, INPUT_FORMAT f, std::string tmp_dir="./"){
+void build_rlbwt_vlb(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT f, std::string tmp_dir="./"){
     tree_dt<bwt_type, rl_node<bwt_type>> tree(tmp_dir, bwt_rep);
     switch (f) {
-        case INPUT_FORMAT::GRL_BWT:
+        case BWT_FORMAT::GRL_BWT:
             tree.build_from_grlbwt(bwt_file);
             break;
-        case INPUT_FORMAT::RL_PLAIN:
+        case BWT_FORMAT::RL_PLAIN:
             tree.build_from_rl_plain(bwt_file);
             break;
-        case INPUT_FORMAT::PLAIN:
+        case BWT_FORMAT::PLAIN:
             tree.build_from_plain(bwt_file);
             break;
         default:
