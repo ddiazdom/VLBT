@@ -387,31 +387,30 @@ void test_vlbt_bwt(std::string& input_prefix, std::string& output_prefix){
     test_rank(bwt_dt, output_prefix);
 }
 
-template<class size_type>
-void test_vlbt_bwt_th(std::string& input_prefix, size_t ssamp_val,
-                      std::string& output_prefix){
+template<class sa_samp_type>
+void test_vlbt_bwt_th(std::string& input_prefix, size_t subsamp_val, std::string& output_prefix){
 
     std::string bwt_file = input_prefix+".rl_bwt";
-    std::string sa_samples_file = input_prefix+".sa_samples";
+    std::string samp_sa_file = input_prefix+".sa_samples";
     std::string str_ranges_file = input_prefix+".str_ranges";
-    std::string ssamp_phi_file = output_prefix+".ssamps_phi";
-    std::string ssamp_th_file = output_prefix+".ssamps_th";
+    std::string phi_data_file = output_prefix+".ssamps_phi";
+    std::string subsamp_sa_file = output_prefix+".ssamps_th";
 
-    subsample_sa_samples<size_type>(sa_samples_file, str_ranges_file, ssamp_val,
-                                    ssamp_phi_file, ssamp_th_file);
+    subsample_sa_samples<sa_samp_type>(samp_sa_file, str_ranges_file,
+                                    subsamp_val, phi_data_file, subsamp_sa_file);
 
     using bwt_th_type = vlbt_bwt_th<65536, 64, 4>;
     bwt_th_type bwt_dt;
-    build_vlbt_bwt_th<bwt_th_type>(bwt_dt, bwt_file, BWT_FORMAT::GRL_BWT, ssamp_th_file);
+    build_vlbt_bwt_th<bwt_th_type, sa_samp_type>(bwt_dt, bwt_file, BWT_FORMAT::GRL_BWT, subsamp_sa_file);
 
     std::string output_file = output_prefix+".vlbt_bwt_th";
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
     //test_count(bwt_dt, output_prefix);
-    //test_inverse_select(bwt_dt, output_prefix);
-    //test_access(bwt_dt, output_prefix);
-    //test_rank(bwt_dt, output_prefix);
+    test_inverse_select(bwt_dt, output_prefix);
+    test_access(bwt_dt, output_prefix);
+    test_rank(bwt_dt, output_prefix);
 }
 
 template<class size_type>

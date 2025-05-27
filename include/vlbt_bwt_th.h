@@ -20,6 +20,7 @@ struct vlbt_bwt_th {
     static constexpr uint8_t int_pt_width=7;//number of bits we use to encode the number of bits we use to encode pointers
     static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
     static constexpr uint8_t leaf_enc_width=4;
+    static constexpr uint8_t run_bytes = (sizeof(unsigned long)*8) - __builtin_clzl((b_runs*8) + (b_runs/8));//number of bits we use to encode the number of bytes that the run lengths use in a leaf
     typedef bitstream<size_t> stream_type;
 
     struct tree_path_type{
@@ -57,6 +58,7 @@ struct vlbt_bwt_th {
     uint8_t sigma=0;//size of the effective text alphabet
     uint16_t ext_pt_width=0;//number of bits we use store the pointers to the trees
     uint8_t mtd_bits=0;//number of bits to encode the maximum tree distance
+    uint8_t sep_symbol=0;//unpacked symbol used as separator in the collection
     std::vector<uint8_t> packed_alpha;//map the symbols from byte to eff alphabet
     std::vector<uint8_t> unpacked_alpha;//map eff alphabet to the original alphabet
 

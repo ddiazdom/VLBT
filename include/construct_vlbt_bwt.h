@@ -42,6 +42,7 @@ struct stat_collector{
     uint64_t trees_overhead=0;
     uint64_t max_n_blocks=0;
     uint64_t ext_succ_freq[257]={0};
+    uint64_t samp_overhead=0;
 };
 
 template<class bwt_type>
@@ -54,7 +55,7 @@ struct rl_node {//state of the compression
     size_t node_sigma=0;//number of symbols under the parent node
     size_t node_n_bits=0;//number of bits required for the subtree rooted under this node
     size_t consumed_syms=0;//number of symbols under this node that have been scanned so far
-    size_t syms_before=0;//number of symbols in the text preceeding this node
+    size_t syms_before=0;//number of symbols in the text preceding this node
     size_t child_rank=0;//this node is the child_rank of its parent
     size_t cov_symbols=0;//how many symbols of the input BWT does this node cover
     size_t child_mark_acc=0;

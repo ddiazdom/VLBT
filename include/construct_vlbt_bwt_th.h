@@ -11,17 +11,7 @@
 #include <malloc.h>
 #endif
 
-struct run_th_type{
-    uint8_t sym=0;
-    uint32_t len=0;
-    uint64_t sa_samp=0;
-    run_th_type(uint8_t sym_, uint32_t len_, uint64_t sa_samp_): sym(sym_), len(len_), sa_samp(sa_samp_){}
-    run_th_type()= default;
-};
-
-using block_th_type = std::vector<run_th_type>;
-
-template<class bwt_th_type>
+template<class bwt_th_type, class block_th_type>
 struct rl_node_th {//state of the compression
 
     size_t bk_len=0;//length of the active block
@@ -37,8 +27,6 @@ struct rl_node_th {//state of the compression
     size_t child_mark_acc=0;
     size_t leaf_enc=0;
 
-    static constexpr uint64_t unsamp_mark = std::numeric_limits<uint64_t>::max();
-
     bool lm_tree_branch=true;//true if this node in the leftmost branch of its tree
     bool rm_tree_branch=true;//true if this node in the rightmost branch of its tree
     bool lm_child=false;//true if this node is the leftmost child of its parent
@@ -53,6 +41,7 @@ struct rl_node_th {//state of the compression
 
     rl_node_th *tmp_node = nullptr;
 
+    typedef typename block_th_type::value_type run_th_type;
     typename bwt_th_type::stream_type buffer;
     typename bwt_th_type::stream_type children_buffer;
 
@@ -200,7 +189,7 @@ struct rl_node_th {//state of the compression
             } else {// we complete a new block
                 //last run of the active block
                 size_t split_run_len = b_size-bk_len;
-                active_blocks[bk_id].emplace_back(run.sym, split_run_len, unsamp_mark);
+                active_blocks[bk_id].emplace_back(run.sym, split_run_len, run_th_type::unsamp_mark);
                 bk_len+=split_run_len;
                 assert(split_run_len>0 && bk_len==b_size);
                 acc_runs+=active_blocks[bk_id].size();
@@ -689,7 +678,6 @@ struct rl_node_th {//state of the compression
     }
 
     inline uint8_t compute_leaf_enc_code(uint8_t max_bytes, bool vbyte_enc, const uint64_t *max_psum) const {
-
         uint8_t code = 0;
 
         switch (max_bytes) {
@@ -733,7 +721,7 @@ struct rl_node_th {//state of the compression
         //for 2 bytes: check that the sum of 8 (or 16 for AVX) consecutive run lens is <=2^16-1
         //for 3-4 bytes: check that the sum of 4 (or 8 for AVX) consecutive run lens is <=2^32-1
         //for 4-8 bytes: check that the sum of 2 (or 4 for AVX) consecutive run lens is <=2^64-1
-        //we need to do this check to work with SIMD instructions. It it does not fit, use the next encoding that can fits them
+        //we need to do this check to work with SIMD instructions. If it does not fit, use the next encoding that can fits them
 
         assert(node_n_bits==0);
         assert(lvl>0);
@@ -755,7 +743,7 @@ struct rl_node_th {//state of the compression
             len = blocks[i-1].back().len;
 
             //collapse the run with the first run of the current block if they have the same symbol
-            if(sym==blocks[i][0].sym){
+            if(sym!=0 && sym==blocks[i][0].sym){
                 //collapse the runs as they are the same
                 blocks[i][0].len +=len;
                 blocks[i-1].pop_back();
@@ -798,6 +786,9 @@ struct rl_node_th {//state of the compression
         uint64_t tmp_psum[4]={0};//8,16,24,32
         uint64_t max_psum[3]={0};//8,16,32
         uint64_t bk = 0;
+        size_t n_sa_samples=0;
+        uint64_t max_samp=0;
+        bool discarded;
 
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
@@ -813,10 +804,18 @@ struct rl_node_th {//state of the compression
                     memset(tmp_psum, 0, 32);
                     bk=0;
                 }
+
+                discarded = run.sa_samp==run_th_type::unsamp_mark;
+                n_sa_samples+=!discarded;
+                if(!discarded && run.sa_samp>max_samp){
+                    max_samp = run.sa_samp;
+                }
             }
         }
         get_max_psum(tmp_psum, max_psum);
         assert(bfr_dist[0]==0);
+        size_t samp_bits = (n_sa_samples*sym_width(max_samp)) + n_runs + bwt_rep.run_bytes;
+        samp_bits = INT_CEIL(samp_bits, 8)*8;//byte-aligned
 
         size_t total_vbytes=0, max_bytes=0;
         for(size_t b=1;b<9;b++){
@@ -843,7 +842,6 @@ struct rl_node_th {//state of the compression
             fix_len_enc = true;
         }
 
-        stats.runs_overhead += run_bits;
         leaf_enc = compute_leaf_enc_code(max_bytes, !fix_len_enc, max_psum);
 
         //THE ENCODING STARTS HERE
@@ -864,7 +862,7 @@ struct rl_node_th {//state of the compression
         header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
 
         //allocate bytes for the information of this leaf
-        buffer.reserve_in_bits(header_bits + run_bits);
+        buffer.reserve_in_bits(header_bits + run_bits + samp_bits);
 
         //start writing the in the buffer
         size_t bit_pos = 0;
@@ -903,7 +901,7 @@ struct rl_node_th {//state of the compression
         size_t written_bytes = insert_runs(blocks, n_blocks, &byte_stream[byte_pos], sym_width(node_sigma), max_bytes , fix_len_enc);
         assert((written_bytes*8)==run_bits);
 
-        node_n_bits = header_bits+run_bits;
+        node_n_bits = header_bits+run_bits+samp_bits;
 
         if(rm_tree_branch){
             need_ext_succ = node_sigma_bv;
@@ -912,6 +910,8 @@ struct rl_node_th {//state of the compression
 
         //gather statistics
         if(n_blocks>stats.max_n_blocks) stats.max_n_blocks = n_blocks;
+        stats.samp_overhead+=samp_bits;
+        stats.runs_overhead += run_bits;
         stats.header_overhead+=header_bits;
         stats.rank_overhead+=rank_bits;
         stats.rpl_freq[n_runs]++;
@@ -1182,10 +1182,22 @@ struct rl_node_th {//state of the compression
     }
 };
 
-template<class bwt_dt_type, class node_type>
+template<class bwt_dt_type, class sa_samp_type>
 struct tree_dt_th {
 
+    struct run_th_type{
+        static constexpr sa_samp_type unsamp_mark = std::numeric_limits<sa_samp_type>::max();
+        uint8_t sym=0;
+        uint32_t len=0;
+        sa_samp_type sa_samp=0;
+        run_th_type(uint8_t sym_, uint32_t len_, uint64_t sa_samp_): sym(sym_), len(len_), sa_samp(sa_samp_){}
+        run_th_type()= default;
+    };
+    typedef std::vector<run_th_type> block_th_type;
+    typedef rl_node_th<bwt_dt_type, block_th_type> node_type;
+
     stat_collector<bwt_dt_type> stats;
+
     tmp_workspace twd;
     bwt_dt_type& bwt_rep;
     std::vector<uint64_t> C;
@@ -1195,7 +1207,7 @@ struct tree_dt_th {
                                                                             bwt_rep(_bwt_rep),
                                                                             C(256, 0){}
 
-    void build_from_grlbwt(std::string& bwt_file){
+    void build_from_grlbwt(std::string& bwt_file, std::string& sa_subsamp_file){
 
         bwt_buff_reader bwt_buff(bwt_file);
         size_t n_runs = bwt_buff.size();
@@ -1210,7 +1222,7 @@ struct tree_dt_th {
         }
         //
 
-        //compute the effective alphabet and the number of bits we require to encode it
+        //compute the effective alphabet
         size_t sigma=0, sigma_bits=0, max_freq=0;
         bwt_rep.unpacked_alpha.reserve(256);
         for(size_t i=0;i<C.size();i++){
@@ -1224,7 +1236,7 @@ struct tree_dt_th {
         }
         bwt_rep.unpacked_alpha.shrink_to_fit();
         C.resize(sigma+1);
-        //
+
         //compute the array C[1..\sigma]
         size_t acc=0, tmp;
         for(size_t i=0;i<sigma;i++){
@@ -1241,9 +1253,10 @@ struct tree_dt_th {
         }*/
         //
 
+        bwt_rep.sep_symbol = bwt_rep.unpacked_alpha[0];
         root = new node_type(0, bwt_dt_type::block_size, bwt_rep, stats);
-        std::ofstream ofs(twd.get_file("trees"), std::ios::binary);
-        root->ofs = &ofs;
+        std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
+        root->ofs = &trees_ofs;
 
         node_type *current = root;
         size_t b_size=bwt_dt_type::block_size/bwt_dt_type::scale_factor;
@@ -1253,30 +1266,63 @@ struct tree_dt_th {
             b_size/=bwt_dt_type::scale_factor;
         }
 
+        //read the subsampled SA values
+        size_t rem_sa_samples = std::filesystem::file_size(sa_subsamp_file)/sizeof(sa_samp_type);
+        std::ifstream sa_subsamp_ifs(sa_subsamp_file, std::ios::binary);
+        size_t sa_buff_size = std::min<size_t>(1024*1024*8, rem_sa_samples);
+        std::vector<sa_samp_type> sa_samp_buffer(sa_buff_size, 0);
+        sa_subsamp_ifs.read((char *)sa_samp_buffer.data(), sa_buff_size*sizeof(sa_samp_type));
+        rem_sa_samples-=sa_buff_size;
+        size_t s=0;
+
         //compute the tree
         run_th_type run;
+        //synchronize the read of the runs (symbol, len) and the associated SA samples
         for(size_t i=0;i<n_runs;i++){
             bwt_buff.read_run(i, sym, len);
             run.sym = bwt_rep.packed_alpha[sym];
-            run.len = len;
-            run.sa_samp = 0;
-            root->process_run(run);
+            if(run.sym==0){//separator symbol: we treat each sep. symbol as a separate run, this is due to toehold lemma in the BCR BWT
+                for(size_t j=0;j<len;j++){
+                    if(s==sa_buff_size){
+                        assert(rem_sa_samples>0);
+                        sa_buff_size = std::min<size_t>(sa_buff_size, rem_sa_samples);
+                        sa_subsamp_ifs.read((char *)sa_samp_buffer.data(), sa_buff_size*sizeof(sa_samp_type));
+                        rem_sa_samples -= sa_buff_size;
+                        s=0;
+                    }
+                    run.len = 1;
+                    run.sa_samp = sa_samp_buffer[s++];
+                    root->process_run(run);
+                }
+            } else {//non-separator symbol
+                if(s==sa_buff_size){
+                    assert(rem_sa_samples>0);
+                    sa_buff_size = std::min<size_t>(sa_buff_size, rem_sa_samples);
+                    sa_subsamp_ifs.read((char *)sa_samp_buffer.data(), sa_buff_size*sizeof(sa_samp_type));
+                    rem_sa_samples -= sa_buff_size;
+                    s=0;
+                }
+                run.len = len;
+                run.sa_samp = sa_samp_buffer[s++];
+                root->process_run(run);
+            }
         }
+        assert(rem_sa_samples==0);
         root->finish_run_scan();
-        ofs.close();
-
-        std::ifstream ifs(twd.get_file("trees"), std::ios::binary);
-        root->ifs = &ifs;
+        trees_ofs.close();
+        sa_subsamp_ifs.close();
+        std::ifstream trees_ifs(twd.get_file("trees"), std::ios::binary);
+        root->ifs = &trees_ifs;
         root->finish_tree(C);
-        ifs.close();
+        trees_ifs.close();
         //
     }
 
-    void build_from_rl_plain(std::string& bwt_file){
+    void build_from_rl_plain(std::string& bwt_file, std::string& sa_samp_file){
 
     }
 
-    void build_from_plain(std::string& bwt_file){
+    void build_from_plain(std::string& bwt_file, std::string& sa_samp_file){
 
     }
 
@@ -1352,9 +1398,8 @@ struct tree_dt_th {
                 case 14:
                     if(stats.leaf_enc_freq[i]) std::cout<<"\t6 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
-                case 15:
+                default:
                     if(stats.leaf_enc_freq[i]) std::cout<<"\t7 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
-                    break;
             }
         }
 
@@ -1395,27 +1440,27 @@ struct tree_dt_th {
         std::cout<<"\t\tInt. succ/pred: "<<INT_CEIL(stats.int_su_pr_overhead, 8)<<" ("<<(double(stats.int_su_pr_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\t\tExt. succ: "<<INT_CEIL(stats.ext_suc_overhead, 8)<<" ("<<(double(stats.ext_suc_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\t\t\tLow freq. symbols: "<<INT_CEIL(stats.lfs_offset, 8)<<" ("<<(double(stats.lfs_offset)/double(root->node_n_bits))*100<<"%)"<<std::endl;
-        assert(stats.header_overhead+stats.runs_overhead==root->node_n_bits);
+        assert(stats.header_overhead+stats.runs_overhead+stats.samp_overhead==root->node_n_bits);
         std::cout<<"\t\tTrees without ext. succ/pred info nor tree pointers: "<<INT_CEIL(stats.trees_overhead, 8)<<std::endl;
         std::cout<<"space_usage:"<<float(root->node_n_bits)/float(bwt_rep.tot_syms)<<" bps"<<std::endl;
     }
 };
 
-template<class bwt_th_type>
+template<class bwt_th_type, class sa_samp_type>
 void build_vlbt_bwt_th(bwt_th_type& bwt_rep, std::string& bwt_file, BWT_FORMAT f,
-                       std::string& ssamples_file, std::string tmp_dir="./"){
+                       std::string& subsamp_sa_file, std::string tmp_dir="./"){
 
-    tree_dt_th<bwt_th_type, rl_node_th<bwt_th_type>> tree(tmp_dir, bwt_rep);
+    tree_dt_th<bwt_th_type, sa_samp_type> tree(tmp_dir, bwt_rep);
 
     switch (f) {
         case BWT_FORMAT::GRL_BWT:
-            tree.build_from_grlbwt(bwt_file);
+            tree.build_from_grlbwt(bwt_file, subsamp_sa_file);
             break;
         case BWT_FORMAT::RL_PLAIN:
-            tree.build_from_rl_plain(bwt_file);
+            tree.build_from_rl_plain(bwt_file, subsamp_sa_file);
             break;
         case BWT_FORMAT::PLAIN:
-            tree.build_from_plain(bwt_file);
+            tree.build_from_plain(bwt_file, subsamp_sa_file);
             break;
         default:
             std::cout<<"Unknown format"<<std::endl;
