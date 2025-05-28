@@ -414,14 +414,16 @@ void test_vlbt_bwt_th(std::string& input_prefix, size_t subsamp_val, std::string
 }
 
 template<class size_type>
-void test_phi(std::string& sa_samples_file, std::string& samples_per_str_file,
-              size_t ssamp_val, std::string& output_prefix){
+void test_phi(std::string& input_prefix, size_t ssamp_val, std::string& output_prefix){
+
+    std::string samp_sa_file = input_prefix+".sa_samples";
+    std::string str_ranges_file = input_prefix+".str_ranges";
 
     std::string ssamp_phi_file = output_prefix+".ssamps_phi";
     std::string ssamp_th_file = output_prefix+".ssamps_th";
 
-    subsample_sa_samples<size_type>(sa_samples_file, samples_per_str_file, ssamp_val, ssamp_phi_file, ssamp_th_file);
-    using phi_type = vlbt_phi<4096, 64, 4>;
+    subsample_sa_samples<size_type>(samp_sa_file, str_ranges_file, ssamp_val, ssamp_phi_file, ssamp_th_file);
+    using phi_type = vlbt_phi<262144, 64, 4>;
     phi_type phi_dt;
     build_vlbt_phi<phi_type, uint64_t>(phi_dt, ssamp_phi_file);
 
@@ -494,7 +496,7 @@ int main(int argc, char** argv){
         TESTED_DTS
     }
 
-    //test_phi<uint64_t>(sa_samples_file, str_ranges_file, 4, output_prefix);
+    test_phi<uint64_t>(input_prefix, 4, output_prefix);
     //test_vlbt_bwt(input_prefix, output_prefix);
     test_vlbt_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
 }

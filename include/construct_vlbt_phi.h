@@ -96,7 +96,12 @@ struct phi_node {//state of the compression
 
     inline void process_block_seq() {
         if(bk_id==1){//only one block in the sequence and it exceeds the limit of runs
-            create_node<INTERNAL>(1);//recursive partitioning
+            if(acc_runs>b_runs){
+                create_node<INTERNAL>(1);//recursive partitioning
+            }else{
+                assert(acc_runs==b_runs);
+                create_node<LEAF>(1);
+            }
             active_blocks[0].clear();
             bk_id=0;
             acc_runs=0;
@@ -196,23 +201,24 @@ struct phi_node {//state of the compression
 
         //===some preliminary information
         //width in bits for the offset information
-        size_t off_width;
-        if(lvl==1) {
-            //the root of the tree
-            off_width = sym_width(phi_rep.tot_syms);
-        } else {
-            //internal node that is not the root
-            //bsize*s_factor*s_factor is the block size of the parent
-            off_width = sym_width(b_size*s_factor*s_factor);
-            assert(node_offset<(b_size*s_factor*s_factor));
-        }
+        //size_t off_width;
+        //if(lvl==1) {
+        //    //the root of the tree
+        //    off_width = sym_width(phi_rep.tot_syms);
+        //} else {
+        //    //internal node that is not the root
+        //    //bsize*s_factor*s_factor is the block size of the parent
+        //    off_width = sym_width(b_size*s_factor*s_factor);
+        //    assert(node_offset<(b_size*s_factor*s_factor));
+        //}
 
         //number of bits we use to encode pointers to the children
         size_t pt_bits = sym_width(node_n_bits/8);
         assert(pt_bits<(1<<phi_rep.int_pt_width));
 
         //amount of information (in bits) for the header
-        size_t header_bits = 1+off_width+s_factor+phi_rep.int_pt_width+(pt_bits*n_children);
+        //size_t header_bits = 1+off_width+s_factor+phi_rep.int_pt_width+(pt_bits*n_children);
+        size_t header_bits = 1+s_factor+phi_rep.int_pt_width+(pt_bits*n_children);
         header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
 
         buffer.reserve_in_bits(header_bits+node_n_bits);
@@ -226,8 +232,8 @@ struct phi_node {//state of the compression
 
         //==offset information
         //rank_bits=r_width*node_sigma bits store the rank information
-        buffer.write(bit_pos, bit_pos+off_width-1, node_offset);
-        bit_pos+=off_width;
+        //buffer.write(bit_pos, bit_pos+off_width-1, node_offset);
+        //bit_pos+=off_width;
         //==
 
         //==
@@ -237,7 +243,8 @@ struct phi_node {//state of the compression
             buffer.write(bit_pos, bit_pos, child_marks[i]);
             bit_pos++;
         }
-        assert(bit_pos==(1+off_width+s_factor));
+        //assert(bit_pos==(1+off_width+s_factor));
+        assert(bit_pos==(1+s_factor));
         //==
 
         //==pt_width*n_children bits store pointers (byte offsets) to the children of this node
@@ -249,7 +256,8 @@ struct phi_node {//state of the compression
             buffer.write(bit_pos, bit_pos+pt_bits-1, block_ptr[i]);
             bit_pos+=pt_bits;
         }
-        assert(bit_pos==(1+off_width+s_factor+phi_rep.int_pt_width+(pt_bits*n_children)));
+        //assert(bit_pos==(1+off_width+s_factor+phi_rep.int_pt_width+(pt_bits*n_children)));
+        assert(bit_pos==(1+s_factor+phi_rep.int_pt_width+(pt_bits*n_children)));
         //==
 
         //move to the next byte-aligned position

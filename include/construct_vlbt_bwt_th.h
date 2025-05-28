@@ -110,7 +110,12 @@ struct rl_node_th {//state of the compression
 
     inline void process_block_seq() {
         if(bk_id==1){//only one block in the sequence and it exceeds the limit of runs
-            create_node<INTERNAL>(1);//recursive partitioning
+            if(acc_runs>b_runs){
+                create_node<INTERNAL>(1);//recursive partitioning
+            }else{
+                assert(acc_runs==b_runs);
+                create_node<LEAF>(1);
+            }
             active_blocks[0].clear();
             bk_id=0;
             acc_runs=0;
@@ -212,7 +217,7 @@ struct rl_node_th {//state of the compression
         assert(n_children<=s_factor);
         assert(lvl>0);
 
-        //HEADER DESCRIPTION:
+        //INTERNAL NODE DESCRIPTION:
         //1 bit to indicate it is an internal node
         //parent_sigma bits to indicate the effective alphabet of the node with respect to the alphabet of its parent
         //r_width*node_sigma bits store the rank information
@@ -717,11 +722,27 @@ struct rl_node_th {//state of the compression
                             const std::vector<bool>& parent_sigma_bv,
                             const std::vector<uint64_t>& parent_rank_info){
 
+        //checks for the leaf encoding
         //for 1 byte: check that the sum of 16 (or 32 for AVX) consecutive run lens is <=256
         //for 2 bytes: check that the sum of 8 (or 16 for AVX) consecutive run lens is <=2^16-1
         //for 3-4 bytes: check that the sum of 4 (or 8 for AVX) consecutive run lens is <=2^32-1
         //for 4-8 bytes: check that the sum of 2 (or 4 for AVX) consecutive run lens is <=2^64-1
         //we need to do this check to work with SIMD instructions. If it does not fit, use the next encoding that can fits them
+
+        //LEAF DESCRIPTION
+        //HEADER:
+        //  1 bit to indicate it is a leaf
+        //  parent_sigma_bits to encode the leaf's effective alphabet
+        //  (eff_alphabet)*r_width bits to store the rank answers for the symbols, with r_width=sym_width(b_size*s_factor*s_factor), that is, the area that the parent covers
+        //  bwt_rep.leaf_enc bits to store the leaf encoding (there are 16 different combinations)
+        //  bwt_rep.run_bytes to store the number X of bytes used by the runs (to jump to the SA samples)
+        //RUN SEQUENCE:
+        //  X bytes with the runs
+        //SA SUB-SAMPLES:
+        //  bwt_rep.run_width bits indicate how many runs this leaf encodes (the value is zero-based)
+        //  bwt_rep.int_pt_width bits to store sym_width(max_sa_sample), with max_sa_sample being the largest SA sample in the leaf
+        //  n_run bits to mark the runs in the leaf that have a SA sample for the tail
+        //  (n_sa_samples)*sym_width(max_sa_sample) bits to encode the SA samples for those runs
 
         assert(node_n_bits==0);
         assert(lvl>0);
@@ -814,7 +835,7 @@ struct rl_node_th {//state of the compression
         }
         get_max_psum(tmp_psum, max_psum);
         assert(bfr_dist[0]==0);
-        size_t samp_bits = (n_sa_samples*sym_width(max_samp)) + n_runs + bwt_rep.run_bytes;
+        size_t samp_bits = bwt_rep.int_pt_width + bwt_rep.run_width + n_runs + (n_sa_samples*sym_width(max_samp));
         samp_bits = INT_CEIL(samp_bits, 8)*8;//byte-aligned
 
         size_t total_vbytes=0, max_bytes=0;
@@ -856,9 +877,8 @@ struct rl_node_th {//state of the compression
             //rank information: previous siblings
             r_width = sym_width(b_size*s_factor*s_factor);
         }
-
         size_t rank_bits = r_width*node_sigma;
-        size_t header_bits = 1+bwt_rep.leaf_enc_width+parent_sigma+rank_bits;
+        size_t header_bits = 1+bwt_rep.leaf_enc_width+parent_sigma+rank_bits+bwt_rep.run_bytes;
         header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
 
         //allocate bytes for the information of this leaf
@@ -893,6 +913,12 @@ struct rl_node_th {//state of the compression
         bit_pos+=bwt_rep.leaf_enc_width;
         //
 
+        //store the number of bytes we use to encode the runs (this value allows us to jump to the SA samples)
+        assert(sym_width(run_bits/8)<=bwt_rep.run_bytes);
+        buffer.write(bit_pos, bit_pos+bwt_rep.run_bytes-1, (run_bits/8));
+        bit_pos+=bwt_rep.run_bytes;
+        //
+
         //the runs are byte-aligned
         size_t byte_pos = INT_CEIL(bit_pos, 8);
         assert((byte_pos*8)==header_bits);
@@ -900,6 +926,36 @@ struct rl_node_th {//state of the compression
         auto *byte_stream = (uint8_t *) buffer.stream;
         size_t written_bytes = insert_runs(blocks, n_blocks, &byte_stream[byte_pos], sym_width(node_sigma), max_bytes , fix_len_enc);
         assert((written_bytes*8)==run_bits);
+
+        //store the number of bits for the largest SA sample
+        uint8_t w = sym_width(max_samp);
+        bit_pos = header_bits+run_bits;
+        buffer.write(bit_pos, bit_pos+bwt_rep.int_pt_width-1, w);
+        bit_pos+=bwt_rep.int_pt_width;
+        //
+
+        //store the number of runs (zero-based value). We use this value to perform a popcount operation over the next n_run bits
+        buffer.write(bit_pos, bit_pos+bwt_rep.run_width, n_runs-1);
+        bit_pos+=bwt_rep.run_width;
+        //
+
+        //store the SA sub samples
+        size_t samp_pos = bit_pos+n_runs;
+        bool is_samp;
+        for(size_t i=0;i<n_blocks;i++){
+            for(auto & run : blocks[i]){
+                is_samp = run.sa_samp!=run_th_type::unsamp_mark;
+                if(is_samp){
+                    buffer.write(samp_pos, samp_pos+w-1, run.sa_samp);
+                    samp_pos+=w;
+                }
+                buffer.write(bit_pos, bit_pos, is_samp);
+                bit_pos++;
+            }
+        }
+        assert((INT_CEIL(samp_pos, 8)*8)==(header_bits+run_bits+samp_bits));
+        assert(bit_pos==(header_bits+run_bits+bwt_rep.int_pt_width+bwt_rep.run_width+n_runs));
+        //
 
         node_n_bits = header_bits+run_bits+samp_bits;
 
@@ -1084,6 +1140,7 @@ struct rl_node_th {//state of the compression
         if constexpr (type==INTERNAL){
             assert(n_blocks==1);
             tmp_node->get_node_alphabet(active_blocks[0]);
+
             for(auto & run : active_blocks[0]){
                 tmp_node->process_run(run);
             }
@@ -1253,7 +1310,6 @@ struct tree_dt_th {
         }*/
         //
 
-        bwt_rep.sep_symbol = bwt_rep.unpacked_alpha[0];
         root = new node_type(0, bwt_dt_type::block_size, bwt_rep, stats);
         std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
         root->ofs = &trees_ofs;
@@ -1432,6 +1488,7 @@ struct tree_dt_th {
         std::cout<<"Written bytes in the data structure: "<<INT_CEIL(root->node_n_bits, 8)<<std::endl;
         std::cout<<"Space breakdown"<<std::endl;
         std::cout<<"\tRuns: "<<INT_CEIL(stats.runs_overhead, 8)<<" ("<<(double(stats.runs_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
+        std::cout<<"\tSA samples: "<<INT_CEIL(stats.samp_overhead, 8)<<" ("<<(double(stats.samp_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\tHeaders: "<<INT_CEIL(stats.header_overhead, 8)<<" ("<<(double(stats.header_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\t\tTree pointers: "<<INT_CEIL(stats.tree_pointers_overhead, 8)<<" ("<<(double(stats.tree_pointers_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         size_t ptr_bv_ov = stats.header_overhead - (stats.rank_overhead + stats.int_su_pr_overhead + stats.ext_suc_overhead+ stats.tree_pointers_overhead);

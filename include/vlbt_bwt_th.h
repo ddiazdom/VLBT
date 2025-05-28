@@ -10,14 +10,13 @@
 #include "bitstream.h"
 #include "def_scan.h"
 
-
 template<size_t b_size, size_t b_runs, size_t s_factor>
 struct vlbt_bwt_th {
 
     static constexpr size_t block_size = b_size;
     static constexpr size_t scale_factor = s_factor;
     static constexpr size_t max_block_runs = b_runs;
-    static constexpr uint8_t int_pt_width=7;//number of bits we use to encode the number of bits we use to encode pointers
+    static constexpr uint8_t int_pt_width=6;//number of bits we use to encode the number of bits we use to encode pointers
     static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
     static constexpr uint8_t leaf_enc_width=4;
     static constexpr uint8_t run_bytes = (sizeof(unsigned long)*8) - __builtin_clzl((b_runs*8) + (b_runs/8));//number of bits we use to encode the number of bytes that the run lengths use in a leaf
@@ -58,7 +57,6 @@ struct vlbt_bwt_th {
     uint8_t sigma=0;//size of the effective text alphabet
     uint16_t ext_pt_width=0;//number of bits we use store the pointers to the trees
     uint8_t mtd_bits=0;//number of bits to encode the maximum tree distance
-    uint8_t sep_symbol=0;//unpacked symbol used as separator in the collection
     std::vector<uint8_t> packed_alpha;//map the symbols from byte to eff alphabet
     std::vector<uint8_t> unpacked_alpha;//map eff alphabet to the original alphabet
 
@@ -330,6 +328,8 @@ struct vlbt_bwt_th {
 
             uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
             bit_pos+= leaf_enc_width;
+            bit_pos+= run_bytes;//skip the bits storing the number of bytes used by the runs
+
             const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(INT_CEIL(bit_pos, 8));
 
             //scan the runs in the leaf according to the leaf encoding
@@ -489,6 +489,7 @@ struct vlbt_bwt_th {
 
         path.leaf_enc = stream.read(path.bit_pos, path.bit_pos+leaf_enc_width-1);
         path.bit_pos+= leaf_enc_width;
+        path.bit_pos+= run_bytes;//skip the bits encoding the number of bytes we use to store the runs in their encoding
     }
 
     [[nodiscard]] inline std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {

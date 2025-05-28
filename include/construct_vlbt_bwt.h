@@ -143,7 +143,12 @@ struct rl_node {//state of the compression
 
     inline void process_block_seq() {
         if(bk_id==1){//only one block in the sequence and it exceeds the limit of runs
-            create_node<INTERNAL>(1);//recursive partitioning
+            if(acc_runs>b_runs){
+                create_node<INTERNAL>(1);//recursive partitioning
+            }else{
+                assert(acc_runs==b_runs);
+                create_node<LEAF>(1);
+            }
             active_blocks[0].clear();
             bk_id=0;
             acc_runs=0;
