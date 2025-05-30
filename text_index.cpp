@@ -15,6 +15,7 @@
 //#include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 
 //the framework
+#include "include/construct_vlbt_sr_index.h"
 #include "include/construct_vlbt_bwt.h"
 #include "include/construct_vlbt_bwt_th.h"
 #include "include/construct_vlbt_phi.h"
@@ -23,10 +24,51 @@
 #include "include/vlbt_phi.h"
 //
 
-#include "fm_index.h"
+#include "scripts/fm_index.h"
 #include <unordered_set>
 #include <vector>
 #include <random>
+
+using ulint = uint64_t;
+//parse pizza&chilli patterns header:
+void header_error(){
+    std::cout << "Error: malformed header in patterns file" << std::endl;
+    std::cout << "Take a look here for more info on the file format: http://pizzachili.dcc.uchile.cl/experiments.html" << std::endl;
+    exit(0);
+}
+
+ulint get_number_of_patterns(std::string header){
+
+    ulint start_pos = header.find("number=");
+    if (start_pos == std::string::npos or start_pos+7>=header.size())
+        header_error();
+
+    start_pos += 7;
+
+    ulint end_pos = header.substr(start_pos).find(" ");
+    if (end_pos == std::string::npos)
+        header_error();
+
+    ulint n = std::atoi(header.substr(start_pos).substr(0,end_pos).c_str());
+    return n;
+}
+
+ulint get_patterns_length(std::string header){
+
+    ulint start_pos = header.find("length=");
+    if (start_pos == std::string::npos or start_pos+7>=header.size())
+        header_error();
+
+    start_pos += 7;
+
+    ulint end_pos = header.substr(start_pos).find(" ");
+    if (end_pos == std::string::npos)
+        header_error();
+
+    ulint n = std::atoi(header.substr(start_pos).substr(0,end_pos).c_str());
+
+    return n;
+}
 
 std::vector<uint64_t> sample_unique(uint64_t n, uint64_t x) {
     if (x > n) throw std::invalid_argument("x cannot be larger than n");
@@ -143,7 +185,9 @@ time_answer += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).c
 }
 
 template<class bwt_type>
-void test_count(bwt_type& my_dt, std::string& input_file){
+void test_count(bwt_type& my_dt, std::string& input_file, std::string dt_name){
+
+    std::cout<<"Testing count"<<std::endl;
 
     sdsl::wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
@@ -164,31 +208,38 @@ void test_count(bwt_type& my_dt, std::string& input_file){
     fm_index<sdsl::wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.packed_alpha, my_dt.unpacked_alpha);
     fm_index<bwt_type> csa_mydt(my_dt, C, my_dt.packed_alpha, my_dt.unpacked_alpha);
 
-
-    std::string pat_file = input_file+".patterns";
+    std::string pat_file = input_file+".pats";
     std::ifstream ifs(pat_file);
-    std::string pat;
 
-    size_t n_pats = std::count(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>(), '\n');
-    ifs.seekg(std::ios::beg);
+    std::string header;
+    std::getline(ifs, header);
+    ulint n_pats = get_number_of_patterns(header);
+    ulint pat_len = get_patterns_length(header);
 
-    std::vector<std::string> pat_list;
-    pat_list.reserve(n_pats);
-    while(std::getline(ifs, pat)) {
-        pat_list.push_back(pat);
+    std::cout<<"Searching for "<<n_pats<<" patterns of length "<<pat_len<<" each "<<std::endl;
+
+    std::vector<std::string> pat_list(n_pats);
+    for(ulint i=0;i<n_pats;++i){
+        pat_list[i].reserve(pat_len);
+        for(ulint j=0;j<pat_len;++j){
+            char c;
+            ifs.get(c);
+            pat_list[i].push_back(c);
+        }
     }
 
+    size_t acc_count=0;
     size_t j=0;
     double acc_time=0;
     std::vector<std::pair<uint64_t, uint64_t>> rlmn_ans(n_pats);
     for(auto const& p : pat_list) {
         MEASURE(csa_rlmn.backward_search(p), acc_time, rlmn_ans[j]);
+        acc_count+=rlmn_ans[j].second-rlmn_ans[j].first+1;
         j++;
     }
-    std::cout<<"backward_search rlmn:";
-    std::cout<<acc_time/double(n_pats)<<" nanoseconds"<<std::endl;
+    std::cout<<"backward_search rlmn avg_time: ";
+    std::cout<<acc_time/double(n_pats)<<" nanosecs/pat and "<<acc_time/double(acc_count)<<" nanosecs/occ"<<std::endl;
 
-    ifs.seekg(std::ios::beg);
     acc_time=0;
     j=0;
     std::vector<std::pair<uint64_t, uint64_t>> my_ans(n_pats);
@@ -196,22 +247,26 @@ void test_count(bwt_type& my_dt, std::string& input_file){
         MEASURE(csa_mydt.backward_search(p), acc_time, my_ans[j]);
         j++;
     }
-    std::cout<<"backward_search my_dt:";
-    std::cout<<acc_time/double(n_pats)<<" nanoseconds"<<std::endl;
-    /*for(){
-        assert(res.first==res2.first && res.second==res2.second);
-    }*/
+    std::cout<<"backward_search "<<dt_name<<" avg_time: ";
+    std::cout<<acc_time/double(n_pats)<<" nanosecs/pat and "<<acc_time/double(acc_count)<<" nanosecs/occ"<<std::endl;
+
+    size_t n_errors=0;
+    for(size_t i=0;i<pat_list.size();i++){
+        if(my_ans[i].first!=rlmn_ans[i].first || my_ans[i].second!=rlmn_ans[i].second){
+            //std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<my_ans[i].first<<"!="<<rlmn_ans[i].first <<" or "<<my_ans[i].second<<"!="<<rlmn_ans[i].second<<std::endl;
+            n_errors++;
+        }
+        //assert(my_ans[i].first==rlmn_ans[i].first && my_ans[i].second==rlmn_ans[i].second);
+    }
+    std::cout<<"There are "<<n_errors<<"/"<<pat_list.size()<<" errors "<<std::endl;
 }
 
 template<class bwt_type>
-void test_access(bwt_type& my_dt, std::string& input_file){
-    //size_t samp_size = (wt_dt.size()*10)/100;
+void test_access(bwt_type& my_dt, std::string& input_file, std::string dt_name){
 
+    std::cout<<"Testing access"<<std::endl;
     sdsl::wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
-    /*for(size_t i=0;i<wt_rlmn.size();i++){
-        assert(wt_rlmn[i]==my_dt[i]);
-    }*/
 
     size_t samp_size = 1000000;
     std::vector<uint64_t> samples = sample_unique(wt_rlmn.size(), samp_size);
@@ -221,25 +276,15 @@ void test_access(bwt_type& my_dt, std::string& input_file){
     for(size_t j=0;j<samples.size();j++){
         MEASURE(my_dt[samples[j]], acc_time, my_dt_ans[j]);
     }
-    std::cout<<"access vlbt_bwt:";
+    std::cout<<"access "<<dt_name<<" avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
-
-    /*acc_time=0;
-    std::vector<uint8_t> wt_huff_ans(samp_size);
-    sdsl::wt_huff<> wt_huff;
-    sdsl::load_from_file(wt_huff, input_file+".wt_huff_bv");
-    for(size_t j=0;j<samples.size();j++){
-        MEASURE(wt_huff[samples[j]], acc_time, wt_huff_ans[j]);
-    }
-    std::cout<<"access wt_huff:";
-    std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;*/
 
     acc_time=0;
     std::vector<uint8_t> wt_rlmn_ans(samp_size);
     for(size_t j=0;j<samples.size();j++){
         MEASURE(wt_rlmn[samples[j]], acc_time, wt_rlmn_ans[j]);
     }
-    std::cout<<"access wt_rlmn:";
+    std::cout<<"access wt_rlmn avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     for(size_t j=0;j<samples.size();j++){
@@ -249,26 +294,12 @@ void test_access(bwt_type& my_dt, std::string& input_file){
         }
         assert(wt_rlmn_ans[j]==my_dt_ans[j]);
     }
-
-    /*for(size_t j=0;j<my_dt.size();j++){
-        //size_t p = rand() % my_dt.size();
-        size_t p = j;
-
-        auto res1= wt_huff.inverse_select(p);
-        auto res2 = my_dt.inverse_select(p);
-
-        if(res1.first!=res2.first || res1.second!=my_dt.eff2byte(res2.second)){
-            std::cout<<"wt_huff idx: "<<p<<" |\t sym: "<<int(res1.second)<<" rank: "<<res1.first<<std::endl;
-            std::cout<<"my_dt   idx: "<<p<<" |\t sym: "<<int(my_dt.eff2byte(res2.second))<<" rank: "<<res2.first<<"\n"<<std::endl;
-        }
-        assert(res1.first==res2.first && res1.second==my_dt.eff2byte(res2.second));
-        //MEASURE(my_dt.inverse_select(p), acc_time, answers[0]);
-    }*/
 }
 
 template<class bwt_type>
-void test_rank(bwt_type& my_dt, std::string& input_file){
+void test_rank(bwt_type& my_dt, std::string& input_file, std::string dt_name){
 
+    std::cout<<"Testing rank"<<std::endl;
     sdsl::wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
 
@@ -278,10 +309,9 @@ void test_rank(bwt_type& my_dt, std::string& input_file){
     double acc_time=0;
     std::vector<int64_t> my_dt_ans(samp_size);
     for(size_t j=0;j<tests.size();j++){
-        //std::cout<<tests[j].first<<" "<<int(tests[j].second)<<std::endl;
         MEASURE(my_dt.rank(tests[j].first, my_dt.eff2byte(tests[j].second)), acc_time, my_dt_ans[j]);
     }
-    std::cout<<"rank vlbt_bwt:";
+    std::cout<<"rank "<<dt_name<<" avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     acc_time=0;
@@ -289,7 +319,7 @@ void test_rank(bwt_type& my_dt, std::string& input_file){
     for(size_t j=0;j<tests.size();j++){
         MEASURE(wt_rlmn.rank(tests[j].first, my_dt.eff2byte(tests[j].second)), acc_time, wt_rlmn_ans[j]);
     }
-    std::cout<<"rank wt_rlmn:";
+    std::cout<<"rank wt_rlmn avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     for(size_t j=0;j<tests.size();j++){
@@ -304,9 +334,9 @@ void test_rank(bwt_type& my_dt, std::string& input_file){
 }
 
 template<class bwt_type>
-void test_inverse_select(bwt_type& my_dt, std::string& input_file){
-    //size_t samp_size = (wt_dt.size()*10)/100;
+void test_inverse_select(bwt_type& my_dt, std::string& input_file, std::string dt_name){
 
+    std::cout<<"Testing inverse select"<<std::endl;
     sdsl::wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
 
@@ -318,7 +348,7 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
     for(size_t j=0;j<samples.size();j++){
         MEASURE(my_dt.inverse_select(samples[j]), acc_time, my_dt_ans[j]);
     }
-    std::cout<<"inverse_select vlbt_bwt:";
+    std::cout<<"inverse_select "<<dt_name<<" avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     acc_time=0;
@@ -326,18 +356,8 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
     for(size_t j=0;j<samples.size();j++){
         MEASURE(wt_rlmn.inverse_select(samples[j]), acc_time, wt_rlmn_ans[j]);
     }
-    std::cout<<"inverse_select wt_rlmn:";
+    std::cout<<"inverse_select wt_rlmn avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
-
-    //acc_time=0;
-    //sdsl::wt_huff<> wt_huff;
-    //sdsl::load_from_file(wt_huff, input_file+".wt_huff_bv");
-    //std::vector<std::pair<uint8_t, uint64_t>> wt_huff_ans(samp_size);
-    //for(size_t j=0;j<samples.size();j++){
-    //    MEASURE(wt_huff.inverse_select(samples[j]), acc_time, wt_huff_ans[j]);
-    //}
-    //std::cout<<"inverse_select wt_huff:";
-    //std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
 
     for(size_t j=0;j<samples.size();j++){
         if(wt_rlmn_ans[j].first!=my_dt_ans[j].first ||
@@ -348,26 +368,12 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file){
         assert(wt_rlmn_ans[j].first==my_dt_ans[j].first &&
                wt_rlmn_ans[j].second==my_dt.eff2byte(my_dt_ans[j].second));
     }
-
-    /*for(size_t j=0;j<my_dt.size();j++){
-        //size_t p = rand() % my_dt.size();
-        size_t p = j;
-
-        auto res1= wt_huff.inverse_select(p);
-        auto res2 = my_dt.inverse_select(p);
-
-        if(res1.first!=res2.first || res1.second!=my_dt.eff2byte(res2.second)){
-            std::cout<<"wt_huff idx: "<<p<<" |\t sym: "<<int(res1.second)<<" rank: "<<res1.first<<std::endl;
-            std::cout<<"my_dt   idx: "<<p<<" |\t sym: "<<int(my_dt.eff2byte(res2.second))<<" rank: "<<res2.first<<"\n"<<std::endl;
-        }
-        assert(res1.first==res2.first && res1.second==my_dt.eff2byte(res2.second));
-        //MEASURE(my_dt.inverse_select(p), acc_time, answers[0]);
-    }*/
 }
 
 void test_vlbt_bwt(std::string& input_prefix, std::string& output_prefix){
 
-    std::string input_bwt = input_prefix+".rl_bwt";
+    std::cout<<"Testing VLBT BWT"<<std::endl;
+    std::string input_bwt = input_prefix+".ebwt";
     using bwt_type = vlbt_bwt<65536, 64, 4>;
     bwt_type bwt_dt;
     build_rlbwt_vlb<bwt_type>(bwt_dt, input_bwt, BWT_FORMAT::GRL_BWT);
@@ -375,16 +381,10 @@ void test_vlbt_bwt(std::string& input_prefix, std::string& output_prefix){
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-    //sdsl::wt_rlmn<> wt_rlmn;
-    //sdsl::load_from_file(wt_rlmn, output_prefix+".wt_rlmn");
-    //std::cout<<bwt_dt.rank(356460552, 116)<<std::endl;
-    //std::cout<<bwt_dt.rank(467616716, 57)<<std::endl;
-    //std::cout<<wt_rlmn.rank(10131630,bwt_dt.eff2byte(15))<<std::endl;
-
-    //test_count(bwt_dt, output_prefix);
-    test_inverse_select(bwt_dt, output_prefix);
-    test_access(bwt_dt, output_prefix);
-    test_rank(bwt_dt, output_prefix);
+    test_count(bwt_dt, input_prefix, "vlbt_bwt");
+    test_inverse_select(bwt_dt, input_prefix, "vlbt_bwt");
+    test_access(bwt_dt, input_prefix, "vlbt_bwt");
+    test_rank(bwt_dt, input_prefix, "vlbt_bwt");
 }
 
 template<class sa_samp_type>
@@ -393,24 +393,24 @@ void test_vlbt_bwt_th(std::string& input_prefix, size_t subsamp_val, std::string
     std::string bwt_file = input_prefix+".rl_bwt";
     std::string samp_sa_file = input_prefix+".sa_samples";
     std::string str_ranges_file = input_prefix+".str_ranges";
-    std::string phi_data_file = output_prefix+".ssamps_phi";
-    std::string subsamp_sa_file = output_prefix+".ssamps_th";
+    std::string out_ssamp_heads_file = output_prefix+".ssamp_heads";
+    std::string out_ssamp_tails_file = output_prefix+".ssamp_tails";
 
-    subsample_sa_samples<sa_samp_type>(samp_sa_file, str_ranges_file,
-                                    subsamp_val, phi_data_file, subsamp_sa_file);
+    subsample_sa_samples<sa_samp_type>(samp_sa_file, str_ranges_file, subsamp_val,
+                                       out_ssamp_heads_file, out_ssamp_tails_file);
 
     using bwt_th_type = vlbt_bwt_th<65536, 64, 4>;
     bwt_th_type bwt_dt;
-    build_vlbt_bwt_th<bwt_th_type, sa_samp_type>(bwt_dt, bwt_file, BWT_FORMAT::GRL_BWT, subsamp_sa_file);
+    build_vlbt_bwt_th<bwt_th_type, sa_samp_type>(bwt_dt, bwt_file, BWT_FORMAT::GRL_BWT, out_ssamp_heads_file);
 
     std::string output_file = output_prefix+".vlbt_bwt_th";
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
     //test_count(bwt_dt, output_prefix);
-    test_inverse_select(bwt_dt, output_prefix);
-    test_access(bwt_dt, output_prefix);
-    test_rank(bwt_dt, output_prefix);
+    test_inverse_select(bwt_dt, output_prefix, "vlbt_bwt_th");
+    test_access(bwt_dt, output_prefix, "vlbt_bwt_th");
+    test_rank(bwt_dt, output_prefix, "vlbt_bwt_th");
 }
 
 template<class size_type>
@@ -427,51 +427,27 @@ void test_phi(std::string& input_prefix, size_t ssamp_val, std::string& output_p
     phi_type phi_dt;
     build_vlbt_phi<phi_type, uint64_t>(phi_dt, ssamp_phi_file);
 
-    /*std::vector<std::pair<uint64_t, uint64_t>> block={ {12, 230010}, {300, 262144}, {14, 200010},
-                                                       {34, 5}, {1000, 3801091}, {3334, 29949491},
-                                                       {20000, 2}, {12, 40000}, {23, 1002020},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1},
-                                                       {2, 2}, {2, 4}, {3, 1},{2, 4}, {3, 1}
-    };
-    build_vlbt_phi_in_memory<phi_type, uint64_t>(phi_dt, block);*/
-
     std::string output_file = output_prefix+".vlbt_phi";
     size_t written_bytes = store_to_file(output_file, phi_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 }
 
-void test_vlbt_th(){
+template<class size_type>
+void test_vlbt_sr_index(std::string& input_prefix, size_t ssamp_val, std::string& output_prefix){
+    using bwt_th_type = vlbt_bwt_th<65536, 64, 4>;
+    using phi_type = vlbt_phi<65536, 64, 4>;
+    using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
+    sr_index_type sr_index;
+    build_vlbt_sr_index<sr_index_type , size_type>(sr_index, input_prefix, ssamp_val, output_prefix);
+
+    std::string output_sr_index_file = output_prefix+".sr_index";
+    size_t written_bytes = store_to_file(output_sr_index_file, sr_index);
+    std::cout<<"Final sr-index uses "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps)"<<std::endl;
+
+    test_count(sr_index.bwt_with_th, input_prefix, "sr_index");
+    test_inverse_select(sr_index.bwt_with_th, input_prefix, "sr_index");
+    test_rank(sr_index.bwt_with_th, input_prefix, "sr_index");
+    test_access(sr_index.bwt_with_th, input_prefix, "sr_index");
 }
 
 int main(int argc, char** argv){
@@ -496,7 +472,9 @@ int main(int argc, char** argv){
         TESTED_DTS
     }
 
-    test_phi<uint64_t>(input_prefix, 4, output_prefix);
+    //test_phi<uint64_t>(input_prefix, 4, output_prefix);
     //test_vlbt_bwt(input_prefix, output_prefix);
-    test_vlbt_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
+    //test_vlbt_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
+    //test_vlbt_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    test_vlbt_bwt(input_prefix, output_prefix);
 }

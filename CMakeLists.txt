@@ -57,32 +57,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BCK}")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/Modules")
 
 find_package(LibSDSL REQUIRED)
-
-include_directories(SYSTEM ${LIBSDSL_INCLUDE_DIRS} fb_wt/wt-fbb-0.1.0)
-
-#add_executable(test_bwt_dts test_bwt_dts.cpp ../cdt_common.cpp)
-#target_compile_options(test_bwt_dts
-#        PUBLIC
-#        -Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function #-Winline
-#        -O3 -funroll-loops -fomit-frame-pointer -ffast-math -mavx2
-#)
-#target_link_libraries(test_bwt_dts LINK_PUBLIC ${LIBSDSL_LIBRARIES})
-#target_include_directories(test_bwts PUBLIC ${LIBSDSL_INCLUDE_DIRS})
-#if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-#    message(STATUS "Adding -march=native compiler flag due to ${CMAKE_CXX_COMPILER_ID}")
-#    target_compile_options(test_bwt_dts PUBLIC -march=native)
-#endif()
-
-#add_executable(gen_patterns genpatterns.c)
-#target_compile_options(gen_patterns PUBLIC -O3)
-#
-#add_executable(gen_patterns gen_patterns.cpp)
-#target_compile_options(gen_patterns PUBLIC -O3)
-#target_link_libraries(gen_patterns LINK_PUBLIC ${LIBSDSL_LIBRARIES})
-#target_include_directories(gen_patterns PUBLIC ${LIBSDSL_INCLUDE_DIRS})
+#include_directories(SYSTEM ${LIBSDSL_INCLUDE_DIRS} fb_wt/wt-fbb-0.1.0)
 
 #Build the BWT data structures
-add_executable(build_bwt_dts build_bwt_dts.cpp)
+add_executable(build_bwt_dts text_index.cpp)
 target_compile_options(build_bwt_dts
         PUBLIC
         #-Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function
@@ -107,7 +85,7 @@ endif()
 add_executable(get_r_sa_samp scripts/get_r_sa_samples.cpp)
 target_link_libraries(get_r_sa_samp LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
 target_include_directories(get_r_sa_samp PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
-target_compile_options(get_r_sa_samp PUBLIC
-        -O3
-        ${SIMD_FLAGS}
-)
+target_compile_options(get_r_sa_samp PUBLIC -O3 ${SIMD_FLAGS})
+
+add_executable(gen_patterns scripts/genpatterns.c)
+target_compile_options(gen_patterns PUBLIC -O3)

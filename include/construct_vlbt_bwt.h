@@ -5,7 +5,7 @@
 #ifndef RLBWT_VLB_CONSTRUCT_RLBWT_VLB_H
 #define RLBWT_VLB_CONSTRUCT_RLBWT_VLB_H
 
-#include "vlbt_bwt.h"
+#include "common.h"
 #include "bwt_io.h"
 #ifdef __linux__
 #include <malloc.h>
@@ -13,37 +13,6 @@
 
 using run_type = std::pair<uint32_t, size_t>;
 using block_type = std::vector<run_type>;
-
-enum BWT_FORMAT{
-    GRL_BWT=0,
-    RL_PLAIN=1,
-    PLAIN=2
-};
-
-enum node_type {
-    INTERNAL,
-    LEAF
-};
-
-//statistics about the data structure
-template<class bwt_type>
-struct stat_collector{
-    uint64_t rpl_freq[bwt_type::max_block_runs+1]={0};//number of runs in a leaf
-    uint64_t leaf_depth_freq[20]={0};//the depth of each leaf
-    uint64_t leaf_enc_freq[20]={0};//encoding of each leaf
-    uint64_t children_freq[100]={0};//children frequency = how many nodes with 1,2,...,x children
-    uint64_t header_overhead=0;//number of bits used by the headers of the nodes
-    uint64_t runs_overhead=0;
-    uint64_t rank_overhead=0;
-    uint64_t lfs_offset=0;//symbols with low frequency for which we encode the blocks where they occur explicitly
-    uint64_t ext_suc_overhead=0;
-    uint64_t int_su_pr_overhead=0;
-    uint64_t tree_pointers_overhead=0;
-    uint64_t trees_overhead=0;
-    uint64_t max_n_blocks=0;
-    uint64_t ext_succ_freq[257]={0};
-    uint64_t samp_overhead=0;
-};
 
 template<class bwt_type>
 struct rl_node {//state of the compression
@@ -108,9 +77,9 @@ struct rl_node {//state of the compression
     //
 
     //a struct to collect statistics about the data structure
-    stat_collector<bwt_type>& stats;
+    bwt_stat_collector<bwt_type>& stats;
 
-    explicit rl_node(size_t _lvl, size_t _b_size, bwt_type& _bwt_rep, stat_collector<bwt_type>& st):
+    explicit rl_node(size_t _lvl, size_t _b_size, bwt_type& _bwt_rep, bwt_stat_collector<bwt_type>& st):
             lvl(_lvl),
             b_size(_b_size),
             bwt_rep(_bwt_rep),
@@ -1212,7 +1181,7 @@ struct rl_node {//state of the compression
 template<class bwt_type, class node_type>
 struct tree_dt{
 
-    stat_collector<bwt_type> stats;
+    bwt_stat_collector<bwt_type> stats;
     tmp_workspace twd;
     bwt_type& bwt_rep;
     std::vector<uint64_t> C;

@@ -5,7 +5,7 @@
 #ifndef CONSTRUCT_VLBT_BWT_TH_H
 #define CONSTRUCT_VLBT_BWT_TH_H
 
-#include "vlbt_bwt.h"
+#include "common.h"
 #include "bwt_io.h"
 #ifdef __linux__
 #include <malloc.h>
@@ -75,9 +75,9 @@ struct rl_node_th {//state of the compression
     //
 
     //a struct to collect statistics about the data structure
-    stat_collector<bwt_th_type>& stats;
+    bwt_stat_collector<bwt_th_type>& stats;
 
-    explicit rl_node_th(size_t _lvl, size_t _b_size, bwt_th_type& _bwt_rep, stat_collector<bwt_th_type>& st):
+    explicit rl_node_th(size_t _lvl, size_t _b_size, bwt_th_type& _bwt_rep, bwt_stat_collector<bwt_th_type>& st):
             lvl(_lvl),
             b_size(_b_size),
             bwt_rep(_bwt_rep),
@@ -194,7 +194,7 @@ struct rl_node_th {//state of the compression
             } else {// we complete a new block
                 //last run of the active block
                 size_t split_run_len = b_size-bk_len;
-                active_blocks[bk_id].emplace_back(run.sym, split_run_len, run_th_type::unsamp_mark);
+                active_blocks[bk_id].emplace_back(run.sym, split_run_len, run.sa_samp);
                 bk_len+=split_run_len;
                 assert(split_run_len>0 && bk_len==b_size);
                 acc_runs+=active_blocks[bk_id].size();
@@ -205,6 +205,7 @@ struct rl_node_th {//state of the compression
                     process_block_seq();
                 }
                 run.len -=split_run_len;
+                run.sa_samp = run_th_type::unsamp_mark;
                 bk_len=0;
             }
         }
@@ -357,19 +358,18 @@ struct rl_node_th {//state of the compression
         size_t data_start = bit_pos;
         for(size_t s=0;s<bwt_rep.sigma;s++){
             if(low_freq_syms[s]){
-
-                std::cout<<"symbol:"<<s<<" c_bit_pos:"<<c_bit_pos<<" b_pos:"<<bit_pos<<std::endl;
+                //std::cout<<"symbol:"<<s<<" c_bit_pos:"<<c_bit_pos<<" b_pos:"<<bit_pos<<std::endl;
                 buffer.write(c_bit_pos, c_bit_pos+39, bit_pos);
                 c_bit_pos+=40;
                 for(unsigned long tree_id : sigma_trees[s]){
                     //encode the tree where s occurs
                     buffer.write(bit_pos, bit_pos+w-1, tree_offset[tree_id]);
-                    std::cout<<"\t b_pos:"<<bit_pos<<" "<<tree_offset[tree_id]<<std::endl;
+                    //std::cout<<"\t b_pos:"<<bit_pos<<" "<<tree_offset[tree_id]<<std::endl;
                     bit_pos+=w;
                     //std::cout<<tree_offset[tree_id]<<" ";
                 }
                 buffer.write(bit_pos, bit_pos+w-1, limit);
-                std::cout<<"\t b_pos:"<<bit_pos<<" "<<limit<<"\n"<<std::endl;
+                //std::cout<<"\t b_pos:"<<bit_pos<<" "<<limit<<"\n"<<std::endl;
                 bit_pos+=w;
             }
             buffer.write(sym_bit_pos, sym_bit_pos, low_freq_syms[s]);
@@ -394,7 +394,7 @@ struct rl_node_th {//state of the compression
             active_succ[s] = {0, sigma_trees[s][0]};
         }
 
-        std::cout<<"Computing ext. succ/pred info"<<std::endl;
+        //std::cout<<"Computing ext. succ/pred info"<<std::endl;
         size_t l_sym=0, r_sym=0;
         size_t r_sa_bound = bk_boundaries[r_sym+1]-1;
         size_t l_tree_bound, r_tree_bound;
@@ -1253,7 +1253,7 @@ struct tree_dt_th {
     typedef std::vector<run_th_type> block_th_type;
     typedef rl_node_th<bwt_dt_type, block_th_type> node_type;
 
-    stat_collector<bwt_dt_type> stats;
+    bwt_stat_collector<bwt_dt_type> stats;
 
     tmp_workspace twd;
     bwt_dt_type& bwt_rep;
