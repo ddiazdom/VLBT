@@ -175,13 +175,12 @@ void rl2plain(std::string& rl_file, std::string& output_plain_file){
     bwt_reader.close();
     ofs.close();
 }
-
-#define MEASURE(query, time_answer, query_answer) \
+#define MEASURE(query, time_answer, query_answer, time_unit) \
 {\
 auto t1 = std::chrono::high_resolution_clock::now();\
 query_answer = query;\
 auto t2 = std::chrono::high_resolution_clock::now();\
-time_answer += std::chrono::duration_cast<std::chrono::nanoseconds>( t2 - t1 ).count();\
+time_answer += std::chrono::duration_cast<time_unit>( t2 - t1 ).count();\
 }
 
 template<class bwt_type>
@@ -208,16 +207,24 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     fm_index<sdsl::wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.packed_alpha, my_dt.unpacked_alpha);
     fm_index<bwt_type> csa_mydt(my_dt, C, my_dt.packed_alpha, my_dt.unpacked_alpha);
 
-    std::string pat_file = input_file+".pats";
-    std::ifstream ifs(pat_file);
+    //TODO checking for errors
+    //std::string pattern = "598ei";
+    //std::cout<<wt_rlmn.rank(208726951, '8')<<std::endl;
+    //std::cout<<my_dt.rank(208726951, '8')<<std::endl;
 
+    //csa_rlmn.backward_search(pattern);
+    //csa_mydt.backward_search(pattern);
+    //exit(1);
+    //
+
+    //std::string pat_file = input_file+".pats";
+    std::string pat_file = "ein_30len_3000pat.txt";
+    std::ifstream ifs(pat_file);
     std::string header;
     std::getline(ifs, header);
     ulint n_pats = get_number_of_patterns(header);
     ulint pat_len = get_patterns_length(header);
-
     std::cout<<"Searching for "<<n_pats<<" patterns of length "<<pat_len<<" each "<<std::endl;
-
     std::vector<std::string> pat_list(n_pats);
     for(ulint i=0;i<n_pats;++i){
         pat_list[i].reserve(pat_len);
@@ -233,10 +240,11 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     double acc_time=0;
     std::vector<std::pair<uint64_t, uint64_t>> rlmn_ans(n_pats);
     for(auto const& p : pat_list) {
-        MEASURE(csa_rlmn.backward_search(p), acc_time, rlmn_ans[j]);
+        MEASURE(csa_rlmn.backward_search(p), acc_time, rlmn_ans[j], std::chrono::nanoseconds)
         acc_count+=rlmn_ans[j].second-rlmn_ans[j].first+1;
         j++;
     }
+    std::cout<<"Total number of occurrences "<<acc_count<<" avg:"<<double(acc_count)/n_pats<<std::endl;
     std::cout<<"backward_search rlmn avg_time: ";
     std::cout<<acc_time/double(n_pats)<<" nanosecs/pat and "<<acc_time/double(acc_count)<<" nanosecs/occ"<<std::endl;
 
@@ -244,19 +252,20 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     j=0;
     std::vector<std::pair<uint64_t, uint64_t>> my_ans(n_pats);
     for(auto const& p : pat_list) {
-        MEASURE(csa_mydt.backward_search(p), acc_time, my_ans[j]);
+        MEASURE(csa_mydt.backward_search(p), acc_time, my_ans[j], std::chrono::nanoseconds)
         j++;
     }
     std::cout<<"backward_search "<<dt_name<<" avg_time: ";
     std::cout<<acc_time/double(n_pats)<<" nanosecs/pat and "<<acc_time/double(acc_count)<<" nanosecs/occ"<<std::endl;
 
-    size_t n_errors=0;
+    size_t n_errors=0, acc_occ=0;
     for(size_t i=0;i<pat_list.size();i++){
         if(my_ans[i].first!=rlmn_ans[i].first || my_ans[i].second!=rlmn_ans[i].second){
             //std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<my_ans[i].first<<"!="<<rlmn_ans[i].first <<" or "<<my_ans[i].second<<"!="<<rlmn_ans[i].second<<std::endl;
             n_errors++;
         }
         //assert(my_ans[i].first==rlmn_ans[i].first && my_ans[i].second==rlmn_ans[i].second);
+        acc_occ+=rlmn_ans[i].second-rlmn_ans[i].first+1;
     }
     std::cout<<"There are "<<n_errors<<"/"<<pat_list.size()<<" errors "<<std::endl;
 }
@@ -274,7 +283,7 @@ void test_access(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     double acc_time=0;
     std::vector<uint8_t> my_dt_ans(samp_size);
     for(size_t j=0;j<samples.size();j++){
-        MEASURE(my_dt[samples[j]], acc_time, my_dt_ans[j]);
+        MEASURE(my_dt[samples[j]], acc_time, my_dt_ans[j], std::chrono::nanoseconds);
     }
     std::cout<<"access "<<dt_name<<" avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
@@ -282,7 +291,7 @@ void test_access(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     acc_time=0;
     std::vector<uint8_t> wt_rlmn_ans(samp_size);
     for(size_t j=0;j<samples.size();j++){
-        MEASURE(wt_rlmn[samples[j]], acc_time, wt_rlmn_ans[j]);
+        MEASURE(wt_rlmn[samples[j]], acc_time, wt_rlmn_ans[j], std::chrono::nanoseconds);
     }
     std::cout<<"access wt_rlmn avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
@@ -309,7 +318,7 @@ void test_rank(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     double acc_time=0;
     std::vector<int64_t> my_dt_ans(samp_size);
     for(size_t j=0;j<tests.size();j++){
-        MEASURE(my_dt.rank(tests[j].first, my_dt.eff2byte(tests[j].second)), acc_time, my_dt_ans[j]);
+        MEASURE(my_dt.rank(tests[j].first, my_dt.eff2byte(tests[j].second)), acc_time, my_dt_ans[j], std::chrono::nanoseconds);
     }
     std::cout<<"rank "<<dt_name<<" avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
@@ -317,7 +326,7 @@ void test_rank(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     acc_time=0;
     std::vector<int64_t> wt_rlmn_ans(samp_size);
     for(size_t j=0;j<tests.size();j++){
-        MEASURE(wt_rlmn.rank(tests[j].first, my_dt.eff2byte(tests[j].second)), acc_time, wt_rlmn_ans[j]);
+        MEASURE(wt_rlmn.rank(tests[j].first, my_dt.eff2byte(tests[j].second)), acc_time, wt_rlmn_ans[j], std::chrono::nanoseconds);
     }
     std::cout<<"rank wt_rlmn avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
@@ -346,7 +355,7 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file, std::string d
     double acc_time=0;
     std::vector<std::pair<uint8_t, uint64_t>> my_dt_ans(samp_size);
     for(size_t j=0;j<samples.size();j++){
-        MEASURE(my_dt.inverse_select(samples[j]), acc_time, my_dt_ans[j]);
+        MEASURE(my_dt.inverse_select(samples[j]), acc_time, my_dt_ans[j], std::chrono::nanoseconds);
     }
     std::cout<<"inverse_select "<<dt_name<<" avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
@@ -354,7 +363,7 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file, std::string d
     acc_time=0;
     std::vector<std::pair<uint8_t, uint64_t>> wt_rlmn_ans(samp_size);
     for(size_t j=0;j<samples.size();j++){
-        MEASURE(wt_rlmn.inverse_select(samples[j]), acc_time, wt_rlmn_ans[j]);
+        MEASURE(wt_rlmn.inverse_select(samples[j]), acc_time, wt_rlmn_ans[j], std::chrono::nanoseconds);
     }
     std::cout<<"inverse_select wt_rlmn avg_time: ";
     std::cout<<acc_time/double(samp_size)<<" nanoseconds"<<std::endl;
@@ -374,17 +383,17 @@ void test_vlbt_bwt(std::string& input_prefix, std::string& output_prefix){
 
     std::cout<<"Testing VLBT BWT"<<std::endl;
     std::string input_bwt = input_prefix+".ebwt";
-    using bwt_type = vlbt_bwt<65536, 64, 4>;
+    using bwt_type = vlbt_bwt<4096, 64, 4>;
     bwt_type bwt_dt;
     build_rlbwt_vlb<bwt_type>(bwt_dt, input_bwt, BWT_FORMAT::GRL_BWT);
     std::string output_file = output_prefix+".vlbt_bwt";
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-    test_count(bwt_dt, input_prefix, "vlbt_bwt");
-    test_inverse_select(bwt_dt, input_prefix, "vlbt_bwt");
-    test_access(bwt_dt, input_prefix, "vlbt_bwt");
-    test_rank(bwt_dt, input_prefix, "vlbt_bwt");
+    //test_count(bwt_dt, input_prefix, "vlbt_bwt");
+    //test_inverse_select(bwt_dt, input_prefix, "vlbt_bwt");
+    //test_access(bwt_dt, input_prefix, "vlbt_bwt");
+    //test_rank(bwt_dt, input_prefix, "vlbt_bwt");
 }
 
 template<class sa_samp_type>

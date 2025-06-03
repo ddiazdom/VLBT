@@ -383,9 +383,117 @@ struct rl_node {//state of the compression
         assert(bit_pos==(c_bit_pos+elm_bits));
     }
 
-    inline void compute_ext_succ_pred_info(std::vector<uint64_t>& concat_ext_suc_pred_info,
-                                           std::vector<bool>& low_freq_syms,
-                                           std::vector<uint64_t>& bk_boundaries){
+    struct st_node_t {
+        uint64_t start;
+        uint64_t end;
+        uint64_t id;
+        bool is_leaf;
+        st_node_t(uint64_t start_, uint64_t end_, uint64_t id_, bool is_leaf_): start(start_),
+                                                                                end(end_),
+                                                                                id(id_),
+                                                                                is_leaf(is_leaf_){}
+    };
+
+    struct bk_t{
+        uint64_t start;
+        uint64_t end;
+        uint64_t left_ovp;
+        uint64_t right_ovp;
+    };
+
+
+
+    inline void new_comp_ext_succ_info(std::vector<st_node_t>& st_nodes){
+
+        std::stack<st_node_t> stack;
+        size_t k=0;
+        stack.push(st_nodes[k++]);
+        uint64_t dummy_mark = std::numeric_limits<uint64_t>::max();
+
+        size_t b=0;
+        bk_t block = {tree_offset[b], tree_offset[b+1]-1, dummy_mark, dummy_mark};
+        b++;
+
+        while(!stack.empty()){
+
+            assert(block.end>stack.top().start);
+
+            if(block.start<=stack.top().start && block.end<stack.top().end){
+                /*
+                 *    (    ) <- the tree node
+                 * ###### <- the block
+                 */
+                if(block.left_ovp==dummy_mark){
+                    block.left_ovp = stack.top().id;
+                }
+
+                //move to the next block
+                if(stack.top().is_leaf){
+                    while(block.end<stack.top().end){
+                        if(block.left_ovp==dummy_mark){
+                            block.left_ovp = stack.top().id;
+                        }
+                        //std::cout<<"("<<block.start<<", "<<block.end<<") -> "<<st_nodes[block.left_ovp].start<<", "<<st_nodes[block.left_ovp].end;
+                        //if(block.right_ovp!=dummy_mark){
+                        //    std::cout<<"  /  "<<st_nodes[block.right_ovp].start<<", "<<st_nodes[block.right_ovp].end;
+                        //}
+                        //std::cout<<""<<std::endl;
+                        block = {tree_offset[b], tree_offset[b+1]-1, dummy_mark, dummy_mark};
+                        b++;
+                    }
+                    if(block.start<=stack.top().end){
+                        continue;
+                    }
+                }
+            } else if(stack.top().start<block.start && stack.top().end<=block.end){
+                /*
+                 * (   )
+                 *   ######
+                 */
+                block.right_ovp = stack.top().id;
+            }
+
+            if(k<st_nodes.size() && st_nodes[k].start<stack.top().end){
+                stack.push(st_nodes[k++]);
+            }else{
+                stack.pop();//return to the parent
+            }
+
+            //This is a corner case that happens when the end of the block matches the end of the tree
+            /*
+             *        (    )
+             * ######
+             */
+            if(stack.top().start>block.end){
+                std::cout<<"("<<block.start<<", "<<block.end<<") -> "<<st_nodes[block.left_ovp].start<<", "<<st_nodes[block.left_ovp].end;
+                if(block.right_ovp!=dummy_mark){
+                    std::cout<<"  /  "<<st_nodes[block.right_ovp].start<<", "<<st_nodes[block.right_ovp].end;
+                }
+                std::cout<<""<<std::endl;
+                block = {tree_offset[b], tree_offset[b+1]-1, dummy_mark, dummy_mark};
+                b++;
+            }
+        }
+    }
+
+    inline void compute_ext_succ_info(std::vector<uint64_t>& concat_ext_suc_info,
+                                      std::vector<bool>& low_freq_syms,
+                                      std::vector<uint64_t>& st_ranges){
+
+
+        //TODO testing
+        std::vector<st_node_t> pruned_st_tree;
+        pruned_st_tree.reserve(st_ranges.size()+1);
+
+        uint64_t id=0;
+        pruned_st_tree.emplace_back(0, bwt_rep.tot_syms, id++, false);
+        for(size_t i=0;i<(st_ranges.size()-1);i++){
+            pruned_st_tree.emplace_back(st_ranges[i], st_ranges[i+1]-1, id++, true);
+        }
+        new_comp_ext_succ_info(pruned_st_tree);
+        //
+
+
         assert(lvl==0);
         std::vector<uint64_t> trees_extra_bits(n_children, 0);
 
@@ -396,9 +504,9 @@ struct rl_node {//state of the compression
             active_succ[s] = {0, sigma_trees[s][0]};
         }
 
-        std::cout<<"Computing ext. succ/pred info"<<std::endl;
+        std::cout<<"Computing ext. succ info"<<std::endl;
         size_t l_sym=0, r_sym=0;
-        size_t r_sa_bound = bk_boundaries[r_sym+1]-1;
+        size_t r_sa_bound = st_ranges[r_sym+1]-1;
         size_t l_tree_bound, r_tree_bound;
         int64_t max_dist=0;
 
@@ -407,12 +515,12 @@ struct rl_node {//state of the compression
             l_tree_bound = tree_offset[b];
             r_tree_bound = tree_offset[b+1]-1;
 
-            while(bk_boundaries[l_sym+1]<l_tree_bound){
+            while(st_ranges[l_sym+1]<l_tree_bound){
                 ++l_sym;
             }
 
             while(r_sa_bound<r_tree_bound){
-                r_sa_bound = bk_boundaries[++r_sym+1]-1;
+                r_sa_bound = st_ranges[++r_sym+1]-1;
             }
 
             //std::cout<<l_tree_bound<<", "<<r_tree_bound<<" -> "<<l_sa_bound<<", "<<r_sa_bound<<" "<<l_sym<<"/"<<r_sym<<std::endl;
@@ -438,16 +546,16 @@ struct rl_node {//state of the compression
                         real_dist = (tree_offset[b+tree_dist]-tree_offset[b])/b_size;
                         //if(tree_dist>max_tree_dist) max_tree_dist = tree_dist;
                         if(real_dist>max_tree_dist) max_tree_dist = real_dist;
-                        //if(tree_offset[b]==285605888){
-                        //    std::cout<<"what wea? block:"<<b<<", symbol:"<<s<<", succ_tree:"<<real_dist<<" lo guarde en:"<<concat_ext_suc_pred_info.size()<<std::endl;
-                        //}
-                        concat_ext_suc_pred_info.push_back(real_dist);
+                        /*if(tree_offset[b]==208666624){
+                            std::cout<<"what wea? block:"<<b<<", symbol:"<<s<<", succ_tree:"<<real_dist<<" lo guarde en:"<<concat_ext_suc_pred_info.size()<<std::endl;
+                        }*/
+                        concat_ext_suc_info.push_back(real_dist);
                         succ_samp++;
                     }
                 }
             }
 
-            concat_ext_suc_pred_info.push_back(max_tree_dist);
+            concat_ext_suc_info.push_back(max_tree_dist);
             if(max_tree_dist>max_dist) max_dist = max_tree_dist;
             size_t t_ext_bits = succ_samp*sym_width(max_tree_dist) + bwt_rep.sigma;
             trees_extra_bits[b] = t_ext_bits;
@@ -520,7 +628,7 @@ struct rl_node {//state of the compression
         stats.rank_overhead+=rank_bits;
     }
 
-    inline void finish_tree(std::vector<uint64_t>& bk_boundaries) {
+    inline void finish_tree(std::vector<uint64_t>& st_ranges) {
 
         assert(lvl==0);
         //round the last offset for consistency in the succ. info computation
@@ -540,7 +648,7 @@ struct rl_node {//state of the compression
 
         //compute ext succ/pred information
         std::vector<uint64_t> concat_exp_suc_pred_info;
-        compute_ext_succ_pred_info(concat_exp_suc_pred_info, low_freq_syms, bk_boundaries);
+        compute_ext_succ_info(concat_exp_suc_pred_info, low_freq_syms, st_ranges);
         //
 
         size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
@@ -1232,9 +1340,9 @@ struct tree_dt{
         bwt_rep.tot_syms = acc;
         bwt_rep.sigma = sigma;
         bwt_rep.max_freq = max_freq;
-        /*for(size_t s=0;s<sigma;s++){
-            std::cout<<s<<" "<<C[s]<<std::endl;
-        }*/
+        for(size_t s=0;s<sigma;s++){
+            std::cout<<bwt_rep.unpacked_alpha[s]<<" "<<s<<" "<<C[s]<<std::endl;
+        }
         //
 
         root = new node_type(0, bwt_type::block_size, bwt_rep, stats);

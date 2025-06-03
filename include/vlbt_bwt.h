@@ -269,6 +269,13 @@ struct vlbt_bwt {
         bool is_leaf = stream.read_bit(bit_pos++);
         bool has_symbol = stream.read_bit(bit_pos+symbol);
 
+        //TODO testing
+        /*std::cout<<stream.pop_count(bit_pos, bit_pos+node_sigma-1)<<std::endl;
+        for(size_t k=0;k<sigma;k++){
+            std::cout<<"sym:"<<k<<" present:"<<stream.read_bit(bit_pos+k)<<std::endl;
+        }*/
+        //
+
         i-= child*bk_sz;//relative position of i within the child block
 
         while(!is_leaf && has_symbol) {
