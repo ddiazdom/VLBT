@@ -383,96 +383,20 @@ struct rl_node {//state of the compression
         assert(bit_pos==(c_bit_pos+elm_bits));
     }
 
-    struct st_node_t {
-        uint64_t start=0;
-        uint64_t end=0;
-        uint64_t depth=0;
-        st_node_t()=default;
-        st_node_t(uint64_t start_, uint64_t end_, uint64_t depth_) : start(start_),
-                                                                     end(end_),
-                                                                     depth(depth_){}
+    inline void compute_tree_bounds(pruned_suffix_tree& st,
+                                    std::vector<std::pair<uint64_t, uint64_t>>& tree_bounds){
 
-        inline bool is_child(st_node_t& v) const{
-            return start<=v.start && v.end<=end;
-        }
-
-        inline bool is_sibling(st_node_t& v) const {
-            return v.depth == depth && v.start==end+1;
-        }
-
-        inline bool unrelated(st_node_t& v) const {
-            return v.depth<depth;
-        }
-
-        [[nodiscard]] inline bool intersect(uint64_t start_, uint64_t end_) const {
-            return !(end < start_ || end_ < start);
-        }
-
-        [[nodiscard]] inline bool smaller(uint64_t start_, uint64_t end_) const {
-            return end_ < start;
-        }
-
-    };
-
-    struct pruned_suffix_tree{
-        size_t k=0;
-        std::vector<st_node_t>& nodes_in_dfs;
-        std::stack<st_node_t> stack;
-
-        explicit pruned_suffix_tree(std::vector<st_node_t>& nodes_): nodes_in_dfs(nodes_){
-            stack.push(nodes_in_dfs[k++]);
-        }
-
-        [[nodiscard]] inline bool intersect(uint64_t start, uint64_t end) const {
-            if(k>=nodes_in_dfs.size()) return false;
-            return stack.top().intersect(start, end);
-        }
-
-        inline void operator++(){
-            if(k<nodes_in_dfs.size()){
-                assert(!stack.empty());
-                if(stack.top().unrelated(nodes_in_dfs[k])){
-                    stack.pop();//return to the parent
-                } else {
-                    if(stack.top().is_sibling(nodes_in_dfs[k])){
-                        stack.pop();
-                    }
-                    stack.push(nodes_in_dfs[k]);
-                    k++;
-                }
-            } else if(k==nodes_in_dfs.size()){
-                stack.pop();
-                if(stack.empty()){
-                    stack.push({std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint64_t>::max(), 0});
-                    k++;
-                }
-            }
-        }
-
-        inline st_node_t operator*() const {
-            return stack.top();
-        }
-    };
-
-    struct bk_t{
-        uint64_t start;
-        uint64_t end;
-        uint64_t lb;
-        uint64_t rb;
-    };
-
-    inline void new_comp_ext_succ_info(std::vector<st_node_t>& st_nodes,
-                                       std::vector<std::pair<uint64_t, uint64_t>>& tree_bounds){
-
-        pruned_suffix_tree st(st_nodes);
         st_node_t curr_st_node = *st, prev_st_node=*st;
         size_t b=0;
-        bk_t block = {tree_offset[b], tree_offset[b+1]-1, tree_offset[b], tree_offset[b+1]-1}, prev_block;
+        block_range_t block = {tree_offset[b], tree_offset[b+1]-1, tree_offset[b], tree_offset[b+1]-1}, prev_block{};
         tree_bounds.resize(tree_offset.size());
 
         while(b<n_children){
 
             while(curr_st_node.intersect(block.start, block.end)){
+
+                //std::cout<<"("<<curr_st_node.start<<","<<curr_st_node.end<<","<<curr_st_node.depth<<") / ("<<block.start<<" "<<block.end<<")"<<std::endl;
+
                 if(curr_st_node.start<block.lb){
                     block.lb = curr_st_node.start;
                 }
@@ -484,7 +408,8 @@ struct rl_node {//state of the compression
                 curr_st_node = *st;
             }
 
-            //std::cout<<block.start<<" "<<block.end<<" -> "<<block.lb<<" "<<block.rb<<std::endl;
+            //std::cout<<"\t("<<curr_st_node.start<<","<<curr_st_node.end<<","<<curr_st_node.depth<<") / ("<<block.start<<" "<<block.end<<")"<<std::endl;
+            //std::cout<<"\t"<<block.start<<" "<<block.end<<" -> "<<block.lb<<" "<<block.rb<<std::endl;
             tree_bounds[b].first = block.lb;
             tree_bounds[b].second = block.rb;
             prev_block = block;
@@ -517,19 +442,11 @@ struct rl_node {//state of the compression
 
     inline void compute_ext_succ_info(std::vector<uint64_t>& concat_ext_suc_info,
                                       std::vector<bool>& low_freq_syms,
-                                      std::vector<uint64_t>& st_ranges){
+                                      pruned_suffix_tree& st_nodes_in_dfs){
 
 
-        //TODO testing
         std::vector<std::pair<uint64_t, uint64_t>> tree_bounds;
-        std::vector<st_node_t> pruned_st_tree;
-        pruned_st_tree.reserve(st_ranges.size()+1);
-        pruned_st_tree.emplace_back(0, bwt_rep.tot_syms, 0);
-        for(size_t i=0;i<(st_ranges.size()-1);i++){
-            pruned_st_tree.emplace_back(st_ranges[i], st_ranges[i+1]-1, 1);
-        }
-        new_comp_ext_succ_info(pruned_st_tree, tree_bounds);
-        //
+        compute_tree_bounds(st_nodes_in_dfs, tree_bounds);
 
         assert(lvl==0);
         std::vector<uint64_t> trees_extra_bits(n_children, 0);
@@ -551,6 +468,10 @@ struct rl_node {//state of the compression
             int64_t max_tree_dist=0, real_dist;
 
             for(size_t s=0;s<bwt_rep.sigma;s++){
+
+                /*if(tree_offset[b]<=228579272 && 228579272<tree_offset[b+1] && s==69){
+                    std::cout<<"holaa "<<low_freq_syms[s]<<std::endl;
+                }*/
 
                 if(active_succ[s].second==b){
                     active_succ[s].first++;
@@ -657,16 +578,12 @@ struct rl_node {//state of the compression
         stats.rank_overhead+=rank_bits;
     }
 
-    inline void finish_tree(std::vector<uint64_t>& st_ranges) {
+    inline void finish_tree(pruned_suffix_tree& pruned_st) {
 
         assert(lvl==0);
         //round the last offset for consistency in the succ. info computation
         tree_offset[n_children]= INT_CEIL(bwt_rep.tot_syms, b_size)*b_size;
         tree_offset[n_children+1]= tree_offset[n_children];
-
-        /*for(size_t i=0;i<bwt_rep.sigma;i++){
-            std::cout<<"fake leaf symbol:"<<i<<" rank:"<<block_ranks[i]<<std::endl;
-        }*/
 
         //compute symbols with low frequency and their tree positions explicitly
         size_t bit_pos=0;
@@ -677,7 +594,7 @@ struct rl_node {//state of the compression
 
         //compute ext succ/pred information
         std::vector<uint64_t> concat_exp_suc_pred_info;
-        compute_ext_succ_info(concat_exp_suc_pred_info, low_freq_syms, st_ranges);
+        compute_ext_succ_info(concat_exp_suc_pred_info, low_freq_syms, pruned_st);
         //
 
         size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
@@ -866,7 +783,7 @@ struct rl_node {//state of the compression
         //for 2 bytes: check that the sum of 8 (or 16 for AVX) consecutive run lens is <=2^16-1
         //for 3-4 bytes: check that the sum of 4 (or 8 for AVX) consecutive run lens is <=2^32-1
         //for 4-8 bytes: check that the sum of 2 (or 4 for AVX) consecutive run lens is <=2^64-1
-        //we need to do this check to work with SIMD instructions. It it does not fit, use the next encoding that can fits them
+        //we need to do this check to work with SIMD instructions. If it does not fit, use the next encoding that can fits them
 
         assert(node_n_bits==0);
         assert(lvl>0);
@@ -1321,15 +1238,14 @@ struct tree_dt{
     bwt_stat_collector<bwt_type> stats;
     tmp_workspace twd;
     bwt_type& bwt_rep;
-    std::vector<uint64_t> C;
     node_type *root= nullptr;
 
     explicit tree_dt(const std::string& tmp_dir, bwt_type& _bwt_rep): twd(tmp_dir),
-                                                                      bwt_rep(_bwt_rep),
-                                                                      C(256, 0){}
+                                                                      bwt_rep(_bwt_rep){}
 
     void build_from_grlbwt(std::string& bwt_file){
 
+        std::vector<uint64_t> C(256, 0);
         bwt_buff_reader bwt_buff(bwt_file);
         size_t n_runs = bwt_buff.size();
         bwt_rep.orig_runs = n_runs;
@@ -1396,7 +1312,13 @@ struct tree_dt{
 
         std::ifstream ifs(twd.get_file("trees"), std::ios::binary);
         root->ifs = &ifs;
-        root->finish_tree(C);
+
+        size_t n_iter = 2;
+
+        std::vector<st_node_t> st_nodes_in_dfs = compute_nodes_of_pruned_st(bwt_buff, C, bwt_rep.packed_alpha, n_iter);
+        pruned_suffix_tree pruned_st(st_nodes_in_dfs);
+
+        root->finish_tree(pruned_st);
         ifs.close();
         //
     }

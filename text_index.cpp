@@ -208,12 +208,11 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     fm_index<bwt_type> csa_mydt(my_dt, C, my_dt.packed_alpha, my_dt.unpacked_alpha);
 
     //TODO checking for errors
-    //std::string pattern = "itle=Einstein's Clocks: The Qu";
+    //std::string pattern = "ry:Cosmologists|Einstein, Albe";
     //csa_rlmn.backward_search(pattern);
     //csa_mydt.backward_search(pattern);
-
-    //std::cout<<wt_rlmn.rank(446419665, 'Q')<<std::endl;
-    //std::cout<<my_dt.rank(446419665, 'Q')<<std::endl;
+    //std::cout<<my_dt.rank(228579272, 'b')<<std::endl;
+    //std::cout<<wt_rlmn.rank(228579272, 'b')<<std::endl;
     //exit(1);
     //
 

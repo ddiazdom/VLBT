@@ -179,7 +179,7 @@ struct vlbt_bwt {
         bit_pos = (header_bytes+p)*8;
     }
 
-    inline size_t find_lf_succ(size_t i, uint8_t symbol){
+    inline size_t find_low_freq_succ(size_t i, uint8_t symbol){
 
         symbol = stream.pop_count(0, symbol)-1;//this works because stream[symbol] is true
         size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
@@ -233,8 +233,10 @@ struct vlbt_bwt {
         bool succ_found = stream.read_bit(bit_pos+symbol);
         size_t succ_bit_pos=0xffffffffffffffff;
         if(!succ_found) {
+
             succ_child = child;
             size_t steps = 0;
+
             while(!succ_found && steps < 5) {
                 succ_bit_pos = find_next(++succ_child);
                 skip_ext_succ_info(succ_bit_pos);
@@ -242,8 +244,8 @@ struct vlbt_bwt {
                 steps++;
             }
 
-            if(!succ_found && stream.read_bit(symbol)) {//check if the node is low-freq
-                succ_bit_pos = find_lf_succ(i, symbol);
+            if(!succ_found && stream.read_bit(symbol)) {//last opportunity: check if the node is low-freq
+                succ_bit_pos = find_low_freq_succ(i, symbol);
                 skip_ext_succ_info(succ_bit_pos);
                 succ_found = true;
                 //assert(stream.read_bit(succ_bit_pos+1+symbol));
