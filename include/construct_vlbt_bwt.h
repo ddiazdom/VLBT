@@ -384,95 +384,135 @@ struct rl_node {//state of the compression
     }
 
     struct st_node_t {
-        uint64_t start;
-        uint64_t end;
-        uint64_t id;
-        bool is_leaf;
-        st_node_t(uint64_t start_, uint64_t end_, uint64_t id_, bool is_leaf_): start(start_),
-                                                                                end(end_),
-                                                                                id(id_),
-                                                                                is_leaf(is_leaf_){}
+        uint64_t start=0;
+        uint64_t end=0;
+        uint64_t depth=0;
+        st_node_t()=default;
+        st_node_t(uint64_t start_, uint64_t end_, uint64_t depth_) : start(start_),
+                                                                     end(end_),
+                                                                     depth(depth_){}
+
+        inline bool is_child(st_node_t& v) const{
+            return start<=v.start && v.end<=end;
+        }
+
+        inline bool is_sibling(st_node_t& v) const {
+            return v.depth == depth && v.start==end+1;
+        }
+
+        inline bool unrelated(st_node_t& v) const {
+            return v.depth<depth;
+        }
+
+        [[nodiscard]] inline bool intersect(uint64_t start_, uint64_t end_) const {
+            return !(end < start_ || end_ < start);
+        }
+
+        [[nodiscard]] inline bool smaller(uint64_t start_, uint64_t end_) const {
+            return end_ < start;
+        }
+
+    };
+
+    struct pruned_suffix_tree{
+        size_t k=0;
+        std::vector<st_node_t>& nodes_in_dfs;
+        std::stack<st_node_t> stack;
+
+        explicit pruned_suffix_tree(std::vector<st_node_t>& nodes_): nodes_in_dfs(nodes_){
+            stack.push(nodes_in_dfs[k++]);
+        }
+
+        [[nodiscard]] inline bool intersect(uint64_t start, uint64_t end) const {
+            if(k>=nodes_in_dfs.size()) return false;
+            return stack.top().intersect(start, end);
+        }
+
+        inline void operator++(){
+            if(k<nodes_in_dfs.size()){
+                assert(!stack.empty());
+                if(stack.top().unrelated(nodes_in_dfs[k])){
+                    stack.pop();//return to the parent
+                } else {
+                    if(stack.top().is_sibling(nodes_in_dfs[k])){
+                        stack.pop();
+                    }
+                    stack.push(nodes_in_dfs[k]);
+                    k++;
+                }
+            } else if(k==nodes_in_dfs.size()){
+                stack.pop();
+                if(stack.empty()){
+                    stack.push({std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint64_t>::max(), 0});
+                    k++;
+                }
+            }
+        }
+
+        inline st_node_t operator*() const {
+            return stack.top();
+        }
     };
 
     struct bk_t{
         uint64_t start;
         uint64_t end;
-        uint64_t left_ovp;
-        uint64_t right_ovp;
+        uint64_t lb;
+        uint64_t rb;
     };
 
+    inline void new_comp_ext_succ_info(std::vector<st_node_t>& st_nodes,
+                                       std::vector<std::pair<uint64_t, uint64_t>>& tree_bounds){
 
-
-    inline void new_comp_ext_succ_info(std::vector<st_node_t>& st_nodes){
-
-        std::stack<st_node_t> stack;
-        size_t k=0;
-        stack.push(st_nodes[k++]);
-        uint64_t dummy_mark = std::numeric_limits<uint64_t>::max();
-
+        pruned_suffix_tree st(st_nodes);
+        st_node_t curr_st_node = *st, prev_st_node=*st;
         size_t b=0;
-        bk_t block = {tree_offset[b], tree_offset[b+1]-1, dummy_mark, dummy_mark};
-        b++;
+        bk_t block = {tree_offset[b], tree_offset[b+1]-1, tree_offset[b], tree_offset[b+1]-1}, prev_block;
+        tree_bounds.resize(tree_offset.size());
 
-        while(!stack.empty()){
+        while(b<n_children){
 
-            assert(block.end>stack.top().start);
-
-            if(block.start<=stack.top().start && block.end<stack.top().end){
-                /*
-                 *    (    ) <- the tree node
-                 * ###### <- the block
-                 */
-                if(block.left_ovp==dummy_mark){
-                    block.left_ovp = stack.top().id;
+            while(curr_st_node.intersect(block.start, block.end)){
+                if(curr_st_node.start<block.lb){
+                    block.lb = curr_st_node.start;
                 }
-
-                //move to the next block
-                if(stack.top().is_leaf){
-                    while(block.end<stack.top().end){
-                        if(block.left_ovp==dummy_mark){
-                            block.left_ovp = stack.top().id;
-                        }
-                        //std::cout<<"("<<block.start<<", "<<block.end<<") -> "<<st_nodes[block.left_ovp].start<<", "<<st_nodes[block.left_ovp].end;
-                        //if(block.right_ovp!=dummy_mark){
-                        //    std::cout<<"  /  "<<st_nodes[block.right_ovp].start<<", "<<st_nodes[block.right_ovp].end;
-                        //}
-                        //std::cout<<""<<std::endl;
-                        block = {tree_offset[b], tree_offset[b+1]-1, dummy_mark, dummy_mark};
-                        b++;
-                    }
-                    if(block.start<=stack.top().end){
-                        continue;
-                    }
+                if(curr_st_node.end>block.rb){
+                    block.rb = curr_st_node.end;
                 }
-            } else if(stack.top().start<block.start && stack.top().end<=block.end){
-                /*
-                 * (   )
-                 *   ######
-                 */
-                block.right_ovp = stack.top().id;
+                prev_st_node = curr_st_node;
+                ++st;
+                curr_st_node = *st;
             }
 
-            if(k<st_nodes.size() && st_nodes[k].start<stack.top().end){
-                stack.push(st_nodes[k++]);
-            }else{
-                stack.pop();//return to the parent
-            }
-
-            //This is a corner case that happens when the end of the block matches the end of the tree
-            /*
-             *        (    )
-             * ######
-             */
-            if(stack.top().start>block.end){
-                std::cout<<"("<<block.start<<", "<<block.end<<") -> "<<st_nodes[block.left_ovp].start<<", "<<st_nodes[block.left_ovp].end;
-                if(block.right_ovp!=dummy_mark){
-                    std::cout<<"  /  "<<st_nodes[block.right_ovp].start<<", "<<st_nodes[block.right_ovp].end;
+            //std::cout<<block.start<<" "<<block.end<<" -> "<<block.lb<<" "<<block.rb<<std::endl;
+            tree_bounds[b].first = block.lb;
+            tree_bounds[b].second = block.rb;
+            prev_block = block;
+            b++;
+            block = {tree_offset[b], tree_offset[b+1]-1, tree_offset[b], tree_offset[b+1]-1};
+            while(prev_st_node.intersect(block.start, block.end)){
+                if(prev_st_node.start<block.lb){
+                    block.lb = prev_st_node.start;
                 }
-                std::cout<<""<<std::endl;
-                block = {tree_offset[b], tree_offset[b+1]-1, dummy_mark, dummy_mark};
+                if(prev_st_node.end>block.rb){
+                    block.rb = prev_st_node.end;
+                }
+                //std::cout<<block.start<<" "<<block.end<<" -> "<<block.lb<<" "<<block.rb<<std::endl;
+                tree_bounds[b].first = block.lb;
+                tree_bounds[b].second = block.rb;
+                prev_block = block;
                 b++;
+                block = {tree_offset[b], tree_offset[b+1]-1, tree_offset[b], tree_offset[b+1]-1};
             }
+
+            if(curr_st_node.intersect(prev_block.start, prev_block.end)){
+                b--;
+                block = prev_block;
+            }
+        }
+
+        for(size_t j=0;j<n_children;j++){
+            std::cout<<tree_offset[j]<<"-"<<tree_offset[j+1]-1<<" -> "<<tree_bounds[j].first<<" / "<<tree_bounds[j].second<<std::endl;
         }
     }
 
@@ -482,17 +522,15 @@ struct rl_node {//state of the compression
 
 
         //TODO testing
+        std::vector<std::pair<uint64_t, uint64_t>> tree_bounds;
         std::vector<st_node_t> pruned_st_tree;
         pruned_st_tree.reserve(st_ranges.size()+1);
-
-        uint64_t id=0;
-        pruned_st_tree.emplace_back(0, bwt_rep.tot_syms, id++, false);
+        pruned_st_tree.emplace_back(0, bwt_rep.tot_syms, 0);
         for(size_t i=0;i<(st_ranges.size()-1);i++){
-            pruned_st_tree.emplace_back(st_ranges[i], st_ranges[i+1]-1, id++, true);
+            pruned_st_tree.emplace_back(st_ranges[i], st_ranges[i+1]-1, 1);
         }
-        new_comp_ext_succ_info(pruned_st_tree);
+        new_comp_ext_succ_info(pruned_st_tree, tree_bounds);
         //
-
 
         assert(lvl==0);
         std::vector<uint64_t> trees_extra_bits(n_children, 0);
