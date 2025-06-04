@@ -208,12 +208,12 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     fm_index<bwt_type> csa_mydt(my_dt, C, my_dt.packed_alpha, my_dt.unpacked_alpha);
 
     //TODO checking for errors
-    //std::string pattern = "598ei";
-    //std::cout<<wt_rlmn.rank(208726951, '8')<<std::endl;
-    //std::cout<<my_dt.rank(208726951, '8')<<std::endl;
-
+    //std::string pattern = "itle=Einstein's Clocks: The Qu";
     //csa_rlmn.backward_search(pattern);
     //csa_mydt.backward_search(pattern);
+
+    //std::cout<<wt_rlmn.rank(446419665, 'Q')<<std::endl;
+    //std::cout<<my_dt.rank(446419665, 'Q')<<std::endl;
     //exit(1);
     //
 
@@ -261,7 +261,7 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     size_t n_errors=0, acc_occ=0;
     for(size_t i=0;i<pat_list.size();i++){
         if(my_ans[i].first!=rlmn_ans[i].first || my_ans[i].second!=rlmn_ans[i].second){
-            //std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<my_ans[i].first<<"!="<<rlmn_ans[i].first <<" or "<<my_ans[i].second<<"!="<<rlmn_ans[i].second<<std::endl;
+            std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<my_ans[i].first<<"!="<<rlmn_ans[i].first <<" or "<<my_ans[i].second<<"!="<<rlmn_ans[i].second<<std::endl;
             n_errors++;
         }
         //assert(my_ans[i].first==rlmn_ans[i].first && my_ans[i].second==rlmn_ans[i].second);
@@ -390,7 +390,7 @@ void test_vlbt_bwt(std::string& input_prefix, std::string& output_prefix){
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-    //test_count(bwt_dt, input_prefix, "vlbt_bwt");
+    test_count(bwt_dt, input_prefix, "vlbt_bwt");
     //test_inverse_select(bwt_dt, input_prefix, "vlbt_bwt");
     //test_access(bwt_dt, input_prefix, "vlbt_bwt");
     //test_rank(bwt_dt, input_prefix, "vlbt_bwt");

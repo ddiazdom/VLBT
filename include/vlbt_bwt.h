@@ -245,6 +245,7 @@ struct vlbt_bwt {
             if(!succ_found && stream.read_bit(symbol)) {//check if the node is low-freq
                 succ_bit_pos = find_lf_succ(i, symbol);
                 skip_ext_succ_info(succ_bit_pos);
+                succ_found = true;
                 //assert(stream.read_bit(succ_bit_pos+1+symbol));
             }
         } else {

@@ -510,10 +510,9 @@ struct rl_node {//state of the compression
                 block = prev_block;
             }
         }
-
-        for(size_t j=0;j<n_children;j++){
+        /*for(size_t j=0;j<n_children;j++){
             std::cout<<tree_offset[j]<<"-"<<tree_offset[j+1]-1<<" -> "<<tree_bounds[j].first<<" / "<<tree_bounds[j].second<<std::endl;
-        }
+        }*/
     }
 
     inline void compute_ext_succ_info(std::vector<uint64_t>& concat_ext_suc_info,
@@ -536,6 +535,7 @@ struct rl_node {//state of the compression
         std::vector<uint64_t> trees_extra_bits(n_children, 0);
 
         //compute symbols that are in few trees
+        std::vector<std::pair<uint64_t, int64_t>> active_pred(bwt_rep.sigma, {0, -1});
         std::vector<std::pair<uint64_t, int64_t>> active_succ(bwt_rep.sigma, {0, 0});
         for(size_t s=0;s<bwt_rep.sigma;s++){
             sigma_trees[s].push_back(n_children);
@@ -543,25 +543,10 @@ struct rl_node {//state of the compression
         }
 
         std::cout<<"Computing ext. succ info"<<std::endl;
-        size_t l_sym=0, r_sym=0;
-        size_t r_sa_bound = st_ranges[r_sym+1]-1;
-        size_t l_tree_bound, r_tree_bound;
         int64_t max_dist=0;
 
         for(int64_t b=0;b<n_children;b++){
 
-            l_tree_bound = tree_offset[b];
-            r_tree_bound = tree_offset[b+1]-1;
-
-            while(st_ranges[l_sym+1]<l_tree_bound){
-                ++l_sym;
-            }
-
-            while(r_sa_bound<r_tree_bound){
-                r_sa_bound = st_ranges[++r_sym+1]-1;
-            }
-
-            //std::cout<<l_tree_bound<<", "<<r_tree_bound<<" -> "<<l_sa_bound<<", "<<r_sa_bound<<" "<<l_sym<<"/"<<r_sym<<std::endl;
             size_t succ_samp=0;
             int64_t max_tree_dist=0, real_dist;
 
@@ -575,21 +560,27 @@ struct rl_node {//state of the compression
 
                 size_t sym_pos =(b*bwt_rep.sigma)+s;
                 ext_succ_info[sym_pos] = ext_succ_info[sym_pos] && !low_freq_syms[s];
+
                 if(ext_succ_info[sym_pos]){
+
                     int64_t tree_dist = active_succ[s].second-b;
                     assert(tree_dist>0 && tree_dist<n_children);
-                    bool out_of_range = tree_offset[active_succ[s].second]>r_sa_bound;
+
+                    bool out_of_range = tree_offset[active_succ[s].second] > tree_bounds[b].second &&
+                                       (active_pred[s].second<0 || (tree_offset[active_pred[s].second+1]-1)<tree_bounds[b].first);
+
                     ext_succ_info[sym_pos] = tree_dist>5 && !out_of_range;
                     if(ext_succ_info[sym_pos]){
                         real_dist = (tree_offset[b+tree_dist]-tree_offset[b])/b_size;
-                        //if(tree_dist>max_tree_dist) max_tree_dist = tree_dist;
                         if(real_dist>max_tree_dist) max_tree_dist = real_dist;
-                        /*if(tree_offset[b]==208666624){
-                            std::cout<<"what wea? block:"<<b<<", symbol:"<<s<<", succ_tree:"<<real_dist<<" lo guarde en:"<<concat_ext_suc_pred_info.size()<<std::endl;
-                        }*/
                         concat_ext_suc_info.push_back(real_dist);
                         succ_samp++;
                     }
+                }
+
+                if(sigma_trees[s][active_pred[s].first]==b){
+                    active_pred[s].first++;
+                    active_pred[s].second = b;
                 }
             }
 
