@@ -87,5 +87,7 @@ target_link_libraries(get_r_sa_samp LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
 target_include_directories(get_r_sa_samp PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
 target_compile_options(get_r_sa_samp PUBLIC -O3 ${SIMD_FLAGS})
 
-add_executable(gen_patterns scripts/genpatterns.c)
-target_compile_options(gen_patterns PUBLIC -O3)
+add_executable(gen_patterns scripts/genpatterns.cpp)
+target_compile_options(gen_patterns PUBLIC
+        -O3
+)

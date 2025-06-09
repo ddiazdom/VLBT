@@ -204,20 +204,22 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string dt_name){
     }
     C[wt_rlmn.sigma] = acc;
 
-    fm_index<sdsl::wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.packed_alpha, my_dt.unpacked_alpha);
-    fm_index<bwt_type> csa_mydt(my_dt, C, my_dt.packed_alpha, my_dt.unpacked_alpha);
+    fm_index<sdsl::wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
+    fm_index<bwt_type> csa_mydt(my_dt, C, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
 
     //TODO checking for errors
-    //std::string pattern = "ry:Cosmologists|Einstein, Albe";
+    std::string pattern = "wart ";
     //csa_rlmn.backward_search(pattern);
-    //csa_mydt.backward_search(pattern);
+    csa_mydt.backward_search(pattern);
+    return;
+    //return;
     //std::cout<<my_dt.rank(228579272, 'b')<<std::endl;
     //std::cout<<wt_rlmn.rank(228579272, 'b')<<std::endl;
     //exit(1);
     //
 
     //std::string pat_file = input_file+".pats";
-    std::string pat_file = "ein_30len_3000pat.txt";
+    std::string pat_file = input_file+".pats";
     std::ifstream ifs(pat_file);
     std::string header;
     std::getline(ifs, header);
@@ -382,8 +384,9 @@ void test_vlbt_bwt(std::string& input_prefix, std::string& output_prefix){
 
     std::cout<<"Testing VLBT BWT"<<std::endl;
     std::string input_bwt = input_prefix+".ebwt";
-    using bwt_type = vlbt_bwt<4096, 64, 4>;
+    using bwt_type = vlbt_bwt<65536, 64, 4>;
     bwt_type bwt_dt;
+
     build_rlbwt_vlb<bwt_type>(bwt_dt, input_bwt, BWT_FORMAT::GRL_BWT);
     std::string output_file = output_prefix+".vlbt_bwt";
     size_t written_bytes = store_to_file(output_file, bwt_dt);
@@ -398,27 +401,26 @@ void test_vlbt_bwt(std::string& input_prefix, std::string& output_prefix){
 template<class sa_samp_type>
 void test_vlbt_bwt_th(std::string& input_prefix, size_t subsamp_val, std::string& output_prefix){
 
-    std::string bwt_file = input_prefix+".rl_bwt";
+    std::cout<<"Testing VLBT BWT with toeholds"<<std::endl;
+    std::string bwt_file = input_prefix+".ebwt";
+    using bwt_th_type = vlbt_bwt_th<65536, 64, 4>;
+    bwt_th_type bwt_dt;
+
     std::string samp_sa_file = input_prefix+".sa_samples";
     std::string str_ranges_file = input_prefix+".str_ranges";
     std::string out_ssamp_heads_file = output_prefix+".ssamp_heads";
     std::string out_ssamp_tails_file = output_prefix+".ssamp_tails";
+    subsample_sa_samples<sa_samp_type>(samp_sa_file, str_ranges_file, subsamp_val, out_ssamp_heads_file, out_ssamp_tails_file);
 
-    subsample_sa_samples<sa_samp_type>(samp_sa_file, str_ranges_file, subsamp_val,
-                                       out_ssamp_heads_file, out_ssamp_tails_file);
-
-    using bwt_th_type = vlbt_bwt_th<65536, 64, 4>;
-    bwt_th_type bwt_dt;
     build_vlbt_bwt_th<bwt_th_type, sa_samp_type>(bwt_dt, bwt_file, BWT_FORMAT::GRL_BWT, out_ssamp_heads_file);
-
     std::string output_file = output_prefix+".vlbt_bwt_th";
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 
-    //test_count(bwt_dt, output_prefix);
-    test_inverse_select(bwt_dt, output_prefix, "vlbt_bwt_th");
-    test_access(bwt_dt, output_prefix, "vlbt_bwt_th");
-    test_rank(bwt_dt, output_prefix, "vlbt_bwt_th");
+    test_count(bwt_dt, input_prefix, "vlbt_bwt_th");
+    //test_inverse_select(bwt_dt, output_prefix, "vlbt_bwt_th");
+    //test_access(bwt_dt, output_prefix, "vlbt_bwt_th");
+    //test_rank(bwt_dt, output_prefix, "vlbt_bwt_th");
 }
 
 template<class size_type>
@@ -442,6 +444,7 @@ void test_phi(std::string& input_prefix, size_t ssamp_val, std::string& output_p
 
 template<class size_type>
 void test_vlbt_sr_index(std::string& input_prefix, size_t ssamp_val, std::string& output_prefix){
+
     using bwt_th_type = vlbt_bwt_th<65536, 64, 4>;
     using phi_type = vlbt_phi<65536, 64, 4>;
     using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
@@ -452,10 +455,10 @@ void test_vlbt_sr_index(std::string& input_prefix, size_t ssamp_val, std::string
     size_t written_bytes = store_to_file(output_sr_index_file, sr_index);
     std::cout<<"Final sr-index uses "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps)"<<std::endl;
 
-    test_count(sr_index.bwt_with_th, input_prefix, "sr_index");
-    test_inverse_select(sr_index.bwt_with_th, input_prefix, "sr_index");
-    test_rank(sr_index.bwt_with_th, input_prefix, "sr_index");
-    test_access(sr_index.bwt_with_th, input_prefix, "sr_index");
+    test_count(sr_index, input_prefix, "sr_index");
+    //test_inverse_select(sr_index.bwt_with_th, input_prefix, "sr_index");
+    //test_rank(sr_index.bwt_with_th, input_prefix, "sr_index");
+    //test_access(sr_index.bwt_with_th, input_prefix, "sr_index");
 }
 
 int main(int argc, char** argv){
@@ -480,9 +483,9 @@ int main(int argc, char** argv){
         TESTED_DTS
     }
 
-    //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    //test_vlbt_bwt(input_prefix, output_prefix);
-    //test_vlbt_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
-    //test_vlbt_sr_index<uint64_t>(input_prefix, 4, output_prefix);
     test_vlbt_bwt(input_prefix, output_prefix);
+    //test_vlbt_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
+    //test_phi<uint64_t>(input_prefix, 4, output_prefix);
+    //test_vlbt_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    //test_vlbt_bwt(input_prefix, output_prefix);
 }

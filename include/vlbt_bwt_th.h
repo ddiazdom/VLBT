@@ -106,6 +106,14 @@ struct vlbt_bwt_th {
         stream.load(ifs);
     }
 
+    const std::vector<uint8_t>& get_packed_alpha(){
+        return packed_alpha;
+    }
+
+    const std::vector<uint8_t>& get_unpacked_alpha(){
+        return unpacked_alpha;
+    }
+
     inline size_t find_prev(uint64_t& child) const {
         //get the effective block where i lies and its byte offset within the stream
         //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
@@ -152,7 +160,7 @@ struct vlbt_bwt_th {
         bit_pos = (header_bytes+p)*8;
     }
 
-    inline size_t find_lf_succ(size_t i, uint8_t symbol){
+    inline size_t find_low_freq_succ(size_t i, uint8_t symbol) const {
 
         symbol = stream.pop_count(0, symbol)-1;//this works because stream[symbol] is true
         size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
@@ -183,7 +191,7 @@ struct vlbt_bwt_th {
         return find_next(child);
     }
 
-    inline int64_t rank(size_t i, uint8_t symbol){
+    [[nodiscard]] inline int64_t rank(size_t i, uint8_t symbol) const {
 
         symbol = packed_alpha[symbol];
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.
@@ -216,8 +224,9 @@ struct vlbt_bwt_th {
             }
 
             if(!succ_found && stream.read_bit(symbol)) {//check if the node is low-freq
-                succ_bit_pos = find_lf_succ(i, symbol);
+                succ_bit_pos = find_low_freq_succ(i, symbol);
                 skip_ext_succ_info(succ_bit_pos);
+                succ_found = true;
                 //assert(stream.read_bit(succ_bit_pos+1+symbol));
             }
         } else {

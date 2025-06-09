@@ -29,10 +29,27 @@ struct vlbt_sr_index{
     }
 
     inline uint64_t locate(std::string& pattern) const {
+
     }
 
     [[nodiscard]] inline uint64_t size() const {
         return bwt_with_th.size();
+    }
+
+    [[nodiscard]] inline int64_t rank(size_t i, uint8_t symbol) const {
+        return bwt_with_th.rank(i, symbol);
+    }
+
+    [[nodiscard]] inline uint8_t eff2byte(uint8_t c) const {
+        return bwt_with_th.eff2byte(c);
+    }
+
+    const std::vector<uint8_t>& get_packed_alpha(){
+        return bwt_with_th.packed_alpha;
+    }
+
+    const std::vector<uint8_t>& get_unpacked_alpha(){
+        return bwt_with_th.unpacked_alpha;
     }
 
     size_t serialize(std::ostream & ofs) const {

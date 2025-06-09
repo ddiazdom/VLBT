@@ -215,7 +215,7 @@ std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, std::vec
         for(size_t j=0;j<st_nodes_in_dfs[d].size();j++){
             st_nodes_in_dfs[0].push_back(st_nodes_in_dfs[d][j]);
         }
-        //destroy_vector(st_nodes_in_dfs[d]);
+        destroy_vector(st_nodes_in_dfs[d]);
     }
 
     std::sort(st_nodes_in_dfs[0].begin(), st_nodes_in_dfs[0].end(), [](auto const& a, auto const& b){
@@ -225,9 +225,20 @@ std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, std::vec
         return a.start<b.start;
     });
 
-    for(size_t j=0; j<200; j++){
-        std::cout<<j<<" "<<st_nodes_in_dfs[0][j].start<<" "<<st_nodes_in_dfs[0][j].end<<" "<<st_nodes_in_dfs[0][j].depth<<std::endl;
+    //std::cout<<"Size before "<<st_nodes_in_dfs[0].size()<<std::endl;
+    size_t k=0;
+    for(size_t j=1;j<st_nodes_in_dfs[0].size();j++){
+        if(st_nodes_in_dfs[0][j].start!=st_nodes_in_dfs[0][k].start ||
+           st_nodes_in_dfs[0][j].end!=st_nodes_in_dfs[0][k].end){
+            st_nodes_in_dfs[0][++k] = st_nodes_in_dfs[0][j];
+        }
     }
+    st_nodes_in_dfs[0].resize(k);
+    st_nodes_in_dfs[0].shrink_to_fit();
+    //std::cout<<"Size after "<<st_nodes_in_dfs[0].size()<<std::endl;
+    //for(size_t j=0; j<200; j++){
+    //    std::cout<<j<<" "<<st_nodes_in_dfs[0][j].start<<" "<<st_nodes_in_dfs[0][j].end<<" "<<st_nodes_in_dfs[0][j].depth<<std::endl;
+    //}
     return st_nodes_in_dfs[0];
 }
 

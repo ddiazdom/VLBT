@@ -99,6 +99,14 @@ struct vlbt_bwt {
         assert(lg2==floor(lg2));
     }
 
+    const std::vector<uint8_t>& get_packed_alpha(){
+        return packed_alpha;
+    }
+
+    const std::vector<uint8_t>& get_unpacked_alpha(){
+        return unpacked_alpha;
+    }
+
     size_t serialize(std::ostream & ofs) const {
         size_t written_bytes = 0;
         written_bytes += serialize_elm(ofs, tot_syms);

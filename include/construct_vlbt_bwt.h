@@ -435,15 +435,11 @@ struct rl_node {//state of the compression
                 block = prev_block;
             }
         }
-        /*for(size_t j=0;j<n_children;j++){
-            std::cout<<tree_offset[j]<<"-"<<tree_offset[j+1]-1<<" -> "<<tree_bounds[j].first<<" / "<<tree_bounds[j].second<<std::endl;
-        }*/
     }
 
     inline void compute_ext_succ_info(std::vector<uint64_t>& concat_ext_suc_info,
                                       std::vector<bool>& low_freq_syms,
                                       pruned_suffix_tree& st_nodes_in_dfs){
-
 
         std::vector<std::pair<uint64_t, uint64_t>> tree_bounds;
         compute_tree_bounds(st_nodes_in_dfs, tree_bounds);
@@ -468,10 +464,6 @@ struct rl_node {//state of the compression
             int64_t max_tree_dist=0, real_dist;
 
             for(size_t s=0;s<bwt_rep.sigma;s++){
-
-                /*if(tree_offset[b]<=228579272 && 228579272<tree_offset[b+1] && s==69){
-                    std::cout<<"holaa "<<low_freq_syms[s]<<std::endl;
-                }*/
 
                 if(active_succ[s].second==b){
                     active_succ[s].first++;
@@ -627,10 +619,6 @@ struct rl_node {//state of the compression
 
             assert(aligned<8>(bit_pos));
             tree_new_byte_pos = (bit_pos-header_bits)/8;
-
-            /*if(tree_offset[b]==285605888){
-                std::cout<<"This is the bit pos where I start to write: "<<bit_pos<<std::endl;
-            }*/
 
             //add the ext successor information
             s_trees=0;
@@ -1285,14 +1273,14 @@ struct tree_dt{
         bwt_rep.tot_syms = acc;
         bwt_rep.sigma = sigma;
         bwt_rep.max_freq = max_freq;
-        for(size_t s=0;s<sigma;s++){
-            std::cout<<bwt_rep.unpacked_alpha[s]<<" "<<s<<" "<<C[s]<<std::endl;
-        }
+        //for(size_t s=0;s<sigma;s++){
+        //    std::cout<<bwt_rep.unpacked_alpha[s]<<" "<<s<<" "<<C[s]<<std::endl;
+        //}
         //
 
         root = new node_type(0, bwt_type::block_size, bwt_rep, stats);
-        std::ofstream ofs(twd.get_file("trees"), std::ios::binary);
-        root->ofs = &ofs;
+        std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
+        root->ofs = &trees_ofs;
 
         node_type *current = root;
         size_t b_size=bwt_type::block_size/bwt_type::scale_factor;
@@ -1308,18 +1296,17 @@ struct tree_dt{
             root->process_run(bwt_rep.packed_alpha[sym], len);
         }
         root->finish_run_scan();
-        ofs.close();
+        trees_ofs.close();
 
-        std::ifstream ifs(twd.get_file("trees"), std::ios::binary);
-        root->ifs = &ifs;
+        std::ifstream trees_ifs(twd.get_file("trees"), std::ios::binary);
+        root->ifs = &trees_ifs;
 
         size_t n_iter = 2;
-
         std::vector<st_node_t> st_nodes_in_dfs = compute_nodes_of_pruned_st(bwt_buff, C, bwt_rep.packed_alpha, n_iter);
         pruned_suffix_tree pruned_st(st_nodes_in_dfs);
 
         root->finish_tree(pruned_st);
-        ifs.close();
+        trees_ifs.close();
         //
     }
 

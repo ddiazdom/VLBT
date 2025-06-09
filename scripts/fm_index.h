@@ -12,17 +12,17 @@ struct fm_index{
 
     bwt_type& bwt;
     std::vector<uint64_t> C;
-    std::vector<uint8_t> byte2comp;
-    std::vector<uint8_t> comp2byte;
+    const std::vector<uint8_t>& byte2comp;
+    const std::vector<uint8_t>& comp2byte;
     uint8_t dummy=0;
 
     explicit fm_index(bwt_type& bwt_,
                       std::vector<uint64_t>& C_,
-                      std::vector<uint8_t>& byte2comp_,
-                      std::vector<uint8_t>& comp2byte_): bwt(bwt_),
-                                                        C(C_),
-                                                        byte2comp(byte2comp_),
-                                                        comp2byte(comp2byte_){}
+                      const std::vector<uint8_t>& byte2comp_,
+                      const std::vector<uint8_t>& comp2byte_): bwt(bwt_),
+                                                               C(C_),
+                                                               byte2comp(byte2comp_),
+                                                               comp2byte(comp2byte_){}
 
     [[nodiscard]] size_t size() const {
         return bwt.size();
@@ -51,7 +51,7 @@ struct fm_index{
         uint8_t cc;
         while(j-->0 && l<=r){
             cc = byte2comp[uint8_t(pat[j])];
-            //std::cout<<l<<" "<<r<<" "<<pat[j]<<" ? "<<bwt.rank(r+1, pat[j])<<" "<<C[cc]<<" "<<int(cc)<<std::endl;
+            std::cout<<l<<" "<<r<<" "<<pat[j]<<" ? "<<bwt.rank(r+1, pat[j])<<" "<<C[cc]<<" "<<int(cc)<<std::endl;
             l = C[cc] + bwt.rank(l, pat[j]); // count c in bwt[0..l-1]
             r = C[cc] + bwt.rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
             //assert(l<bwt.size() && r<bwt.size());
