@@ -438,7 +438,7 @@ struct bitstream{
     }
 
     //from the SDSL
-    [[nodiscard]] inline uint32_t select64_scalar(uint64_t x, uint32_t i) const {
+    [[nodiscard]] static inline uint32_t select64_scalar(uint64_t x, uint32_t i) {
         uint64_t s = x, b;  // s = sum
         s = s-((s>>1) & 0x5555555555555555ULL);
         s = (s & 0x3333333333333333ULL) + ((s >> 2) & 0x3333333333333333ULL);
@@ -472,7 +472,7 @@ struct bitstream{
     }
 
     //from the SLDSL
-    [[nodiscard]] inline uint32_t select64(uint64_t x, size_t i) const {
+    [[nodiscard]] static inline uint32_t select64(uint64_t x, size_t i) {
 #ifdef __BMI2__
         // index i is 1-based here, (i-1) changes it to 0-based
         return __builtin_ctzll(_pdep_u64(1ull << (i-1), x));

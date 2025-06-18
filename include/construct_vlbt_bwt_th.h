@@ -109,6 +109,7 @@ struct rl_node_th {//state of the compression
     }
 
     inline void process_block_seq() {
+
         if(bk_id==1){//only one block in the sequence and it exceeds the limit of runs
             if(acc_runs>b_runs){
                 create_node<INTERNAL>(1);//recursive partitioning
@@ -184,17 +185,18 @@ struct rl_node_th {//state of the compression
     }
 
     inline void process_run(run_th_type run) {
+
         while(run.len>0){
             if((bk_len+run.len)<b_size){
                 //the run fits the block size
                 assert(run.len<=b_size);
                 bk_len+=run.len;
-                active_blocks[bk_id].emplace_back(run.sym, run.len, run.sa_samp);
+                active_blocks[bk_id].emplace_back(run.sym, run.len, run.sa_samp, run.run_break);
                 run.len=0;
             } else {// we complete a new block
                 //last run of the active block
                 size_t split_run_len = b_size-bk_len;
-                active_blocks[bk_id].emplace_back(run.sym, split_run_len, run.sa_samp);
+                active_blocks[bk_id].emplace_back(run.sym, split_run_len, run.sa_samp, run.run_break);
                 bk_len+=split_run_len;
                 assert(split_run_len>0 && bk_len==b_size);
                 acc_runs+=active_blocks[bk_id].size();
@@ -206,7 +208,8 @@ struct rl_node_th {//state of the compression
                 }
                 run.len -=split_run_len;
                 run.sa_samp = run_th_type::unsamp_mark;
-                bk_len=0;
+                run.run_break = true;
+                bk_len = 0;
             }
         }
     }
@@ -923,7 +926,7 @@ struct rl_node_th {//state of the compression
             r_width = sym_width(b_size*s_factor*s_factor);
         }
         size_t rank_bits = r_width*node_sigma;
-        size_t header_bits = 1+bwt_rep.leaf_enc_width+parent_sigma+rank_bits+bwt_rep.run_bytes;
+        size_t header_bits = 1+bwt_rep.leaf_enc_width+parent_sigma+rank_bits+bwt_rep.runs_mt_bits;
         header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
 
         //allocate bytes for the information of this leaf
@@ -959,9 +962,12 @@ struct rl_node_th {//state of the compression
         //
 
         //store the number of bytes we use to encode the runs (this value allows us to jump to the SA samples)
-        assert(sym_width(run_bits/8)<=bwt_rep.run_bytes);
-        buffer.write(bit_pos, bit_pos+bwt_rep.run_bytes-1, (run_bits/8));
-        bit_pos+=bwt_rep.run_bytes;
+        assert(sym_width(run_bits/8)<=(bwt_rep.runs_mt_bits-1));
+        buffer.write(bit_pos, bit_pos+bwt_rep.runs_mt_bits-2, (run_bits/8));
+        bit_pos+=bwt_rep.runs_mt_bits-1;
+        //store if the head of the first run is fake (true) break
+        buffer.write(bit_pos, bit_pos, blocks[0][0].run_break);
+        bit_pos++;
         //
 
         //the runs are byte-aligned
@@ -1292,7 +1298,11 @@ struct tree_dt_th {
         uint8_t sym=0;
         uint32_t len=0;
         sa_samp_type sa_samp=0;
-        run_th_type(uint8_t sym_, uint32_t len_, uint64_t sa_samp_): sym(sym_), len(len_), sa_samp(sa_samp_){}
+        bool run_break=false;
+        run_th_type(uint8_t sym_, uint32_t len_, uint64_t sa_samp_, bool _run_break): sym(sym_),
+                                                                                      len(len_),
+                                                                                      sa_samp(sa_samp_),
+                                                                                      run_break(_run_break){}
         run_th_type()= default;
     };
     typedef std::vector<run_th_type> block_th_type;
@@ -1380,7 +1390,7 @@ struct tree_dt_th {
         //synchronize the read of the runs (symbol, len) and the associated SA samples
         for(size_t i=0;i<n_runs;i++){
             bwt_buff.read_run(i, sym, len);
-            run.sym = bwt_rep.packed_alpha[sym];
+            run.sym = bwt_rep.packed_alpha[sym];//We assume the smallest value in the text is the separator symbol
             if(run.sym==0){//separator symbol: we treat each sep. symbol as a separate run, this is due to toehold lemma in the BCR BWT
                 for(size_t j=0;j<len;j++){
                     if(s==sa_buff_size){

@@ -51,7 +51,7 @@ struct fm_index{
         uint8_t cc;
         while(j-->0 && l<=r){
             cc = byte2comp[uint8_t(pat[j])];
-            std::cout<<l<<" "<<r<<" "<<pat[j]<<" ? "<<bwt.rank(r+1, pat[j])<<" "<<C[cc]<<" "<<int(cc)<<std::endl;
+            //std::cout<<l<<" "<<r<<" "<<pat[j]<<" ? "<<bwt.rank(r+1, pat[j])<<" "<<C[cc]<<" "<<int(cc)<<std::endl;
             l = C[cc] + bwt.rank(l, pat[j]); // count c in bwt[0..l-1]
             r = C[cc] + bwt.rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
             //assert(l<bwt.size() && r<bwt.size());
