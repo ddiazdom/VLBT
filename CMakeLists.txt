@@ -60,7 +60,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/Modules"
 find_package(LibSDSL REQUIRED)
 
 #Build the BWT data structures
-add_executable(build_bwt_dts text_index.cpp)
+add_executable(build_bwt_dts test_vlbt_suite.cpp)
 target_compile_options(build_bwt_dts
         PUBLIC
         #-Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function

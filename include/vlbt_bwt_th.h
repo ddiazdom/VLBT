@@ -168,7 +168,7 @@ struct vlbt_bwt_th {
         bit_pos = (header_bytes+p)*8;
     }
 
-    inline size_t find_low_freq_succ(size_t i, uint8_t symbol) const {
+    [[nodiscard]] inline size_t find_low_freq_succ(size_t i, uint8_t symbol) const {
 
         symbol = stream.pop_count(0, symbol)-1;//this works because stream[symbol] is true
         size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
@@ -417,7 +417,7 @@ struct vlbt_bwt_th {
         return s_info[1].rank;
     }
 
-    inline std::pair<int64_t, bool> rank_and_succ(size_t i, uint8_t symbol) {
+    inline std::pair<int64_t, bool> rank_with_head(size_t i, uint8_t symbol) {
 
         symbol = packed_alpha[symbol];
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.
@@ -553,7 +553,7 @@ struct vlbt_bwt_th {
             //has_symbol = stream.read_bit(bit_pos+symbol);
         }
 
-        bool succ_is_head = true;
+        bool succ_is_head = following_pred;
 
         if(!rank_complete){
 
@@ -1155,6 +1155,17 @@ struct vlbt_bwt_th {
             r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
         }
         return {l, r};
+    }
+
+    [[nodiscard]] inline std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
+        size_t l=0, r=size()-1, j=pat.size();
+        uint8_t cc;
+        while(j-->0 && l<=r){
+            cc = packed_alpha[uint8_t(pat[j])];
+            l = C[cc] + rank(l, pat[j]); // count c in bwt[0..l-1]
+            r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
+        }
+        return {l, r, 0};
     }
 
     [[nodiscard]] inline uint8_t eff2byte(uint8_t eff_sym) const {
