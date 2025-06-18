@@ -2,8 +2,8 @@
 // Created by Diaz, Diego on 25.4.2025.
 //
 
-#ifndef BWT_DTS_BENCHMARKS_NEON_SCAN_H
-#define BWT_DTS_BENCHMARKS_NEON_SCAN_H
+#ifndef VLBT_SCAN_NEON_H
+#define VLBT_SCAN_NEON_H
 
 #include <arm_neon.h>
 #include "simd_tables.h"
@@ -769,4 +769,4 @@ static inline int64_t rank_neon_64x2(const uint8_t ** stream, uint8_t sigma, uin
     return 0;
 }
 
-#endif //BWT_DTS_BENCHMARKS_NEON_SCAN_H
+#endif //VLBT_SCAN_NEON_H

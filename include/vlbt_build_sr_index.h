@@ -2,8 +2,8 @@
 // Created by Diaz, Diego on 29.5.2025.
 //
 
-#ifndef VLBT_CONSTRUCT_SR_INDEX_H
-#define VLBT_CONSTRUCT_SR_INDEX_H
+#ifndef VLBT_BUILD_SR_INDEX_H
+#define VLBT_BUILD_SR_INDEX_H
 
 #include <iostream>
 #include <fstream>
@@ -12,15 +12,9 @@
 #include <string>
 #include <filesystem>
 
-#include "construct_vlbt_phi.h"
-#include "construct_vlbt_bwt.h"
-
-//#include "construct_vlbt_bwt_th.h"
-
-#include "vlbt_bwt_th.h"
-#include "vlbt_phi.h"
+#include "vlbt_build_phi.h"
+#include "vlbt_build_bwt.h"
 #include "vlbt_sr_index.h"
-#include "pruned_st.h"
 
 struct sample_type {
     uint64_t head_val;
@@ -297,8 +291,11 @@ void subsample_sa_samples(std::string& sa_samples_file, std::string& str_ranges_
     get_tail_samples<size_type>(samples, str_ranges_file, ssamp_tail_file);
 }
 
-template<class sr_index_type, class size_type>
+template<class sr_index_type, class sa_samp_type>
 void build_sr_index(sr_index_type& index, std::string& input_prefix, size_t ssamp_val, std::string& output_prefix){
+
+    using bwt_type = typename sr_index_type::bwt_t;
+    using phi_type = typename sr_index_type::phi_t;
 
     std::string samp_sa_file = input_prefix+".sa_samples";
     std::string str_ranges_file = input_prefix+".str_ranges";
@@ -307,11 +304,10 @@ void build_sr_index(sr_index_type& index, std::string& input_prefix, size_t ssam
     std::string ssamp_heads_file = output_prefix+".ssamp_heads";
     std::string ssamp_tails_file = output_prefix+".ssamp_tails";
 
-    subsample_sa_samples<size_type>(samp_sa_file, str_ranges_file, ssamp_val, ssamp_heads_file, ssamp_tails_file);
+    subsample_sa_samples<sa_samp_type>(samp_sa_file, str_ranges_file, ssamp_val, ssamp_heads_file, ssamp_tails_file);
     index.ssamp_val = ssamp_val;
 
-    build_bwt_th<typename sr_index_type::bwt_t, size_type>(index.bwt_with_th, bwt_file, BWT_FORMAT::GRL_BWT, ssamp_heads_file);
-    build_phi<typename sr_index_type::phi_t, size_type>(index.phi, ssamp_tails_file);
-
+    build_bwt_th<bwt_type, sa_samp_type>(index.bwt, bwt_file, BWT_FORMAT::GRL_BWT, ssamp_heads_file);
+    build_phi<phi_type, sa_samp_type>(index.phi, ssamp_tails_file);
 }
-#endif //VLBT_CONSTRUCT_SR_INDEX_H
+#endif //VLBT_BUILD_SR_INDEX_H

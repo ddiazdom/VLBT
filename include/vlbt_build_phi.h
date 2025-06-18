@@ -2,12 +2,12 @@
 // Created by Diaz, Diego on 17.4.2025.
 //
 
-#ifndef VLBT_CONSTRUCT_VLBT_PHI
-#define VLBT_CONSTRUCT_VLBT_PHI
+#ifndef VLBT_BUILD_PHI
+#define VLBT_BUILD_PHI
 
 #include "vlbt_phi.h"
 #include "pruned_st.h"
-#include "construct_vlbt_bwt.h"
+#include "vlbt_build_bwt.h"
 
 #ifdef __linux__
 #include <malloc.h>
@@ -991,4 +991,4 @@ void build_phi_in_memory(phi_dt_type& phi_rep,
 
 
 
-#endif//VLBT_CONSTRUCT_VLBT_PHI
+#endif//VLBT_BUILD_PHI

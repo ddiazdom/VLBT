@@ -1588,11 +1588,10 @@ struct tree_dt{
 
     void build(std::string& bwt_file) {
 
-        std::vector<uint64_t> C(256, 0);
         bwt_buff_reader bwt_buff(bwt_file);
         std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
 
-        preprocess_bwt(bwt_buff, trees_ofs, C);
+        preprocess_bwt(bwt_buff, trees_ofs);
 
         //compute the tree
         size_t n_runs = bwt_buff.size(), sym, len;
@@ -1610,7 +1609,7 @@ struct tree_dt{
         root->ifs = &trees_ifs;
 
         size_t n_iter = 2;
-        std::vector<st_node_t> st_nodes_in_dfs = compute_nodes_of_pruned_st(bwt_buff, C, bwt_rep.packed_alpha, n_iter);
+        std::vector<st_node_t> st_nodes_in_dfs = compute_nodes_of_pruned_st(bwt_buff, bwt_rep.C, bwt_rep.packed_alpha, n_iter);
         pruned_suffix_tree pruned_st(st_nodes_in_dfs);
 
         root->finish_tree(pruned_st);
@@ -1622,11 +1621,10 @@ struct tree_dt{
 
         using sa_samp_type = typename run_t::sa_samp_t;
 
-        std::vector<uint64_t> C(256, 0);
         bwt_buff_reader bwt_buff(bwt_file);
         std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
 
-        preprocess_bwt(bwt_buff, trees_ofs, C);
+        preprocess_bwt(bwt_buff, trees_ofs);
 
         //read the subsampled SA values
         size_t rem_sa_samples = std::filesystem::file_size(sa_subsamp_file)/sizeof(sa_samp_type);
@@ -1679,7 +1677,7 @@ struct tree_dt{
         root->ifs = &trees_ifs;
 
         size_t n_iter = 2;
-        std::vector<st_node_t> st_nodes_in_dfs = compute_nodes_of_pruned_st(bwt_buff, C, bwt_rep.packed_alpha, n_iter);
+        std::vector<st_node_t> st_nodes_in_dfs = compute_nodes_of_pruned_st(bwt_buff, bwt_rep.C, bwt_rep.packed_alpha, n_iter);
         pruned_suffix_tree pruned_st(st_nodes_in_dfs);
 
         root->finish_tree(pruned_st);
@@ -1687,43 +1685,45 @@ struct tree_dt{
         //
     }
 
-    void preprocess_bwt(bwt_buff_reader& bwt_buff, std::ofstream& trees_ofs, std::vector<uint64_t>& C){
+    void preprocess_bwt(bwt_buff_reader& bwt_buff, std::ofstream& trees_ofs){
 
         size_t n_runs = bwt_buff.size();
         bwt_rep.orig_runs = n_runs;
         bwt_rep.packed_alpha.resize(256);
+        bwt_rep.C = std::vector<uint64_t>(257, 0);
 
         //compute symbol frequencies
         size_t sym, len;
         for(size_t i=0;i<n_runs;i++){
             bwt_buff.read_run(i, sym, len);
-            C[sym]+=len;
+            bwt_rep.C[sym]+=len;
         }
         //
 
         //compute the effective alphabet and the number of bits we require to encode it
         size_t sigma=0, sigma_bits=0, max_freq=0;
         bwt_rep.unpacked_alpha.reserve(256);
-        for(size_t i=0;i<C.size();i++){
-            if(C[i]!=0){
-                if(C[i]>max_freq) max_freq = C[i];
+        for(size_t i=0;i<bwt_rep.C.size();i++){
+            if(bwt_rep.C[i]!=0){
+                if(bwt_rep.C[i]>max_freq) max_freq = bwt_rep.C[i];
                 bwt_rep.packed_alpha[i] = sigma;
                 bwt_rep.unpacked_alpha.push_back(i);
-                C[sigma++] = C[i];
-                sigma_bits+= sym_width(C[i]);
+                bwt_rep.C[sigma++] = bwt_rep.C[i];
+                sigma_bits+= sym_width(bwt_rep.C[i]);
             }
         }
         bwt_rep.unpacked_alpha.shrink_to_fit();
-        C.resize(sigma+1);
+        bwt_rep.C.resize(sigma+1);
+        bwt_rep.C.shrink_to_fit();
         //
         //compute the array C[1..\sigma]
         size_t acc=0, tmp;
         for(size_t i=0;i<sigma;i++){
-            tmp = C[i];
-            C[i]=acc;
+            tmp = bwt_rep.C[i];
+            bwt_rep.C[i]=acc;
             acc+=tmp;
         }
-        C[sigma] = acc;
+        bwt_rep.C[sigma] = acc;
         bwt_rep.tot_syms = acc;
         bwt_rep.sigma = sigma;
         bwt_rep.max_freq = max_freq;

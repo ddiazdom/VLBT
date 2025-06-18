@@ -2,8 +2,8 @@
 // Created by Diaz, Diego on 20.4.2025.
 //
 
-#ifndef BWT_DTS_BENCHMARKS_SIMD_TABLES_H
-#define BWT_DTS_BENCHMARKS_SIMD_TABLES_H
+#ifndef VLBT_SIMD_TABLES_H
+#define VLBT_SIMD_TABLES_H
 #include <cstdint>
 
 static const uint8_t mask8x16[17][16] = {
@@ -829,4 +829,4 @@ static int8_t dec_table_64x2[256][16]={
     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 };
 
-#endif //BWT_DTS_BENCHMARKS_SIMD_TABLES_H
+#endif //VLBT_SIMD_TABLES_H

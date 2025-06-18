@@ -2,8 +2,8 @@
 // Created by Diaz, Diego on 20.11.2024.
 //
 
-#ifndef RLBWT_DYBL_H
-#define RLBWT_DYBL_H
+#ifndef VLBT_BWT_H
+#define VLBT_BWT_H
 
 #include <cmath>
 #include <vector>
@@ -84,6 +84,7 @@ struct vlbt_bwt {
     uint8_t sigma=0;//size of the effective text alphabet
     uint16_t ext_pt_width=0;//number of bits we use store the pointers to the trees
     uint8_t mtd_bits=0;//number of bits to encode the maximum tree distance
+    std::vector<uint64_t> C;//F column in the FM index
     std::vector<uint8_t> packed_alpha;//map the symbols from byte to eff alphabet
     std::vector<uint8_t> unpacked_alpha;//map eff alphabet to the original alphabet
 
@@ -119,6 +120,7 @@ struct vlbt_bwt {
         written_bytes += serialize_elm(ofs, ext_pt_width);
         written_bytes += serialize_elm(ofs, mtd_bits);
 
+        written_bytes += serialize_plain_vector(ofs, C);
         written_bytes += serialize_plain_vector(ofs, packed_alpha);
         written_bytes += serialize_plain_vector(ofs, unpacked_alpha);
 
@@ -136,8 +138,11 @@ struct vlbt_bwt {
         load_elm(ifs, sigma);
         load_elm(ifs, ext_pt_width);
         load_elm(ifs, mtd_bits);
+
+        load_plain_vector(ifs, C);
         load_plain_vector(ifs, packed_alpha);
         load_plain_vector(ifs, unpacked_alpha);
+
         stream.load(ifs);
     }
 
@@ -943,6 +948,17 @@ struct vlbt_bwt {
         return unpacked_alpha[symbol];
     }
 
+    [[nodiscard]] inline std::pair<uint64_t, uint64_t> count(const std::string &pat) const {
+        size_t l=0, r=size()-1, j=pat.size();
+        uint8_t cc;
+        while(j-->0 && l<=r){
+            cc = packed_alpha[uint8_t(pat[j])];
+            l = C[cc] + rank(l, pat[j]); // count c in bwt[0..l-1]
+            r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
+        }
+        return {l, r};
+    }
+
     [[nodiscard]] inline uint8_t eff2byte(uint8_t eff_sym) const {
         assert(eff_sym<sigma);
         return unpacked_alpha[eff_sym];
@@ -953,4 +969,4 @@ struct vlbt_bwt {
     }
 };
 
-#endif //RLBWT_DYBL_H
+#endif //VLBT_BWT_H

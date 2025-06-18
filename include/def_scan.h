@@ -2,11 +2,11 @@
 // Created by Diaz, Diego on 22.5.2025.
 //
 
-#ifndef BWT_DTS_BENCHMARKS_DEF_SCAN_H
-#define BWT_DTS_BENCHMARKS_DEF_SCAN_H
+#ifndef VLBT_DEF_SCAN_H
+#define VLBT_DEF_SCAN_H
 
 #if defined(__ARM_NEON__)
-#include "neon_scan.h"
+#include "scan_neon.h"
 
 #define INV_SELECT_8 inv_select_neon_8x16
 #define INV_SELECT_16 inv_select_neon_16x8
@@ -24,7 +24,7 @@
 #define RANK_64 rank_neon_64x2
 
 /*#elif defined(__AVX2__)
-#include "avx2_scan.h"
+#include "scan_avx2.h"
 
 #define INV_SELECT_8 inv_select_avx2_8x32
 #define INV_SELECT_16 inv_select_avx2_16x16
@@ -43,7 +43,7 @@
 */
 
 #elif defined(__SSE4_2__)
-#include "sse42_scan.h"
+#include "scan_sse42.h"
 
 #define INV_SELECT_8 inv_select_sse42_8x16
 #define INV_SELECT_16 inv_select_sse42_16x8
@@ -76,4 +76,4 @@
 #define RANK_32 rank_scl_32
 #define RANK_64 rank_scl_64
 #endif
-#endif //BWT_DTS_BENCHMARKS_DEF_SCAN_H
+#endif //VLBT_DEF_SCAN_H

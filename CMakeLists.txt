@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.16.3)
-project(bwt_dts_benchmarks)
+
+project(VLBT)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -57,7 +58,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BCK}")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/Modules")
 
 find_package(LibSDSL REQUIRED)
-#include_directories(SYSTEM ${LIBSDSL_INCLUDE_DIRS} fb_wt/wt-fbb-0.1.0)
 
 #Build the BWT data structures
 add_executable(build_bwt_dts text_index.cpp)

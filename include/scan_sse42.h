@@ -2,8 +2,8 @@
 // Created by Diaz, Diego on 25.4.2025.
 //
 
-#ifndef BWT_DTS_BENCHMARKS_SSE42_SCAN_H
-#define BWT_DTS_BENCHMARKS_SSE42_SCAN_H
+#ifndef VLBT_SCAN_SSE42_H
+#define VLBT_SCAN_SSE42_H
 
 #include <x86intrin.h>
 #include "simd_tables.h"
@@ -984,4 +984,4 @@ template<uint8_t bytes_per_run>
 static inline int64_t rank_sse42_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
     return 0;
 }
-#endif //BWT_DTS_BENCHMARKS_SSE42_SCAN_H
+#endif //VLBT_SCAN_SSE42_H

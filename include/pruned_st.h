@@ -2,8 +2,8 @@
 // Created by Diaz, Diego on 30.5.2025.
 //
 
-#ifndef VLBT_COMMON_H
-#define VLBT_COMMON_H
+#ifndef VLBT_PRUNED_ST_H
+#define VLBT_PRUNED_ST_H
 
 #include "bwt_io.h"
 
@@ -211,4 +211,4 @@ std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, std::vec
     return st_nodes_in_dfs[0];
 }
 
-#endif //VLBT_COMMON_H
+#endif //VLBT_PRUNED_ST_H

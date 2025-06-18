@@ -2,8 +2,8 @@
 // Created by Diaz, Diego on 25.4.2025.
 //
 
-#ifndef BWT_DTS_BENCHMARKS_AVX_SCAN_H
-#define BWT_DTS_BENCHMARKS_AVX_SCAN_H
+#ifndef VLBT_SCAN_AVX2_H
+#define VLBT_SCAN_AVX2_H
 
 #include <immintrin.h>
 #include "simd_tables.h"
@@ -622,7 +622,7 @@ template<uint8_t bytes_per_run>
 static inline uint8_t access_sse42_64x2(const uint8_t **stream, uint8_t sigma, uint64_t idx){
     return 0;
 }
-#endif //BWT_DTS_BENCHMARKS_SSE42_SCAN_H
+#endif //VLBT_SCAN_AVX2_H
 
 
 /*static inline uint64_t count_avx2(const uint16_t * stream, uint8_t sym, uint64_t idx){

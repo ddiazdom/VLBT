@@ -2,8 +2,8 @@
 // Created by Diaz, Diego on 3.3.2022.
 //
 
-#ifndef UTILS_VLBWT_H
-#define UTILS_VLBWT_H
+#ifndef VLBT_UTILS_H
+#define VLBT_UTILS_H
 
 #include <iostream>
 #include <fstream>
@@ -219,4 +219,4 @@ template<class vector_type>
 void destroy_vector(vector_type& vec){
     vector_type().swap(vec);
 }
-#endif //UTILS_VLBWT_H
+#endif //VLBT_UTILS_H

@@ -15,10 +15,10 @@
 //#include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 
 //the framework
-#include "include/construct_vlbt_sr_index.h"
-#include "include/construct_vlbt_bwt.h"
+#include "include/vlbt_build_sr_index.h"
+#include "include/vlbt_build_bwt.h"
 //#include "include/construct_vlbt_bwt_th.h"
-#include "include/construct_vlbt_phi.h"
+#include "include/vlbt_build_phi.h"
 #include "include/vlbt_bwt.h"
 #include "include/vlbt_bwt_th.h"
 #include "include/vlbt_phi.h"
@@ -453,7 +453,7 @@ void test_sr_index(std::string& input_prefix, size_t ssamp_val, std::string& out
     size_t written_bytes = store_to_file(output_sr_index_file, sr_index);
     std::cout<<"Final sr-index uses "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps)"<<std::endl;
 
-    test_count(sr_index, input_prefix, "sr_index");
+    //test_count(sr_index, input_prefix, "sr_index");
     //test_inverse_select(sr_index.bwt_with_th, input_prefix, "sr_index");
     //test_rank(sr_index.bwt_with_th, input_prefix, "sr_index");
     //test_access(sr_index.bwt_with_th, input_prefix, "sr_index");
@@ -479,9 +479,8 @@ int main(int argc, char** argv){
         rl2plain(bwt_file, plain_input_file);
         TESTED_DTS
     }
-
     //test_bwt(input_prefix, output_prefix);
-    test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
+    //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }
