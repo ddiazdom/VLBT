@@ -5,16 +5,78 @@
 #ifndef RLBWT_VLB_CONSTRUCT_RLBWT_VLB_H
 #define RLBWT_VLB_CONSTRUCT_RLBWT_VLB_H
 
-#include "common.h"
+#include "pruned_st.h"
 #include "bwt_io.h"
 #ifdef __linux__
 #include <malloc.h>
 #endif
 
-using run_type = std::pair<uint32_t, size_t>;
-using block_type = std::vector<run_type>;
+enum BWT_FORMAT{
+    GRL_BWT=0,
+    RL_PLAIN=1,
+    PLAIN=2
+};
 
+enum node_type {
+    INTERNAL,
+    LEAF
+};
+
+//statistics about the data structure
 template<class bwt_type>
+struct bwt_stat_collector{
+    uint64_t rpl_freq[bwt_type::max_block_runs+1]={0};//number of runs in a leaf
+    uint64_t leaf_depth_freq[20]={0};//the depth of each leaf
+    uint64_t leaf_enc_freq[20]={0};//encoding of each leaf
+    uint64_t children_freq[100]={0};//children frequency = how many nodes with 1,2,...,x children
+    uint64_t header_overhead=0;//number of bits used by the headers of the nodes
+    uint64_t runs_overhead=0;
+    uint64_t rank_overhead=0;
+    uint64_t lfs_offset=0;//symbols with low frequency for which we encode the blocks where they occur explicitly
+    uint64_t ext_suc_overhead=0;
+    uint64_t int_su_pr_overhead=0;
+    uint64_t tree_pointers_overhead=0;
+    uint64_t trees_overhead=0;
+    uint64_t max_n_blocks=0;
+    uint64_t ext_succ_freq[257]={0};
+    uint64_t samp_overhead=0;
+};
+
+//run with toehold information
+template<typename sa_samp_type>
+struct run_with_sa_type{
+    typedef sa_samp_type sa_samp_t;
+
+    static constexpr sa_samp_t unsamp_mark = std::numeric_limits<sa_samp_type>::max();
+    uint8_t sym=0;
+    uint32_t len=0;
+    sa_samp_type sa_samp=0;
+    bool run_break=false;
+    run_with_sa_type(uint8_t sym_, uint32_t len_, uint64_t sa_samp_, bool _run_break): sym(sym_),
+                                                                                       len(len_),
+                                                                                       sa_samp(sa_samp_),
+                                                                                       run_break(_run_break){}
+    run_with_sa_type()= default;
+
+    inline void create_break(){
+        sa_samp = unsamp_mark;
+        run_break = true;
+    }
+
+    [[nodiscard]] inline bool has_valid_sa_samp() const {
+        return sa_samp!=unsamp_mark;
+    }
+};
+
+//normal run
+struct run_type{
+    uint8_t sym=0;
+    uint64_t len=0;
+    run_type(uint8_t sym_, uint64_t len_): sym(sym_), len(len_){}
+    run_type()= default;
+};
+
+template<class bwt_type, class block_type>
 struct rl_node {//state of the compression
 
     size_t bk_len=0;//length of the active block
@@ -44,6 +106,7 @@ struct rl_node {//state of the compression
 
     rl_node *tmp_node = nullptr;
 
+    typedef typename block_type::value_type run_t;
     typename bwt_type::stream_type buffer;
     typename bwt_type::stream_type children_buffer;
 
@@ -185,18 +248,25 @@ struct rl_node {//state of the compression
         assert(aligned<8>(node_n_bits));
     }
 
-    inline void process_run(const size_t& sym, size_t& len) {
-        while(len>0){
-            if((bk_len+len)<b_size){
+    inline void process_run(run_t run) {
+        while(run.len>0){
+            if((bk_len+run.len)<b_size){
                 //the run fits the block size
-                assert(len<=b_size);
-                bk_len+=len;
-                active_blocks[bk_id].emplace_back(sym, len);
-                len=0;
+                assert(run.len<=b_size);
+                bk_len+=run.len;
+                active_blocks[bk_id].push_back(run);
+                run.len=0;
             } else {// we complete a new block
                 //last run of the active block
                 size_t split_run_len = b_size-bk_len;
-                active_blocks[bk_id].emplace_back(sym, split_run_len);
+
+                if constexpr (std::is_same_v<run_t, run_type>){
+                    active_blocks[bk_id].emplace_back(run.sym, split_run_len);
+                } else {
+                    active_blocks[bk_id].emplace_back(run.sym, split_run_len, run.sa_samp, run.run_break);
+                    run.create_break();
+                }
+
                 bk_len+=split_run_len;
                 assert(split_run_len>0 && bk_len==b_size);
                 acc_runs+=active_blocks[bk_id].size();
@@ -206,7 +276,7 @@ struct rl_node {//state of the compression
                 if(acc_runs>=b_runs){
                     process_block_seq();
                 }
-                len -=split_run_len;
+                run.len -=split_run_len;
                 bk_len=0;
             }
         }
@@ -533,6 +603,8 @@ struct rl_node {//state of the compression
 
     inline void append_dummy_tree(size_t& bit_pos, std::vector<uint64_t>& parent_rank_info){
 
+        //TODO make sure it fits a SIMD word
+
         size_t trailing_bits = compute_dummy_tree_bits();
         size_t r_width = sym_width(bwt_rep.max_freq);
         size_t rank_bits = r_width*bwt_rep.sigma;
@@ -761,25 +833,28 @@ struct rl_node {//state of the compression
         }
     }
 
-    inline void create_leaf(std::vector<block_type>& blocks,
-                            size_t n_blocks,
-                            const size_t parent_sigma,
-                            const std::vector<bool>& parent_sigma_bv,
-                            const std::vector<uint64_t>& parent_rank_info){
+    void only_runs_leaf(std::vector<block_type>& blocks,
+                        size_t n_blocks,
+                        const size_t parent_sigma,
+                        const std::vector<bool>& parent_sigma_bv,
+                        const std::vector<uint64_t>& parent_rank_info){
 
-        //for 1 byte: check that the sum of 16 (or 32 for AVX) consecutive run lens is <=256
-        //for 2 bytes: check that the sum of 8 (or 16 for AVX) consecutive run lens is <=2^16-1
-        //for 3-4 bytes: check that the sum of 4 (or 8 for AVX) consecutive run lens is <=2^32-1
-        //for 4-8 bytes: check that the sum of 2 (or 4 for AVX) consecutive run lens is <=2^64-1
-        //we need to do this check to work with SIMD instructions. If it does not fit, use the next encoding that can fits them
+        //LEAF DESCRIPTION
+        //HEADER:
+        //  1 bit to indicate it is a leaf
+        //  parent_sigma_bits to encode the leaf's effective alphabet
+        //  (eff_alphabet)*r_width bits to store the rank answers for the symbols, with r_width=sym_width(b_size*s_factor*s_factor), that is, the area that the parent covers
+        //  bwt_rep.leaf_enc bits to store the leaf encoding (there are 16 different combinations)
+        //RUN SEQUENCE:
+        //  X bytes with the runs
 
         assert(node_n_bits==0);
         assert(lvl>0);
 
         size_t sym, len, n_runs=0;
         for(size_t j=0;j<(blocks[0].size()-1);j++){
-            sym = blocks[0][j].first;
-            len = blocks[0][j].second;
+            sym = blocks[0][j].sym;
+            len = blocks[0][j].len;
             assert(sym<bwt_rep.sigma);
             node_sigma_bv[sym]=true;
             block_ranks[sym]+=len;
@@ -789,13 +864,13 @@ struct rl_node {//state of the compression
         for(size_t i=1;i<n_blocks;i++){
 
             //read the rightmost run of the previous block
-            sym = blocks[i-1].back().first;
-            len = blocks[i-1].back().second;
+            sym = blocks[i-1].back().sym;
+            len = blocks[i-1].back().len;
 
             //collapse the run with the first run of the current block if they have the same symbol
-            if(sym==blocks[i][0].first){
+            if(sym==blocks[i][0].sym){
                 //collapse the runs as they are the same
-                blocks[i][0].second +=len;
+                blocks[i][0].len +=len;
                 blocks[i-1].pop_back();
             } else {
                 //otherwise process the last run of the previous block as an independent run
@@ -806,8 +881,8 @@ struct rl_node {//state of the compression
             }
 
             for(size_t j=0;j<(blocks[i].size()-1);j++){
-                sym = blocks[i][j].first;
-                len = blocks[i][j].second;
+                sym = blocks[i][j].sym;
+                len = blocks[i][j].len;
                 assert(sym<bwt_rep.sigma);
                 node_sigma_bv[sym]=true;
                 block_ranks[sym]+=len;
@@ -816,8 +891,8 @@ struct rl_node {//state of the compression
         }
 
         //process the last run
-        sym = blocks[n_blocks-1].back().first;
-        len = blocks[n_blocks-1].back().second;
+        sym = blocks[n_blocks-1].back().sym;
+        len = blocks[n_blocks-1].back().len;
         assert(sym<bwt_rep.sigma);
         node_sigma_bv[sym]=true;
         block_ranks[sym]+=len;
@@ -839,11 +914,11 @@ struct rl_node {//state of the compression
 
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
-                run.first = packed_alphabet[run.first];
+                run.sym = packed_alphabet[run.sym];
                 //I need to use a fixed number of bits for the symbols (i.e., sym_width(node_sigma) bits)
-                bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.second)), 8);
+                bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.len)), 8);
                 bfr_dist[bytes]++;
-                tmp_psum[bk>>3] += run.second;
+                tmp_psum[bk>>3] += run.len;
                 bk++;
 
                 if(bk==32){
@@ -957,6 +1032,281 @@ struct rl_node {//state of the compression
         stats.leaf_enc_freq[leaf_enc]++;//the encoding type for a leaf
     }
 
+    void runs_with_sa_samples_leaf(std::vector<block_type>& blocks,
+                                   size_t n_blocks,
+                                   const size_t parent_sigma,
+                                   const std::vector<bool>& parent_sigma_bv,
+                                   const std::vector<uint64_t>& parent_rank_info){
+        //LEAF DESCRIPTION
+        //HEADER:
+        //  1 bit to indicate it is a leaf
+        //  parent_sigma_bits to encode the leaf's effective alphabet
+        //  (eff_alphabet)*r_width bits to store the rank answers for the symbols, with r_width=sym_width(b_size*s_factor*s_factor), that is, the area that the parent covers
+        //  bwt_rep.leaf_enc bits to store the leaf encoding (there are 16 different combinations)
+        //  bwt_rep.run_bytes to store the number X of bytes used by the runs (to jump to the SA samples)
+        //RUN SEQUENCE:
+        //  X bytes with the runs
+        //SA SUB-SAMPLES:
+        //  bwt_rep.run_width bits indicate how many runs this leaf encodes (the value is zero-based)
+        //  bwt_rep.int_pt_width bits to store sym_width(max_sa_sample), with max_sa_sample being the largest SA sample in the leaf
+        //  n_run bits to mark the runs in the leaf that have a SA sample for the tail
+        //  (n_sa_samples)*sym_width(max_sa_sample) bits to encode the SA samples for those runs
+
+        assert(node_n_bits==0);
+        assert(lvl>0);
+
+        size_t sym, len, n_runs=0;
+        for(size_t j=0;j<(blocks[0].size()-1);j++){
+            sym = blocks[0][j].sym;
+            len = blocks[0][j].len;
+            assert(sym<bwt_rep.sigma);
+            node_sigma_bv[sym]=true;
+            block_ranks[sym]+=len;
+        }
+
+        n_runs+=blocks[0].size()-1;
+        for(size_t i=1;i<n_blocks;i++){
+
+            //read the rightmost run of the previous block
+            sym = blocks[i-1].back().sym;
+            len = blocks[i-1].back().len;
+
+            //collapse the run with the first run of the current block if they have the same symbol
+            if(sym!=0 && sym==blocks[i][0].sym){
+                //collapse the runs as they are the same
+                blocks[i][0].len +=len;
+                blocks[i-1].pop_back();
+            } else {
+                //otherwise process the last run of the previous block as an independent run
+                assert(sym<bwt_rep.sigma);
+                node_sigma_bv[sym] = true;
+                block_ranks[sym]+=len;
+                n_runs++;
+            }
+
+            for(size_t j=0;j<(blocks[i].size()-1);j++){
+                sym = blocks[i][j].sym;
+                len = blocks[i][j].len;
+                assert(sym<bwt_rep.sigma);
+                node_sigma_bv[sym]=true;
+                block_ranks[sym]+=len;
+            }
+            n_runs+=blocks[i].size()-1;
+        }
+
+        //process the last run
+        sym = blocks[n_blocks-1].back().sym;
+        len = blocks[n_blocks-1].back().len;
+        assert(sym<bwt_rep.sigma);
+        node_sigma_bv[sym]=true;
+        block_ranks[sym]+=len;
+        n_runs++;
+
+        assert(n_runs<=bwt_type::max_block_runs);
+        //compute the block's alphabet size
+        size_t tmp_s=0;
+        node_sigma=0;
+        for(auto && s : node_sigma_bv){
+            packed_alphabet[tmp_s++]=node_sigma;
+            node_sigma+=s;
+        }
+
+        size_t bfr_dist[9]={0}, bytes;
+        uint64_t tmp_psum[4]={0};//8,16,24,32
+        uint64_t max_psum[3]={0};//8,16,32
+        uint64_t bk = 0;
+        size_t n_sa_samples=0;
+        uint64_t max_samp=0;
+        bool discarded;
+
+        for(size_t i=0;i<n_blocks;i++){
+            for(auto & run : blocks[i]){
+                run.sym = packed_alphabet[run.sym];
+                //I need to use a fixed number of bits for the symbols (i.e., sym_width(node_sigma) bits)
+                bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.len)), 8);
+                bfr_dist[bytes]++;
+                tmp_psum[bk>>3] += run.len;
+                bk++;
+
+                if(bk==32){
+                    get_max_psum(tmp_psum, max_psum);
+                    memset(tmp_psum, 0, 32);
+                    bk=0;
+                }
+
+                //discarded = run.sa_samp==run_type::unsamp_mark;
+                discarded = !run.has_valid_sa_samp();
+                n_sa_samples+=!discarded;
+                if(!discarded && run.sa_samp>max_samp){
+                    max_samp = run.sa_samp;
+                }
+            }
+        }
+        get_max_psum(tmp_psum, max_psum);
+        assert(bfr_dist[0]==0);
+        size_t samp_bits = bwt_rep.int_pt_width + bwt_rep.run_width + n_runs + (n_sa_samples*sym_width(max_samp));
+        samp_bits = INT_CEIL(samp_bits, 8)*8;//byte-aligned
+
+        size_t total_vbytes=0, max_bytes=0;
+        for(size_t b=1;b<9;b++){
+            total_vbytes +=bfr_dist[b]*b;
+            if(bfr_dist[b]>0) max_bytes = b;
+        }
+        assert(max_bytes>0 && max_bytes<6);
+
+        if(max_bytes>1){
+            //number of control masks of 1 byte for fast vbyte decoding;
+            total_vbytes += INT_CEIL(n_runs, (8/sym_width(max_bytes-1)));
+        }
+        //alternative encoding using a fixed number of bytes per run
+        size_t total_fbytes = max_bytes*n_runs;
+
+        //byte encoding for the runs of this leaf
+        size_t run_bits;
+        bool fix_len_enc=false;
+        if(total_vbytes<total_fbytes){
+            assert(max_bytes>1);
+            run_bits = total_vbytes*8;
+        }else{
+            run_bits = total_fbytes*8;
+            fix_len_enc = true;
+        }
+
+        leaf_enc = compute_leaf_enc_code(max_bytes, !fix_len_enc, max_psum);
+
+        //THE ENCODING STARTS HERE
+        size_t r_width;
+        //width in bits to store the range values
+        if(lvl==1){
+            //the leaf is the root of the tree
+            //rank information: previous trees
+            r_width = sym_width(bwt_rep.max_freq);
+        } else {
+            //the leaf is the child of an internal node
+            //rank information: previous siblings
+            r_width = sym_width(b_size*s_factor*s_factor);
+        }
+        size_t rank_bits = r_width*node_sigma;
+        size_t header_bits = 1+bwt_rep.leaf_enc_width+parent_sigma+rank_bits+bwt_rep.runs_mt_bits;
+        header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
+
+        //allocate bytes for the information of this leaf
+        buffer.reserve_in_bits(header_bits + run_bits + samp_bits);
+
+        //start writing the in the buffer
+        size_t bit_pos = 0;
+        //1 bit (true) to indicate this node is a leaf
+        buffer.write(bit_pos, bit_pos, 1);
+        bit_pos++;
+
+        //parent_sigma bits to encode the leaf's effective alphabet
+        for(size_t i=0;i<bwt_rep.sigma;i++){
+            if(parent_sigma_bv[i]){
+                buffer.write(bit_pos, bit_pos, node_sigma_bv[i]);
+                bit_pos++;
+            }
+        }
+        //assert(bit_pos==(1+4+parent_sigma));
+
+        //write the rank information
+        for(size_t i=0;i<bwt_rep.sigma;i++){
+            if(node_sigma_bv[i]){
+                buffer.write(bit_pos, bit_pos+r_width-1, parent_rank_info[i]);
+                bit_pos+=r_width;
+            }
+        }
+        //assert(bit_pos==(1+4+parent_sigma+rank_bits));
+
+        //store the leaf encoding
+        buffer.write(bit_pos, bit_pos+bwt_rep.leaf_enc_width-1, leaf_enc);
+        bit_pos+=bwt_rep.leaf_enc_width;
+        //
+
+        //store the number of bytes we use to encode the runs (this value allows us to jump to the SA samples)
+        assert(sym_width(run_bits/8)<=(bwt_rep.runs_mt_bits-1));
+        buffer.write(bit_pos, bit_pos+bwt_rep.runs_mt_bits-2, (run_bits/8));
+        bit_pos+=bwt_rep.runs_mt_bits-1;
+        //store if the head of the first run is fake (true) break
+        buffer.write(bit_pos, bit_pos, blocks[0][0].run_break);
+        bit_pos++;
+        //
+
+        //the runs are byte-aligned
+        size_t byte_pos = INT_CEIL(bit_pos, 8);
+        assert((byte_pos*8)==header_bits);
+
+        auto *byte_stream = (uint8_t *) buffer.stream;
+        size_t written_bytes = insert_runs(blocks, n_blocks, &byte_stream[byte_pos], sym_width(node_sigma), max_bytes , fix_len_enc);
+        assert((written_bytes*8)==run_bits);
+
+        //store the number of bits for the largest SA sample
+        uint8_t w = sym_width(max_samp);
+        bit_pos = header_bits+run_bits;
+        buffer.write(bit_pos, bit_pos+bwt_rep.int_pt_width-1, w);
+        bit_pos+=bwt_rep.int_pt_width;
+        //
+
+        //store the number of runs (zero-based value). We use this value to perform a popcount operation over the next n_run bits
+        buffer.write(bit_pos, bit_pos+bwt_rep.run_width, n_runs-1);
+        bit_pos+=bwt_rep.run_width;
+        //
+
+        //store the SA sub samples
+        size_t samp_pos = bit_pos+n_runs;
+        bool is_samp;
+        for(size_t i=0;i<n_blocks;i++){
+            for(auto & run : blocks[i]){
+                is_samp = run.has_valid_sa_samp();
+                if(is_samp){
+                    buffer.write(samp_pos, samp_pos+w-1, run.sa_samp);
+                    samp_pos+=w;
+                }
+                buffer.write(bit_pos, bit_pos, is_samp);
+                bit_pos++;
+            }
+        }
+        assert((INT_CEIL(samp_pos, 8)*8)==(header_bits+run_bits+samp_bits));
+        assert(bit_pos==(header_bits+run_bits+bwt_rep.int_pt_width+bwt_rep.run_width+n_runs));
+        //
+
+        node_n_bits = header_bits+run_bits+samp_bits;
+
+        if(rm_tree_branch){
+            need_ext_succ = node_sigma_bv;
+        }
+        bwt_rep.eff_runs += n_runs;
+
+        //gather statistics
+        if(n_blocks>stats.max_n_blocks) stats.max_n_blocks = n_blocks;
+        stats.samp_overhead+=samp_bits;
+        stats.runs_overhead += run_bits;
+        stats.header_overhead+=header_bits;
+        stats.rank_overhead+=rank_bits;
+        stats.rpl_freq[n_runs]++;
+        stats.leaf_depth_freq[lvl-1]++;//lvl=0 is the tree, so it doesn't count. lvl=1 is a root of a block
+        stats.leaf_enc_freq[leaf_enc]++;//the encoding type for a leaf
+    }
+
+    inline void create_leaf(std::vector<block_type>& blocks,
+                            size_t n_blocks,
+                            const size_t parent_sigma,
+                            const std::vector<bool>& parent_sigma_bv,
+                            const std::vector<uint64_t>& parent_rank_info){
+
+        //checks for the leaf encoding
+        //for 1 byte: check that the sum of 16 (or 32 for AVX) consecutive run lens is <=256
+        //for 2 bytes: check that the sum of 8 (or 16 for AVX) consecutive run lens is <=2^16-1
+        //for 3-4 bytes: check that the sum of 4 (or 8 for AVX) consecutive run lens is <=2^32-1
+        //for 4-8 bytes: check that the sum of 2 (or 4 for AVX) consecutive run lens is <=2^64-1
+        //we need to do this check to work with SIMD instructions. If it does not fit, use the next encoding that can fits them
+
+        if constexpr (std::is_same_v<run_type, run_t>){
+            only_runs_leaf(blocks, n_blocks, parent_sigma, parent_sigma_bv, parent_rank_info);
+        }else{
+            runs_with_sa_samples_leaf(blocks, n_blocks, parent_sigma, parent_sigma_bv, parent_rank_info);
+        }
+    }
+
     size_t insert_runs(std::vector<block_type>& blocks, size_t n_blocks, uint8_t *stream, size_t sigma_bits,
                        size_t max_bytes, bool fix_len_enc){
 
@@ -967,7 +1317,7 @@ struct rl_node {//state of the compression
             size_t enc_run;
             for(size_t i=0;i<n_blocks;i++){
                 for(auto & run : blocks[i]){
-                    enc_run =  run.second<<sigma_bits | run.first;
+                    enc_run =  run.len<<sigma_bits | run.sym;
                     memcpy(stream, &enc_run, max_bytes);
                     stream+=max_bytes;
                     written_bytes+=max_bytes;
@@ -986,8 +1336,8 @@ struct rl_node {//state of the compression
             for(size_t i=0;i<n_blocks;i++){
                 for(auto & run : blocks[i]){
 
-                    vb_lens[p] = INT_CEIL((sigma_bits+sym_width(run.second)), 8);
-                    code = run.second<<sigma_bits | run.first;
+                    vb_lens[p] = INT_CEIL((sigma_bits+sym_width(run.len)), 8);
+                    code = run.len<<sigma_bits | run.sym;
                     memcpy(&tmp_stream[byte_pos], &code, vb_lens[p]);
                     ctrl_bits |= ((vb_lens[p]-1U) << acc_width);
                     byte_pos+=vb_lens[p];
@@ -1023,7 +1373,7 @@ struct rl_node {//state of the compression
         //compute the alphabet of the block first.
         // We need it beforehand
         for(auto & run : block){
-            node_sigma_bv[run.first] = true;
+            node_sigma_bv[run.sym] = true;
         }
         node_sigma = 0;
         for(auto const& bit : node_sigma_bv){
@@ -1123,7 +1473,7 @@ struct rl_node {//state of the compression
             assert(n_blocks==1);
             tmp_node->get_node_alphabet(active_blocks[0]);
             for(auto & run : active_blocks[0]){
-                tmp_node->process_run(run.first, run.second);
+                tmp_node->process_run(run);
             }
             tmp_node->finish_run_scan();
             tmp_node->finish_int_node(node_sigma, node_sigma_bv, block_ranks);
@@ -1220,8 +1570,11 @@ struct rl_node {//state of the compression
     }
 };
 
-template<class bwt_type, class node_type>
+template<class bwt_type, class run_t>
 struct tree_dt{
+
+    typedef std::vector<run_t> block_type;
+    typedef rl_node<bwt_type, block_type> node_type;
 
     bwt_stat_collector<bwt_type> stats;
     tmp_workspace twd;
@@ -1231,10 +1584,111 @@ struct tree_dt{
     explicit tree_dt(const std::string& tmp_dir, bwt_type& _bwt_rep): twd(tmp_dir),
                                                                       bwt_rep(_bwt_rep){}
 
-    void build_from_grlbwt(std::string& bwt_file){
+
+
+    void build(std::string& bwt_file) {
 
         std::vector<uint64_t> C(256, 0);
         bwt_buff_reader bwt_buff(bwt_file);
+        std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
+
+        preprocess_bwt(bwt_buff, trees_ofs, C);
+
+        //compute the tree
+        size_t n_runs = bwt_buff.size(), sym, len;
+        run_t run;
+        for(size_t i=0;i<n_runs;i++){
+            bwt_buff.read_run(i, sym, len);
+            run.sym = bwt_rep.packed_alpha[sym];
+            run.len = len;
+            root->process_run(run);
+        }
+        root->finish_run_scan();
+        trees_ofs.close();
+
+        std::ifstream trees_ifs(twd.get_file("trees"), std::ios::binary);
+        root->ifs = &trees_ifs;
+
+        size_t n_iter = 2;
+        std::vector<st_node_t> st_nodes_in_dfs = compute_nodes_of_pruned_st(bwt_buff, C, bwt_rep.packed_alpha, n_iter);
+        pruned_suffix_tree pruned_st(st_nodes_in_dfs);
+
+        root->finish_tree(pruned_st);
+        trees_ifs.close();
+        //
+    }
+
+    void build(std::string& bwt_file, std::string& sa_subsamp_file){
+
+        using sa_samp_type = typename run_t::sa_samp_t;
+
+        std::vector<uint64_t> C(256, 0);
+        bwt_buff_reader bwt_buff(bwt_file);
+        std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
+
+        preprocess_bwt(bwt_buff, trees_ofs, C);
+
+        //read the subsampled SA values
+        size_t rem_sa_samples = std::filesystem::file_size(sa_subsamp_file)/sizeof(sa_samp_type);
+        std::ifstream sa_subsamp_ifs(sa_subsamp_file, std::ios::binary);
+        size_t sa_buff_size = std::min<size_t>(1024*1024*8, rem_sa_samples);
+        std::vector<sa_samp_type> sa_samp_buffer(sa_buff_size, 0);
+        sa_subsamp_ifs.read((char *)sa_samp_buffer.data(), sa_buff_size*sizeof(sa_samp_type));
+        rem_sa_samples-=sa_buff_size;
+        size_t s=0;
+
+        //compute the tree
+        run_t run;
+        //synchronize the read of the runs (symbol, len) and the associated SA samples
+        size_t n_runs = bwt_buff.size(), sym, len;
+        for(size_t i=0;i<n_runs;i++){
+            bwt_buff.read_run(i, sym, len);
+            run.sym = bwt_rep.packed_alpha[sym];//We assume the smallest value in the text is the separator symbol
+            if(run.sym==0){//separator symbol: we treat each sep. symbol as a separate run, this is due to toehold lemma in the BCR BWT
+                for(size_t j=0;j<len;j++){
+                    if(s==sa_buff_size){
+                        assert(rem_sa_samples>0);
+                        sa_buff_size = std::min<size_t>(sa_buff_size, rem_sa_samples);
+                        sa_subsamp_ifs.read((char *)sa_samp_buffer.data(), sa_buff_size*sizeof(sa_samp_type));
+                        rem_sa_samples -= sa_buff_size;
+                        s=0;
+                    }
+                    run.len = 1;
+                    run.sa_samp = sa_samp_buffer[s++];
+                    root->process_run(run);
+                }
+            } else {//non-separator symbol
+                if(s==sa_buff_size){
+                    assert(rem_sa_samples>0);
+                    sa_buff_size = std::min<size_t>(sa_buff_size, rem_sa_samples);
+                    sa_subsamp_ifs.read((char *)sa_samp_buffer.data(), sa_buff_size*sizeof(sa_samp_type));
+                    rem_sa_samples -= sa_buff_size;
+                    s=0;
+                }
+                run.len = len;
+                run.sa_samp = sa_samp_buffer[s++];
+                root->process_run(run);
+            }
+        }
+        assert(rem_sa_samples==0);
+        root->finish_run_scan();
+        trees_ofs.close();
+        sa_subsamp_ifs.close();
+
+        std::ifstream trees_ifs(twd.get_file("trees"), std::ios::binary);
+        root->ifs = &trees_ifs;
+
+        size_t n_iter = 2;
+        std::vector<st_node_t> st_nodes_in_dfs = compute_nodes_of_pruned_st(bwt_buff, C, bwt_rep.packed_alpha, n_iter);
+        pruned_suffix_tree pruned_st(st_nodes_in_dfs);
+
+        root->finish_tree(pruned_st);
+        trees_ifs.close();
+        //
+    }
+
+    void preprocess_bwt(bwt_buff_reader& bwt_buff, std::ofstream& trees_ofs, std::vector<uint64_t>& C){
+
         size_t n_runs = bwt_buff.size();
         bwt_rep.orig_runs = n_runs;
         bwt_rep.packed_alpha.resize(256);
@@ -1279,9 +1733,7 @@ struct tree_dt{
         //
 
         root = new node_type(0, bwt_type::block_size, bwt_rep, stats);
-        std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
         root->ofs = &trees_ofs;
-
         node_type *current = root;
         size_t b_size=bwt_type::block_size/bwt_type::scale_factor;
         for(size_t i=1;i<=bwt_rep.levels;i++){
@@ -1289,36 +1741,10 @@ struct tree_dt{
             current = current->tmp_node;
             b_size/=bwt_type::scale_factor;
         }
-
-        //compute the tree
-        for(size_t i=0;i<n_runs;i++){
-            bwt_buff.read_run(i, sym, len);
-            root->process_run(bwt_rep.packed_alpha[sym], len);
-        }
-        root->finish_run_scan();
-        trees_ofs.close();
-
-        std::ifstream trees_ifs(twd.get_file("trees"), std::ios::binary);
-        root->ifs = &trees_ifs;
-
-        size_t n_iter = 2;
-        std::vector<st_node_t> st_nodes_in_dfs = compute_nodes_of_pruned_st(bwt_buff, C, bwt_rep.packed_alpha, n_iter);
-        pruned_suffix_tree pruned_st(st_nodes_in_dfs);
-
-        root->finish_tree(pruned_st);
-        trees_ifs.close();
-        //
-    }
-
-    void build_from_rl_plain(std::string& bwt_file){
-
-    }
-
-    void build_from_plain(std::string& bwt_file){
-
     }
 
     void report_stats(){
+
         for(size_t s=0;s<bwt_rep.sigma;s++){
             std::cout<<"\tsymbol "<<s<<", rank: "<<root->block_ranks[s]<<std::endl;
         }
@@ -1390,7 +1816,7 @@ struct tree_dt{
                 case 14:
                     if(stats.leaf_enc_freq[i]) std::cout<<"\t6 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
-                case 15:
+                default:
                     if(stats.leaf_enc_freq[i]) std::cout<<"\t7 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
             }
@@ -1425,6 +1851,9 @@ struct tree_dt{
         std::cout<<"Written bytes in the data structure: "<<INT_CEIL(root->node_n_bits, 8)<<std::endl;
         std::cout<<"Space breakdown"<<std::endl;
         std::cout<<"\tRuns: "<<INT_CEIL(stats.runs_overhead, 8)<<" ("<<(double(stats.runs_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
+        if constexpr (!std::is_same_v<run_t, run_type>){
+            std::cout<<"\tSA samples: "<<INT_CEIL(stats.samp_overhead, 8)<<" ("<<(double(stats.samp_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
+        }
         std::cout<<"\tHeaders: "<<INT_CEIL(stats.header_overhead, 8)<<" ("<<(double(stats.header_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\t\tTree pointers: "<<INT_CEIL(stats.tree_pointers_overhead, 8)<<" ("<<(double(stats.tree_pointers_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         size_t ptr_bv_ov = stats.header_overhead - (stats.rank_overhead + stats.int_su_pr_overhead + stats.ext_suc_overhead+ stats.tree_pointers_overhead);
@@ -1433,30 +1862,42 @@ struct tree_dt{
         std::cout<<"\t\tInt. succ/pred: "<<INT_CEIL(stats.int_su_pr_overhead, 8)<<" ("<<(double(stats.int_su_pr_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\t\tExt. succ: "<<INT_CEIL(stats.ext_suc_overhead, 8)<<" ("<<(double(stats.ext_suc_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\t\t\tLow freq. symbols: "<<INT_CEIL(stats.lfs_offset, 8)<<" ("<<(double(stats.lfs_offset)/double(root->node_n_bits))*100<<"%)"<<std::endl;
-        assert(stats.header_overhead+stats.runs_overhead==root->node_n_bits);
-        std::cout<<"\t\tTrees without ext. succ/pred info nor tree pointers: "<<INT_CEIL(stats.trees_overhead, 8)<<std::endl;
+
+        if constexpr (std::is_same_v<run_t, run_type>){
+            assert(stats.header_overhead+stats.runs_overhead==root->node_n_bits);
+        }else{
+            assert(stats.header_overhead+stats.runs_overhead+stats.samp_overhead==root->node_n_bits);
+        }
+        //std::cout<<"\t\tTrees without ext. succ/pred info nor tree pointers: "<<INT_CEIL(stats.trees_overhead, 8)<<std::endl;
         std::cout<<"space_usage:"<<float(root->node_n_bits)/float(bwt_rep.tot_syms)<<" bps"<<std::endl;
     }
 };
 
 
 template<class bwt_type>
-void build_rlbwt_vlb(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT f, std::string tmp_dir="./"){
-    tree_dt<bwt_type, rl_node<bwt_type>> tree(tmp_dir, bwt_rep);
-    switch (f) {
-        case BWT_FORMAT::GRL_BWT:
-            tree.build_from_grlbwt(bwt_file);
-            break;
-        case BWT_FORMAT::RL_PLAIN:
-            tree.build_from_rl_plain(bwt_file);
-            break;
-        case BWT_FORMAT::PLAIN:
-            tree.build_from_plain(bwt_file);
-            break;
-        default:
-            std::cout<<"Unknown format"<<std::endl;
-            exit(1);
+void build_bwt(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std::string tmp_dir="./"){
+    tree_dt<bwt_type, run_type> tree(tmp_dir, bwt_rep);
+    if(fmt == BWT_FORMAT::RL_PLAIN){
+        //TODO transform to grlbwt format
+    } else if(fmt == BWT_FORMAT::PLAIN){
+        //TODO transform to grlbwt format
     }
+    tree.build(bwt_file);
+    tree.report_stats();
+}
+
+template<class bwt_type, class sa_samp_type>
+void build_bwt_th(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std::string& subsamp_sa_file, std::string tmp_dir="./"){
+
+    tree_dt<bwt_type, run_with_sa_type<sa_samp_type>> tree(tmp_dir, bwt_rep);
+
+    if(fmt == BWT_FORMAT::RL_PLAIN){
+        //TODO transform to grlbwt format
+    } else if(fmt == BWT_FORMAT::PLAIN){
+        //TODO transform to grlbwt format
+    }
+
+    tree.build(bwt_file, subsamp_sa_file);
     tree.report_stats();
 }
 #endif //RLBWT_VLB_CONSTRUCT_RLBWT_VLB_H

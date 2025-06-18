@@ -7,7 +7,7 @@
 #include "../include/utils.h"
 #include "custom_wt_rlmn.hpp"
 
-enum run_type{
+enum run_annot_t{
     NONE=0,
     HEAD=1,
     TAIL=2,
@@ -17,12 +17,12 @@ struct sa_samp_type{
     uint32_t str=0;
     uint64_t pos=0;
     uint64_t run_id=0;
-    run_type annotation=NONE;
+    run_annot_t annotation=NONE;
 
-    sa_samp_type(uint32_t str_, uint64_t pos_, uint64_t run_id_, run_type annot_): str(str_),
-                                                                                   pos(pos_),
-                                                                                   run_id(run_id_),
-                                                                                   annotation(annot_){}
+    sa_samp_type(uint32_t str_, uint64_t pos_, uint64_t run_id_, run_annot_t annot_): str(str_),
+                                                                                        pos(pos_),
+                                                                                        run_id(run_id_),
+                                                                                        annotation(annot_){}
 };
 
 typedef sdsl::custom_wt_rlmn<> index_type;

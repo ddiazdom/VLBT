@@ -6,7 +6,8 @@
 #define VLBT_CONSTRUCT_VLBT_PHI
 
 #include "vlbt_phi.h"
-#include "common.h"
+#include "pruned_st.h"
+#include "construct_vlbt_bwt.h"
 
 #ifdef __linux__
 #include <malloc.h>
@@ -973,14 +974,14 @@ struct phi_tree{
 };
 
 template<class phi_dt_type, class size_type, bool vbyte=false>
-void build_vlbt_phi(phi_dt_type& phi_rep, std::string& rsa_samp_file, std::string tmp_dir="./"){
+void build_phi(phi_dt_type& phi_rep, std::string& rsa_samp_file, std::string tmp_dir="./"){
     phi_tree<phi_dt_type, size_type> tree(tmp_dir, phi_rep);
     tree.build(rsa_samp_file);
     tree.report_stats();
 }
 
 template<class phi_dt_type, class size_type, bool vbyte=false>
-void build_vlbt_phi_in_memory(phi_dt_type& phi_rep,
+void build_phi_in_memory(phi_dt_type& phi_rep,
                               std::vector<std::pair<size_type, size_type>> block,
                               std::string tmp_dir="./"){
     phi_tree<phi_dt_type, size_type> tree(tmp_dir, phi_rep);
