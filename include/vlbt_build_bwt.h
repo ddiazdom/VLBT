@@ -7,6 +7,8 @@
 
 #include "pruned_st.h"
 #include "bwt_io.h"
+#include "vlbt_bwt_th.h"
+
 #ifdef __linux__
 #include <malloc.h>
 #endif
@@ -1588,6 +1590,8 @@ struct tree_dt{
 
     void build(std::string& bwt_file) {
 
+        static_assert(bwt_type::variant==RLBWT);
+
         bwt_buff_reader bwt_buff(bwt_file);
         std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
 
@@ -1619,6 +1623,7 @@ struct tree_dt{
 
     void build(std::string& bwt_file, std::string& sa_subsamp_file){
 
+        static_assert(bwt_type::variant==RLBWT_WITH_TOEHOLDS);
         using sa_samp_type = typename run_t::sa_samp_t;
 
         bwt_buff_reader bwt_buff(bwt_file);

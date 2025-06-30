@@ -6,7 +6,6 @@
 #define VLBT_BUILD_PHI
 
 #include "vlbt_phi.h"
-#include "pruned_st.h"
 #include "vlbt_build_bwt.h"
 
 #ifdef __linux__

@@ -5,6 +5,58 @@
 #ifndef VLBT_DEF_SCAN_H
 #define VLBT_DEF_SCAN_H
 
+template<bool overflow16, bool overflow32=false>
+static inline uint8_t access_scl_8(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+}
+template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
+static inline uint8_t access_scl_16(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+}
+template<bool vbyte_compressed, uint8_t bytes_per_run>
+static inline uint8_t access_scl_32(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+}
+template<uint8_t bytes_per_run>
+static inline uint8_t access_scl_64(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+    /*uint8_t alpha_bits = 4;
+    uint8_t alpha_mask = 15;
+
+    uint64_t r_len[2]={0};
+    r_len[1] = stream[0]>>alpha_bits;
+    size_t acc = r_len[1], i=0, rank=0;
+    while(acc<idx){
+        rank+= r_len[(stream[i] & alpha_mask)==sym];
+        r_len[1] = stream[++i]>>alpha_bits;
+        acc+= r_len[1];
+    }
+    return rank + (idx-(acc-r_len[1]))*((stream[i]&15)==sym);*/
+}
+
+template<bool overflow16, bool overflow32=false>
+static inline uint64_t inv_select_scl_8(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+}
+template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
+static inline uint64_t inv_select_scl_16(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+}
+template<bool vbyte_compressed, uint8_t bytes_per_run>
+static inline uint64_t inv_select_scl_32(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+}
+template<uint8_t bytes_per_run>
+static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+}
+
+template<bool overflow16, bool overflow32=false>
+static inline uint64_t rank_scl_8(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
+}
+template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
+static inline uint64_t rank_scl_16(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
+}
+template<bool vbyte_compressed, uint8_t bytes_per_run>
+static inline uint64_t rank_scl_32(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
+}
+template<uint8_t bytes_per_run>
+static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
+}
+
+
 #if defined(__ARM_NEON__)
 #include "scan_neon.h"
 
@@ -76,4 +128,5 @@
 #define RANK_32 rank_scl_32
 #define RANK_64 rank_scl_64
 #endif
+
 #endif //VLBT_DEF_SCAN_H

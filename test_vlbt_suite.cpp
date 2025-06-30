@@ -19,8 +19,7 @@
 #include "include/vlbt_build_phi.h"
 #include "include/vlbt_build_sr_index.h"
 //#include "include/construct_vlbt_bwt_th.h"
-
-#include "include/vlbt_bwt.h"
+//#include "include/vlbt_bwt.h"
 #include "include/vlbt_bwt_th.h"
 #include "include/vlbt_phi.h"
 //#include "include/vlbt_sr_index.h"
@@ -457,7 +456,7 @@ void test_bwt(std::string& input_prefix, std::string& output_prefix){
 
     std::cout<<"Testing VLBT BWT"<<std::endl;
     std::string input_bwt = input_prefix+".ebwt";
-    using bwt_type = vlbt_bwt<65536, 64, 4>;
+    using bwt_type = vlbt_bwt_th<RLBWT, 65536, 64, 4>;
     bwt_type bwt_dt;
 
     build_bwt<bwt_type>(bwt_dt, input_bwt, BWT_FORMAT::GRL_BWT);
@@ -476,7 +475,7 @@ void test_bwt_th(std::string& input_prefix, size_t subsamp_val, std::string& out
 
     std::cout<<"Testing VLBT BWT with toeholds"<<std::endl;
     std::string bwt_file = input_prefix+".ebwt";
-    using bwt_th_type = vlbt_bwt_th<65536, 64, 4>;
+    using bwt_th_type = vlbt_bwt_th<RLBWT_WITH_TOEHOLDS, 65536, 64, 4>;
     bwt_th_type bwt_dt;
 
     std::string samp_sa_file = input_prefix+".sa_samples";
@@ -519,7 +518,7 @@ void test_phi(std::string& input_prefix, size_t ssamp_val, std::string& output_p
 template<class size_type>
 void test_sr_index(std::string& input_prefix, size_t ssamp_val, std::string& output_prefix){
 
-    using bwt_th_type = vlbt_bwt_th<65536, 64, 4>;
+    using bwt_th_type = vlbt_bwt_th<RLBWT_WITH_TOEHOLDS, 65536, 64, 4>;
     using phi_type = vlbt_phi<65536, 64, 4>;
     using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
     sr_index_type sr_index;
@@ -560,7 +559,7 @@ int main(int argc, char** argv){
         //TESTED_DTS
     }
     test_bwt(input_prefix, output_prefix);
-    //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
+    test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
     //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }

@@ -10,19 +10,27 @@
 #include "bitstream.h"
 #include "def_scan.h"
 
-template<size_t b_size, size_t b_runs, size_t s_factor>
+enum bwt_variant{
+    RLBWT=0,
+    RLBWT_WITH_TOEHOLDS=1
+};
+
+template<bwt_variant var, size_t b_size, size_t b_runs, size_t s_factor>
 struct vlbt_bwt_th {
 
     static constexpr size_t block_size = b_size;
     static constexpr size_t scale_factor = s_factor;
     static constexpr size_t max_block_runs = b_runs;
-    static constexpr uint8_t int_pt_width=6;//number of bits we use to encode the number of bits we use to encode pointers
+    static constexpr uint8_t int_pt_width = var==RLBWT? 6:7;//number of bits we use to encode the number of bits we use to encode pointers
     static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
-    static constexpr uint8_t leaf_enc_width=4;
+    static constexpr uint8_t leaf_enc_width = 4;
+    static constexpr bwt_variant variant = var;
+
     //number of bits to encode metadata about the sequence of runs:
     // number of bits we use to encode the number of bytes that the runs use in a leaf
     // one extra bit that indicates if the head of the first run is real or artificial
     static constexpr uint8_t runs_mt_bits = ((sizeof(unsigned long)*8) - __builtin_clzl((b_runs*8) + (b_runs/8)))+1;
+
     typedef bitstream<size_t> stream_type;
 
     struct tree_path_type{
@@ -56,7 +64,7 @@ struct vlbt_bwt_th {
     uint64_t eff_runs=0;//number of runs in the representation
     uint64_t max_freq=0;//frequency of the most frequent symbol
     uint64_t header_bytes=0;//bytes used for the header
-    uint64_t lfs_bits=0;//number of bits at the beginning of the stream used by the ext succ/pred info of the low freq symbols.
+    uint64_t lfs_bits=0;//number of bits at the beginning of the stream used by the ext succ/pred info of the low-freq symbols.
     uint8_t sigma=0;//size of the effective text alphabet
     uint16_t ext_pt_width=0;//number of bits we use store the pointers to the trees
     uint8_t mtd_bits=0;//number of bits to encode the maximum tree distance
@@ -74,6 +82,14 @@ struct vlbt_bwt_th {
         assert(lg==floor(lg));
         float lg2 = log(b_runs) / log(s_factor);
         assert(lg2==floor(lg2));
+    }
+
+    const std::vector<uint8_t>& get_packed_alpha(){
+        return packed_alpha;
+    }
+
+    const std::vector<uint8_t>& get_unpacked_alpha(){
+        return unpacked_alpha;
     }
 
     size_t serialize(std::ostream & ofs) const {
@@ -114,24 +130,16 @@ struct vlbt_bwt_th {
         stream.load(ifs);
     }
 
-    const std::vector<uint8_t>& get_packed_alpha(){
-        return packed_alpha;
-    }
-
-    const std::vector<uint8_t>& get_unpacked_alpha(){
-        return unpacked_alpha;
-    }
-
     inline size_t find_prev(uint64_t& child) const {
         //get the effective block where i lies and its byte offset within the stream
         //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
         size_t p = lfs_bits + (ext_pt_width*child);
         p = stream.read(p, p+ext_pt_width-1);
         size_t offset = (p >> (run_width+1)) * ((p & 1)>0);
-        child -= offset;//eff child in the representation where i lies
+        child -= offset;//eff child in the representation where "i" lies
         size_t child_off = lfs_bits + (ext_pt_width*child);
         p = stream.read(child_off, child_off+ext_pt_width-1)>>1;
-        return (header_bytes + p)*8;//bit position where child begins in the stream
+        return (header_bytes + p)*8;//bit-position where "child" begins in the stream
     }
 
     inline size_t find_next(uint64_t& child) const {
@@ -174,7 +182,7 @@ struct vlbt_bwt_th {
         size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
         uint8_t w = sym_width(INT_CEIL(tot_syms, block_size)*block_size);
 
-        //read the area of the stream where the info of symbol lies
+        //read the area of the stream where the info of "symbol" lies
         size_t ptr = c_bits + symbol*40;
         int64_t first = stream.read(ptr, ptr+39);
         ptr+=40;
@@ -203,20 +211,20 @@ struct vlbt_bwt_th {
 
         symbol = packed_alpha[symbol];
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.
-        // However, rank operations in backwardsearch never return -1, so it is OK for pattern matching
+        // However, rank operations in backward_search never return -1, so it is OK for pattern matching
 
         //initialize the block size
         size_t bk_sz = block_size;
 
         //succ info
         //s_info[1] contains the successor information
-        //s_info[2] is a temporary value that is discarded when there is no successor
+        //s_info[2] is a temporary value discarded when there is no successor
         //we use two variables to avoid branching as we descend over the tree
         succ_info s_info[2];
 
         //get the block where index i lies
         uint64_t child = i/bk_sz, succ_child;
-        size_t bit_pos = find_prev(child);//bit position where child begins in the stream
+        size_t bit_pos = find_prev(child);//bit-position where "child" begins in the stream
 
         //find successor containing sym
         bool succ_found = stream.read_bit(bit_pos+symbol);
@@ -231,7 +239,7 @@ struct vlbt_bwt_th {
                 steps++;
             }
 
-            if(!succ_found && stream.read_bit(symbol)) {//check if the node is low-freq
+            if(!succ_found && stream.read_bit(symbol)) {//check if the node is low freq
                 succ_bit_pos = find_low_freq_succ(i, symbol);
                 skip_ext_succ_info(succ_bit_pos);
                 succ_found = true;
@@ -638,15 +646,15 @@ struct vlbt_bwt_th {
 
         symbol = packed_alpha[symbol];
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.
-        // However, rank operations in backwardsearch never return -1, so it is OK for pattern matching
+        // However, rank operations in backward_search never return -1, so it is OK for pattern matching
 
         //initialize the block size
         size_t bk_sz = block_size;
 
-        //get the block where index i lies
+        //get the block where index "i" lies
         uint64_t child = i/bk_sz;
 
-        //bit position where child begins in the stream
+        //bit-position where "child" begins in the stream
         size_t bit_pos = find_prev(child);
         size_t prev_bit_pos=bit_pos;
         skip_ext_succ_info(bit_pos);
@@ -762,7 +770,7 @@ struct vlbt_bwt_th {
             bit_pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
             rank_width = sym_width(bk_sz*scale_factor);
 
-            //add the bit offset. Now bit_pos points to child
+            //add the bit offset. now bit_pos points to child
             bit_pos+= p*8;
 
             //start reading the header of child (there is no ext succ/pred info)
@@ -784,8 +792,9 @@ struct vlbt_bwt_th {
 
             uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
             bit_pos+= leaf_enc_width;
-            bit_pos+= runs_mt_bits;
-
+            if constexpr (var==RLBWT_WITH_TOEHOLDS){
+                bit_pos+= runs_mt_bits;//skip the metadata of the runs
+            }
             const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(INT_CEIL(bit_pos, 8));
 
             //scan the runs in the leaf according to the leaf encoding
@@ -854,13 +863,13 @@ struct vlbt_bwt_th {
         //initialize the block size
         size_t bk_sz = block_size;
 
-        //get the block where index i lies
+        //get the block where index "i" lies
         uint64_t child = i/bk_sz;
 
         //skip the bits with the ext. succ info of low-freq symbols
         path.bit_pos = lfs_bits;
 
-        //get the effective block where i lies and its byte offset within the stream
+        //get the effective block where "i" lies and its byte offset within the stream
         //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
         size_t p = path.bit_pos+(ext_pt_width*child);
         p = stream.read(p, p+ext_pt_width-1);
@@ -922,7 +931,7 @@ struct vlbt_bwt_th {
 
             //skip the pointer to the children and position the bit in the next byte-aligned position
             path.bit_pos = INT_CEIL((path.bit_pos+(n_children*p_width)), 8)*8;
-            //add the bit offset. Now bit_pos points to child
+            //add the bit offset. now bit_pos points to child
             path.bit_pos+= p*8;
 
             //start reading the header of child (there is no ext succ/pred info)
@@ -938,7 +947,9 @@ struct vlbt_bwt_th {
 
         path.leaf_enc = stream.read(path.bit_pos, path.bit_pos+leaf_enc_width-1);
         path.bit_pos+= leaf_enc_width;
-        path.bit_pos+= runs_mt_bits;//skip the bits encoding the number of bytes we use to store the runs in their encoding
+        if constexpr (var==RLBWT_WITH_TOEHOLDS){
+            path.bit_pos+= runs_mt_bits;//skip the bits encoding the number of bytes we use to store the runs in their encoding
+        }
     }
 
     [[nodiscard]] inline std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {
@@ -949,18 +960,18 @@ struct vlbt_bwt_th {
 
         std::pair<uint64_t, uint8_t> rank_answer;
 
-        //0 : 1 bpr, no overflow
-        //1 : 1 bpr, overflow window=16
-        //2 : 1 brp, overflow window=32
+        //0: 1 bpr, no overflow
+        //1: 1 bpr, overflow window=16
+        //2: 1 brp, overflow window=32
 
-        //3 : 2 bpr, no_vbyte, no overflow
-        //4 : 2 bpr, no_vbyte, overflow window=8
-        //5 : 2 bpr, no_vbyte, overflow window=16
-        //6 : 2 bpr, vbyte, no overflow
-        //7 : 2 bpr, vbyte, overflow window=8
-        //8 : 2 bpr, vbyte, overflow window=16
+        //3: 2 bpr, no_vbyte, no overflow
+        //4: 2 bpr, no_vbyte, overflow window=8
+        //5: 2 bpr, no_vbyte, overflow window=16
+        //6: 2 bpr, vbyte, no overflow
+        //7: 2 bpr, vbyte, overflow window=8
+        //8: 2 bpr, vbyte, overflow window=16
 
-        //9 : 3 bpr, no_vbyte
+        //9: 3 bpr, no_vbyte
         //10: 3 bpr, vbyte
         //11: 4 bpr, no_vbyte
         //12: 4 bpr, vbyte
@@ -1027,7 +1038,7 @@ struct vlbt_bwt_th {
                 exit(1);
         }
 
-        //go back in the path to obtain the rank information and the original symbol
+        //go back in the path to compute the rank information and the original symbol
         p.bit_pos = p.rank_pos[p.lvl]+(rank_answer.second*p.rank_width[p.lvl]);
         rank_answer.first += stream.read(p.bit_pos, p.bit_pos+p.rank_width[p.lvl]-1);//add rank information
         rank_answer.second = stream.select(p.sigma_pos[p.lvl], p.sigma_pos[p.lvl]+p.node_sigma[p.lvl-1]-1, rank_answer.second+1);//update the symbol
@@ -1052,18 +1063,18 @@ struct vlbt_bwt_th {
         uint8_t symbol;
         //LEAF encoding (bpr=bytes per run):
 
-        //0 : 1 bpr, no overflow
-        //1 : 1 bpr, overflow window=16
-        //2 : 1 brp, overflow window=32
+        //0: 1 bpr, no overflow
+        //1: 1 bpr, overflow window=16
+        //2: 1 brp, overflow window=32
 
-        //3 : 2 bpr, no_vbyte, no overflow
-        //4 : 2 bpr, no_vbyte, overflow window=8
-        //5 : 2 bpr, no_vbyte, overflow window=16
-        //6 : 2 bpr, vbyte, no overflow
-        //7 : 2 bpr, vbyte, overflow window=8
-        //8 : 2 bpr, vbyte, overflow window=16
+        //3: 2 bpr, no_vbyte, no overflow
+        //4: 2 bpr, no_vbyte, overflow window=8
+        //5: 2 bpr, no_vbyte, overflow window=16
+        //6: 2 bpr, vbyte, no overflow
+        //7: 2 bpr, vbyte, overflow window=8
+        //8: 2 bpr, vbyte, overflow window=16
 
-        //9 : 3 bpr, no_vbyte
+        //9: 3 bpr, no_vbyte
         //10: 3 bpr, vbyte
         //11: 4 bpr, no_vbyte
         //12: 4 bpr, vbyte
