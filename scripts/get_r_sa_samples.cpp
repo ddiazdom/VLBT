@@ -3,7 +3,7 @@
 //
 #include<iostream>
 #include "../include/bwt_io.h"
-#include<thread>
+#include <thread>
 #include "../include/utils.h"
 #include "custom_wt_rlmn.hpp"
 

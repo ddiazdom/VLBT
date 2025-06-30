@@ -60,8 +60,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/Modules"
 find_package(LibSDSL REQUIRED)
 
 #Build the BWT data structures
-add_executable(build_bwt_dts test_vlbt_suite.cpp)
-target_compile_options(build_bwt_dts
+add_executable(test_vlbt test_vlbt_suite.cpp)
+target_compile_options(test_vlbt
         PUBLIC
         #-Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function
         #-O3 -funroll-loops -fomit-frame-pointer -ffast-math
@@ -69,16 +69,16 @@ target_compile_options(build_bwt_dts
         -O3
         ${SIMD_FLAGS}
 )
-target_link_libraries(build_bwt_dts LINK_PUBLIC ${LIBSDSL_LIBRARIES})
-target_include_directories(build_bwt_dts PUBLIC ${LIBSDSL_INCLUDE_DIRS})
+target_link_libraries(test_vlbt LINK_PUBLIC ${LIBSDSL_LIBRARIES})
+target_include_directories(test_vlbt PUBLIC ${LIBSDSL_INCLUDE_DIRS})
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     message(STATUS "Adding -march=native compiler flag due to ${CMAKE_CXX_COMPILER_ID}")
-    target_compile_options(build_bwt_dts PUBLIC -march=native)
+    target_compile_options(test_vlbt PUBLIC -march=native)
     #for the file_system functionality on Linux
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS_EQUAL "9.1")
         message(STATUS "GCC version is <=9.1, adding the compiler flag stdc++fs")
-        target_compile_options(build_bwt_dts PUBLIC stdc++fs)
+        target_compile_options(test_vlbt PUBLIC stdc++fs)
     endif()
 endif()
 
@@ -88,6 +88,5 @@ target_include_directories(get_r_sa_samp PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/
 target_compile_options(get_r_sa_samp PUBLIC -O3 ${SIMD_FLAGS})
 
 add_executable(gen_patterns scripts/genpatterns.cpp)
-target_compile_options(gen_patterns PUBLIC
-        -O3
+target_compile_options(gen_patterns PUBLIC -O3
 )

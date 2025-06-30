@@ -192,7 +192,7 @@ struct vlbt_bwt {
         bit_pos = (header_bytes+p)*8;
     }
 
-    inline size_t find_low_freq_succ(size_t i, uint8_t symbol){
+    inline size_t find_low_freq_succ(size_t i, uint8_t symbol) const {
 
         symbol = stream.pop_count(0, symbol)-1;//this works because stream[symbol] is true
         size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
@@ -223,7 +223,7 @@ struct vlbt_bwt {
         return find_next(child);
     }
 
-    inline int64_t rank(size_t i, uint8_t symbol){
+    [[nodiscard]] inline int64_t rank(size_t i, uint8_t symbol) const {
 
         symbol = packed_alpha[symbol];
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.
@@ -235,7 +235,7 @@ struct vlbt_bwt {
         //get the block where index i lies
         uint64_t child = i/bk_sz;
 
-        //bit position where child begins in the stream
+        //bit position where "child" begins in the stream
         size_t bit_pos = find_prev(child);
         size_t prev_bit_pos=bit_pos;
         skip_ext_succ_info(bit_pos);

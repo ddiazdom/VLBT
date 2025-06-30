@@ -4,33 +4,35 @@
 
 #include <iostream>
 #include <ostream>
-#include "perf_utils.h"
-#include <sdsl/wt_huff.hpp>
-#include <sdsl/construct.hpp>
-#include <sdsl/wt_rlmn.hpp>
+//#include "perf_utils.h"
+//#include <sdsl/wt_huff.hpp>
+//#include <sdsl/construct.hpp>
+//#include <sdsl/wt_rlmn.hpp>
 //#include <sdsl/wt_int.hpp>
-#include <sdsl/wt_rlmn.hpp>
-#include <sdsl/suffix_arrays.hpp>
-#include <sdsl/suffix_array_algorithm.hpp>
+//#include <sdsl/wt_rlmn.hpp>
+//#include <sdsl/suffix_arrays.hpp>
+//#include <sdsl/suffix_array_algorithm.hpp>
 //#include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 
 //the framework
-#include "include/vlbt_build_sr_index.h"
 #include "include/vlbt_build_bwt.h"
-//#include "include/construct_vlbt_bwt_th.h"
 #include "include/vlbt_build_phi.h"
+#include "include/vlbt_build_sr_index.h"
+//#include "include/construct_vlbt_bwt_th.h"
+
 #include "include/vlbt_bwt.h"
 #include "include/vlbt_bwt_th.h"
 #include "include/vlbt_phi.h"
+//#include "include/vlbt_sr_index.h"
 //
 
 #include "scripts/fm_index.h"
+#include "scripts/custom_wt_rlmn.hpp"
 #include <unordered_set>
 #include <vector>
 #include <random>
 
 using ulint = uint64_t;
-//parse pizza&chilli patterns header:
 void header_error(){
     std::cout << "Error: malformed header in patterns file" << std::endl;
     std::cout << "Take a look here for more info on the file format: http://pizzachili.dcc.uchile.cl/experiments.html" << std::endl;
@@ -188,7 +190,7 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
 
     std::cout<<"Testing count (nanosecs/pat and nanosecs/occ)"<<std::endl;
 
-    sdsl::wt_rlmn<> wt_rlmn;
+    sdsl::custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
 
     std::vector<uint64_t> C(wt_rlmn.sigma+1, 0);
@@ -204,9 +206,7 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
     }
     C[wt_rlmn.sigma] = acc;
 
-    fm_index<sdsl::wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
-    fm_index<bwt_type> csa_mydt(my_dt, C, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
-
+    fm_index<sdsl::custom_wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
     //TODO checking for errors
     //std::string pattern = "wart ";
     //csa_rlmn.backward_search(pattern);
@@ -253,7 +253,82 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
     j=0;
     std::vector<std::pair<uint64_t, uint64_t>> my_ans(n_pats);
     for(auto const& p : pat_list) {
-        MEASURE(csa_mydt.backward_search(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
+        MEASURE(my_dt.count(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
+        j++;
+    }
+    std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(acc_count)<<"), ";
+    std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<")"<<std::endl;
+
+    size_t n_errors=0, acc_occ=0;
+    for(size_t i=0;i<pat_list.size();i++){
+        if(my_ans[i].first!=rlmn_ans[i].first || my_ans[i].second!=rlmn_ans[i].second){
+            std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<my_ans[i].first<<"!="<<rlmn_ans[i].first <<" or "<<my_ans[i].second<<"!="<<rlmn_ans[i].second<<std::endl;
+            n_errors++;
+        }
+        acc_occ+=rlmn_ans[i].second-rlmn_ans[i].first+1;
+    }
+    if(n_errors>0){
+        std::cout<<"There are "<<n_errors<<"/"<<pat_list.size()<<" errors "<<std::endl;
+    }
+    assert(n_errors==0);
+}
+
+template<class bwt_type>
+void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_name){
+
+    std::cout<<"Testing locate (nanosecs/pat and nanosecs/occ)"<<std::endl;
+    std::string samp_sa_file = input_prefix+".sa_samples";
+
+    sdsl::custom_wt_rlmn<> wt_rlmn;
+    sdsl::load_from_file(wt_rlmn, input_prefix+".wt_rlmn");
+
+    std::vector<uint64_t> C(wt_rlmn.sigma+1, 0);
+    for(size_t sym=0;sym<wt_rlmn.sigma;sym++){
+        C[sym] = wt_rlmn.rank(wt_rlmn.size(), my_dt.eff2byte(sym));
+    }
+
+    size_t acc=0, tmp;
+    for(size_t i=0;i<wt_rlmn.sigma;i++){
+        tmp = C[i];
+        C[i] = acc;
+        acc+=tmp;
+    }
+    C[wt_rlmn.sigma] = acc;
+
+    fm_index<sdsl::custom_wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
+    std::string pat_file = input_prefix+".pats";
+    std::ifstream ifs(pat_file);
+    std::string header;
+    std::getline(ifs, header);
+    ulint n_pats = get_number_of_patterns(header);
+    ulint pat_len = get_patterns_length(header);
+    std::cout<<"\t"<<n_pats<<" patterns of length "<<pat_len<<" each "<<std::endl;
+    std::vector<std::string> pat_list(n_pats);
+    for(ulint i=0;i<n_pats;++i){
+        pat_list[i].reserve(pat_len);
+        for(ulint j=0;j<pat_len;++j){
+            char c;
+            ifs.get(c);
+            pat_list[i].push_back(c);
+        }
+    }
+
+    size_t acc_count=0;
+    size_t j=0;
+    double rlmn_acc_time=0;
+    std::vector<std::pair<uint64_t, uint64_t>> rlmn_ans(n_pats);
+    for(auto const& p : pat_list) {
+        MEASURE(csa_rlmn.backward_search(p), rlmn_acc_time, rlmn_ans[j], std::chrono::nanoseconds)
+        acc_count+=rlmn_ans[j].second-rlmn_ans[j].first+1;
+        j++;
+    }
+    //std::cout<<"\tTotal number of occurrences "<<acc_count<<" avg:"<<double(acc_count)/double(n_pats)<<std::endl;
+
+    double my_acc_time=0;
+    j=0;
+    std::vector<std::pair<uint64_t, uint64_t>> my_ans(n_pats);
+    for(auto const& p : pat_list) {
+        MEASURE(my_dt.count(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
         j++;
     }
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(acc_count)<<"), ";
@@ -277,7 +352,7 @@ template<class bwt_type>
 void test_access(bwt_type& my_dt, std::string& input_file, std::string my_dt_name){
 
     std::cout<<"Testing access (avg_time in nanoseconds)"<<std::endl;
-    sdsl::wt_rlmn<> wt_rlmn;
+    sdsl::custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
 
     size_t samp_size = 1000000;
@@ -310,7 +385,7 @@ template<class bwt_type>
 void test_rank(bwt_type& my_dt, std::string& input_file, std::string my_dt_name){
 
     std::cout<<"Testing rank (avg_time in nanoseconds)"<<std::endl;
-    sdsl::wt_rlmn<> wt_rlmn;
+    sdsl::custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
 
     size_t samp_size = 1000000;
@@ -347,7 +422,7 @@ template<class bwt_type>
 void test_inverse_select(bwt_type& my_dt, std::string& input_file, std::string my_dt_name){
 
     std::cout<<"Testing inverse select (avg_time in nanoseconds)"<<std::endl;
-    sdsl::wt_rlmn<> wt_rlmn;
+    sdsl::custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
 
     size_t samp_size = 10000000;
@@ -415,10 +490,11 @@ void test_bwt_th(std::string& input_prefix, size_t subsamp_val, std::string& out
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<"\n"<<std::endl;
 
-    test_count(bwt_dt, input_prefix, "vlbt_bwt_th");
     test_inverse_select(bwt_dt, input_prefix, "vlbt_bwt_th");
     test_access(bwt_dt, input_prefix, "vlbt_bwt_th");
     test_rank(bwt_dt, input_prefix, "vlbt_bwt_th");
+    test_count(bwt_dt, input_prefix, "vlbt_bwt_th");
+    test_locate(bwt_dt, input_prefix, "vlbt_bwt_th");
 }
 
 template<class size_type>
@@ -462,7 +538,7 @@ void test_sr_index(std::string& input_prefix, size_t ssamp_val, std::string& out
 int main(int argc, char** argv){
 
     if(argc!=4){
-        std::cout<<"usage: ./build_bwt_dts input_prefix build_other_dts=0|1 output_prefix"<<std::endl;
+        std::cout<<"usage: ./test_vlbt input_prefix build_other_dts=0|1 output_prefix"<<std::endl;
         exit(1);
     }
 
@@ -473,14 +549,18 @@ int main(int argc, char** argv){
     std::string output_prefix = std::string(argv[3]);
 
     if(other_dts){
-        std::string plain_input_file = "tmp_plain.txt";
+        //std::string plain_input_file = "tmp_plain.txt";
+
         std::string bwt_file = input_prefix+".ebwt";
-        std::cout<<"Creating wavelet trees for "<<input_prefix<<std::endl;
-        rl2plain(bwt_file, plain_input_file);
-        TESTED_DTS
+        std::string wt_file = input_prefix+".wt_rlmn";
+        std::cout<<"Creating wavelet trees for "<<bwt_file<<std::endl;
+        sdsl::custom_wt_rlmn<> wt(bwt_file);
+        sdsl::store_to_file(wt, wt_file);
+        //rl2plain(bwt_file, plain_input_file);
+        //TESTED_DTS
     }
-    //test_bwt(input_prefix, output_prefix);
+    test_bwt(input_prefix, output_prefix);
     //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }

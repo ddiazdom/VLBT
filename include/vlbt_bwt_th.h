@@ -417,7 +417,7 @@ struct vlbt_bwt_th {
         return s_info[1].rank;
     }
 
-    inline std::pair<int64_t, bool> rank_with_head(size_t i, uint8_t symbol) {
+    [[nodiscard]] inline std::pair<int64_t, bool> rank_with_head(size_t i, uint8_t symbol) const {
 
         symbol = packed_alpha[symbol];
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.
@@ -631,11 +631,10 @@ struct vlbt_bwt_th {
                     exit(1);
             }
         }
-
         return {rank, succ_is_head};
     }
 
-    inline int64_t rank(size_t i, uint8_t symbol) {
+    [[nodiscard]] inline int64_t rank(size_t i, uint8_t symbol) const {
 
         symbol = packed_alpha[symbol];
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.

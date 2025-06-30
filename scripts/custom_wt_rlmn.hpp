@@ -19,8 +19,8 @@
 	  Compression is achieved by exploiting runs in the input sequence.
     \author Simon Gog
 */
-#ifndef INCLUDED_SDSL_WT_RLMN
-#define INCLUDED_SDSL_WT_RLMN
+#ifndef INCLUDED_CUSTOM_WT_RLMN
+#define INCLUDED_CUSTOM_WT_RLMN
 
 #include "sdsl/sdsl_concepts.hpp"
 #include "sdsl/int_vector.hpp"

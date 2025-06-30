@@ -6,6 +6,7 @@
 #define VLBT_PRUNED_ST_H
 
 #include "bwt_io.h"
+#include "utils.h"
 
 //suffix tree node represented as the range of the leaves it covers
 struct st_node_t {
