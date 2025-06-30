@@ -11,22 +11,25 @@
 #include "def_scan.h"
 
 enum bwt_variant{
-    RLBWT=0,
-    RLBWT_WITH_TOEHOLDS=1
+    NO_TOEHOLDS=false,
+    WITH_TOEHOLDS=true
 };
 
 template<bwt_variant var, size_t b_size, size_t b_runs, size_t s_factor>
-struct vlbt_bwt_th {
+struct vlbt_bwt {
 
     static constexpr size_t block_size = b_size;
     static constexpr size_t scale_factor = s_factor;
     static constexpr size_t max_block_runs = b_runs;
-    static constexpr uint8_t int_pt_width = var==RLBWT? 6:7;//number of bits we use to encode the number of bits we use to encode pointers
+
+    //the number of bits we use to encode the number of bits we use to encode pointers
+    // 6 bits indicate that we use 2^6-1 = 63 bits to encode pointers, which is enough for any possible known application
+    static constexpr uint8_t int_pt_width = 6;
     static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
     static constexpr uint8_t leaf_enc_width = 4;
-    static constexpr bwt_variant variant = var;
+    static constexpr bool has_toeholds = var;
 
-    //number of bits to encode metadata about the sequence of runs:
+    //the number of bits to encode metadata about the sequence of runs:
     // number of bits we use to encode the number of bytes that the runs use in a leaf
     // one extra bit that indicates if the head of the first run is real or artificial
     static constexpr uint8_t runs_mt_bits = ((sizeof(unsigned long)*8) - __builtin_clzl((b_runs*8) + (b_runs/8)))+1;
@@ -75,7 +78,7 @@ struct vlbt_bwt_th {
     uint8_t levels=0;//maximum number of levels
     stream_type stream;//stream with the data
 
-    vlbt_bwt_th(): levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1){
+    vlbt_bwt(): levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1){
         //TODO static asserts in block_size, scale_factor, and b_runs
         // logarithm function to calculate value
         float lg = log(b_size) / log(s_factor);
@@ -792,7 +795,7 @@ struct vlbt_bwt_th {
 
             uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
             bit_pos+= leaf_enc_width;
-            if constexpr (var==RLBWT_WITH_TOEHOLDS){
+            if constexpr (var==WITH_TOEHOLDS){
                 bit_pos+= runs_mt_bits;//skip the metadata of the runs
             }
             const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(INT_CEIL(bit_pos, 8));
@@ -947,7 +950,7 @@ struct vlbt_bwt_th {
 
         path.leaf_enc = stream.read(path.bit_pos, path.bit_pos+leaf_enc_width-1);
         path.bit_pos+= leaf_enc_width;
-        if constexpr (var==RLBWT_WITH_TOEHOLDS){
+        if constexpr (var==WITH_TOEHOLDS){
             path.bit_pos+= runs_mt_bits;//skip the bits encoding the number of bytes we use to store the runs in their encoding
         }
     }

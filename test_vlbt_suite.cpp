@@ -14,16 +14,15 @@
 //#include <sdsl/suffix_array_algorithm.hpp>
 //#include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 
-//the framework
+//==== VLBT framework
 #include "include/vlbt_build_bwt.h"
 #include "include/vlbt_build_phi.h"
 #include "include/vlbt_build_sr_index.h"
-//#include "include/construct_vlbt_bwt_th.h"
-//#include "include/vlbt_bwt.h"
-#include "include/vlbt_bwt_th.h"
+
+#include "include/vlbt_bwt.h"
 #include "include/vlbt_phi.h"
 //#include "include/vlbt_sr_index.h"
-//
+//=====
 
 #include "scripts/fm_index.h"
 #include "scripts/custom_wt_rlmn.hpp"
@@ -456,10 +455,10 @@ void test_bwt(std::string& input_prefix, std::string& output_prefix){
 
     std::cout<<"Testing VLBT BWT"<<std::endl;
     std::string input_bwt = input_prefix+".ebwt";
-    using bwt_type = vlbt_bwt_th<RLBWT, 65536, 64, 4>;
+    using bwt_type = vlbt_bwt<NO_TOEHOLDS, 65536, 64, 4>;
     bwt_type bwt_dt;
 
-    build_bwt<bwt_type>(bwt_dt, input_bwt, BWT_FORMAT::GRL_BWT);
+    build_bwt<bwt_type>(bwt_dt, input_bwt, GRL_BWT);
     std::string output_file = output_prefix+".vlbt_bwt";
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<"\n"<<std::endl;
@@ -475,7 +474,7 @@ void test_bwt_th(std::string& input_prefix, size_t subsamp_val, std::string& out
 
     std::cout<<"Testing VLBT BWT with toeholds"<<std::endl;
     std::string bwt_file = input_prefix+".ebwt";
-    using bwt_th_type = vlbt_bwt_th<RLBWT_WITH_TOEHOLDS, 65536, 64, 4>;
+    using bwt_th_type = vlbt_bwt<WITH_TOEHOLDS, 65536, 64, 4>;
     bwt_th_type bwt_dt;
 
     std::string samp_sa_file = input_prefix+".sa_samples";
@@ -484,16 +483,16 @@ void test_bwt_th(std::string& input_prefix, size_t subsamp_val, std::string& out
     std::string out_ssamp_tails_file = output_prefix+".ssamp_tails";
     subsample_sa_samples<sa_samp_type>(samp_sa_file, str_ranges_file, subsamp_val, out_ssamp_heads_file, out_ssamp_tails_file);
 
-    build_bwt_th<bwt_th_type, sa_samp_type>(bwt_dt, bwt_file, BWT_FORMAT::GRL_BWT, out_ssamp_heads_file);
-    std::string output_file = output_prefix+".vlbt_bwt_th";
+    build_bwt_th<bwt_th_type, sa_samp_type>(bwt_dt, bwt_file, GRL_BWT, out_ssamp_heads_file);
+    std::string output_file = output_prefix+".vlbt_bwt";
     size_t written_bytes = store_to_file(output_file, bwt_dt);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<"\n"<<std::endl;
 
     test_inverse_select(bwt_dt, input_prefix, "vlbt_bwt_th");
-    test_access(bwt_dt, input_prefix, "vlbt_bwt_th");
-    test_rank(bwt_dt, input_prefix, "vlbt_bwt_th");
-    test_count(bwt_dt, input_prefix, "vlbt_bwt_th");
-    test_locate(bwt_dt, input_prefix, "vlbt_bwt_th");
+    test_access(bwt_dt, input_prefix, "vlbt_bwt");
+    test_rank(bwt_dt, input_prefix, "vlbt_bwt");
+    test_count(bwt_dt, input_prefix, "vlbt_bwt");
+    test_locate(bwt_dt, input_prefix, "vlbt_bwt");
 }
 
 template<class size_type>
@@ -518,7 +517,7 @@ void test_phi(std::string& input_prefix, size_t ssamp_val, std::string& output_p
 template<class size_type>
 void test_sr_index(std::string& input_prefix, size_t ssamp_val, std::string& output_prefix){
 
-    using bwt_th_type = vlbt_bwt_th<RLBWT_WITH_TOEHOLDS, 65536, 64, 4>;
+    using bwt_th_type = vlbt_bwt<WITH_TOEHOLDS, 65536, 64, 4>;
     using phi_type = vlbt_phi<65536, 64, 4>;
     using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
     sr_index_type sr_index;

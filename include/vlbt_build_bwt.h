@@ -7,7 +7,7 @@
 
 #include "pruned_st.h"
 #include "bwt_io.h"
-#include "vlbt_bwt_th.h"
+#include "vlbt_bwt.h"
 
 #ifdef __linux__
 #include <malloc.h>
@@ -1590,8 +1590,6 @@ struct tree_dt{
 
     void build(std::string& bwt_file) {
 
-        static_assert(bwt_type::variant==RLBWT);
-
         bwt_buff_reader bwt_buff(bwt_file);
         std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
 
@@ -1623,7 +1621,6 @@ struct tree_dt{
 
     void build(std::string& bwt_file, std::string& sa_subsamp_file){
 
-        static_assert(bwt_type::variant==RLBWT_WITH_TOEHOLDS);
         using sa_samp_type = typename run_t::sa_samp_t;
 
         bwt_buff_reader bwt_buff(bwt_file);
@@ -1881,7 +1878,11 @@ struct tree_dt{
 
 template<class bwt_type>
 void build_bwt(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std::string tmp_dir="./"){
+
+    static_assert(!bwt_type::has_toeholds);
+
     tree_dt<bwt_type, run_type> tree(tmp_dir, bwt_rep);
+
     if(fmt == BWT_FORMAT::RL_PLAIN){
         //TODO transform to grlbwt format
     } else if(fmt == BWT_FORMAT::PLAIN){
@@ -1893,6 +1894,8 @@ void build_bwt(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std::st
 
 template<class bwt_type, class sa_samp_type>
 void build_bwt_th(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std::string& subsamp_sa_file, std::string tmp_dir="./"){
+
+    static_assert(bwt_type::has_toeholds);
 
     tree_dt<bwt_type, run_with_sa_type<sa_samp_type>> tree(tmp_dir, bwt_rep);
 
