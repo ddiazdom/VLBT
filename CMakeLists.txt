@@ -63,9 +63,8 @@ find_package(LibSDSL REQUIRED)
 add_executable(test_vlbt test_vlbt_suite.cpp)
 target_compile_options(test_vlbt
         PUBLIC
-        #-Wall -Wextra -Wno-ignored-qualifiers -pedantic -Wno-deprecated-copy -Wno-unused-function
         #-O3 -funroll-loops -fomit-frame-pointer -ffast-math
-        #-O3 -funroll-loops -mavx2
+        -Wall -pedantic
         -O3
         ${SIMD_FLAGS}
 )

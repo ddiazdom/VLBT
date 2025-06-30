@@ -7,7 +7,7 @@
 
 #include <cmath>
 #include <vector>
-#include "bitstream.h"
+#include "bit_stream.h"
 
 /*
 template<bool vbyte_compressed>
@@ -146,7 +146,7 @@ static inline uint64_t phi_inv_select_scl_64(const uint16_t* stream, uint8_t sym
 #define RANK_64 rank_scl_64
 #endif*/
 
-typedef bitstream<size_t> stream_type;
+typedef bit_stream<size_t> stream_type;
 
 template<size_t b_size, size_t b_runs, size_t s_factor>
 struct vlbt_phi {

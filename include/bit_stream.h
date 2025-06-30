@@ -252,7 +252,7 @@ const uint8_t lt_sel[] = {
 };
 
 template<class word_t, uint8_t max_dist=std::numeric_limits<word_t>::digits>
-struct bitstream{
+struct bit_stream{
 
     constexpr static uint8_t word_bits = std::numeric_limits<word_t>::digits;
     constexpr static uint8_t word_shift = __builtin_ctz(word_bits);
@@ -262,14 +262,14 @@ struct bitstream{
     word_t *stream=nullptr;
     size_t stream_cap=0;//in words
 
-    bitstream(): stream(nullptr), stream_cap(0){};
+    bit_stream(): stream(nullptr), stream_cap(0){};
 
-    bitstream(bitstream&& other) noexcept {
+    bit_stream(bit_stream&& other) noexcept {
         std::swap(stream, other.stream);
         std::swap(stream_cap, other.stream_cap);
     }
 
-    bitstream(bitstream& other) noexcept {
+    bit_stream(bit_stream& other) noexcept {
         if(&other!=this && other.stream!=nullptr){
             reserve_in_words(other.stream_cap);
             memcpy(stream, other.stream, words2bytes(other.stream_cap));
@@ -331,13 +331,13 @@ struct bitstream{
         stream_cap=0;
     }
 
-    inline bitstream& swap(bitstream& other) {
+    inline bit_stream& swap(bit_stream& other) {
         std::swap(stream, other.stream);
         std::swap(stream_cap, other.stream_cap);
         return *this;
     }
 
-    inline bitstream& operator=(bitstream const& other){
+    inline bit_stream& operator=(bit_stream const& other){
         if(&other!=this){
             reserve_in_words(other.stream_cap);
             memcpy(stream, other.stream, words2bytes(other.stream_cap));
@@ -646,7 +646,7 @@ struct bitstream{
         }
     }
 
-    void concatenate(size_t bytes_a, bitstream<word_t, max_dist>& stream_b, size_t bytes_b){
+    void concatenate(size_t bytes_a, bit_stream<word_t, max_dist>& stream_b, size_t bytes_b){
         size_t new_size_in_words = INT_CEIL((bytes_a+bytes_b), sizeof(word_t));
         reserve_in_words(new_size_in_words);
         auto * tmp_stream_a = (uint8_t *)stream;
@@ -669,22 +669,22 @@ struct bitstream{
 };
 
 template<class word_t, uint8_t max_dist>
-const size_t bitstream<word_t, max_dist>::masks[65]={0x0,
-                                                     0x1,0x3, 0x7,0xF,
-                                                     0x1F,0x3F, 0x7F,0xFF,
-                                                     0x1FF,0x3FF, 0x7FF,0xFFF,
-                                                     0x1FFF,0x3FFF, 0x7FFF,0xFFFF,
-                                                     0x1FFFF,0x3FFFF, 0x7FFFF,0xFFFFF,
-                                                     0x1FFFFF,0x3FFFFF, 0x7FFFFF,0xFFFFFF,
-                                                     0x1FFFFFF,0x3FFFFFF, 0x7FFFFFF,0xFFFFFFF,
-                                                     0x1FFFFFFF,0x3FFFFFFF, 0x7FFFFFFF,0xFFFFFFFF,
-                                                     0x1FFFFFFFF,0x3FFFFFFFF, 0x7FFFFFFFF,0xFFFFFFFFF,
-                                                     0x1FFFFFFFFF,0x3FFFFFFFFF, 0x7FFFFFFFFF,0xFFFFFFFFFF,
-                                                     0x1FFFFFFFFFF,0x3FFFFFFFFFF, 0x7FFFFFFFFFF,0xFFFFFFFFFFF,
-                                                     0x1FFFFFFFFFFF,0x3FFFFFFFFFFF, 0x7FFFFFFFFFFF,0xFFFFFFFFFFFF,
-                                                     0x1FFFFFFFFFFFF,0x3FFFFFFFFFFFF, 0x7FFFFFFFFFFFF,0xFFFFFFFFFFFFF,
-                                                     0x1FFFFFFFFFFFFF,0x3FFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF,0xFFFFFFFFFFFFFF,
-                                                     0x1FFFFFFFFFFFFFF,0x3FFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFF,
-                                                     0x1FFFFFFFFFFFFFFF,0x3FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF};
+const size_t bit_stream<word_t, max_dist>::masks[65]={0x0,
+                                                      0x1, 0x3, 0x7, 0xF,
+                                                      0x1F, 0x3F, 0x7F, 0xFF,
+                                                      0x1FF, 0x3FF, 0x7FF, 0xFFF,
+                                                      0x1FFF, 0x3FFF, 0x7FFF, 0xFFFF,
+                                                      0x1FFFF, 0x3FFFF, 0x7FFFF, 0xFFFFF,
+                                                      0x1FFFFF, 0x3FFFFF, 0x7FFFFF, 0xFFFFFF,
+                                                      0x1FFFFFF, 0x3FFFFFF, 0x7FFFFFF, 0xFFFFFFF,
+                                                      0x1FFFFFFF, 0x3FFFFFFF, 0x7FFFFFFF, 0xFFFFFFFF,
+                                                      0x1FFFFFFFF, 0x3FFFFFFFF, 0x7FFFFFFFF, 0xFFFFFFFFF,
+                                                      0x1FFFFFFFFF, 0x3FFFFFFFFF, 0x7FFFFFFFFF, 0xFFFFFFFFFF,
+                                                      0x1FFFFFFFFFF, 0x3FFFFFFFFFF, 0x7FFFFFFFFFF, 0xFFFFFFFFFFF,
+                                                      0x1FFFFFFFFFFF, 0x3FFFFFFFFFFF, 0x7FFFFFFFFFFF, 0xFFFFFFFFFFFF,
+                                                      0x1FFFFFFFFFFFF, 0x3FFFFFFFFFFFF, 0x7FFFFFFFFFFFF, 0xFFFFFFFFFFFFF,
+                                                      0x1FFFFFFFFFFFFF, 0x3FFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF, 0xFFFFFFFFFFFFFF,
+                                                      0x1FFFFFFFFFFFFFF, 0x3FFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFF,
+                                                      0x1FFFFFFFFFFFFFFF, 0x3FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF};
 
 #endif //LPG_COMPRESSOR_BITSTREAM_H

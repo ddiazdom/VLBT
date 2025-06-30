@@ -164,7 +164,7 @@ void get_tail_samples(std::vector<sample_type>& samples,
     ifs_str_ranges.read((char *)str_ranges.data(), off_t(f_size));
 
     std::ofstream ofs_ssamp_tails(ssamp_tails_file, std::ios::binary);
-    size_t n_strings = n_elements-1, last_sampled, n_samp=0, len, acc_len=0, buffer_size=1024*1024, buff_pos=0;
+    size_t n_strings = n_elements-1, last_sampled, len, acc_len=0, buffer_size=1024*1024, buff_pos=0;
     size_t s_pos=0, diff;
     size_type str_boundary;
     bool is_diff_neg;
@@ -202,7 +202,7 @@ void get_tail_samples(std::vector<sample_type>& samples,
                 }
                 acc_len+=len;
                 last_sampled = s_pos;
-                n_samp++;
+                //n_samp++;
             }
             s_pos++;
         }
@@ -227,7 +227,7 @@ void get_tail_samples(std::vector<sample_type>& samples,
             buff_pos=0;
         }
         acc_len += len;
-        n_samp++;
+        //n_samp++;
 
         //std::cout<<"start_next_str:"<<str_ranges[str+1]<<" acc_len:"<<acc_len<<std::endl;
         assert(acc_len==str_ranges[str+1]);

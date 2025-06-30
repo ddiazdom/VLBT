@@ -135,7 +135,7 @@ struct rl_node {//state of the compression
     // sequence encoding the blocks in the tree containing the symbol s
     std::vector<std::vector<uint64_t>> sigma_trees;
 
-    //list of the symbols of each tree (as a bitvector) that require external successor information
+    //list of the symbols for each tree (as a bitvector) that require external successor information
     //That is, each symbol need_ext_succ[s] \cup the symbols not appearing in the tree
     //ext_pred_info and ext_succ_info are information for the nodes with level 1 (i.e., tree roots)
     std::vector<bool> ext_succ_info;
@@ -151,9 +151,9 @@ struct rl_node {//state of the compression
             active_blocks(b_runs),
             node_sigma_bv(bwt_rep.sigma, false),
             int_succ_pred_info(bwt_rep.sigma, std::vector<bool>(s_factor, false)),
-            packed_alphabet(bwt_rep.sigma, 0),
-            block_ranks(bwt_rep.sigma, 0),
             need_ext_succ(bwt_rep.sigma, true),
+            block_ranks(bwt_rep.sigma, 0),
+            packed_alphabet(bwt_rep.sigma, 0),
             stats(st){
         if(lvl==0){
             //number of blocks in the tree representation
@@ -1498,7 +1498,7 @@ struct rl_node {//state of the compression
         //get the symbols that need successor information to other trees
         if(tmp_node->rm_tree_branch){
             for(size_t s=0;s<bwt_rep.sigma;s++){
-                need_ext_succ[s] = need_ext_succ[s] & tmp_node->need_ext_succ[s];
+                need_ext_succ[s] = need_ext_succ[s] && tmp_node->need_ext_succ[s];
             }
         }
         //

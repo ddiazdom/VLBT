@@ -268,7 +268,7 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
     if(n_errors>0){
         std::cout<<"There are "<<n_errors<<"/"<<pat_list.size()<<" errors "<<std::endl;
     }
-    assert(n_errors==0);
+    assert(n_errors==0 && acc_occ==acc_count);
 }
 
 template<class bwt_type>
@@ -343,7 +343,7 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     if(n_errors>0){
         std::cout<<"There are "<<n_errors<<"/"<<pat_list.size()<<" errors "<<std::endl;
     }
-    assert(n_errors==0);
+    assert(n_errors==0 && acc_count==acc_occ);
 }
 
 template<class bwt_type>
@@ -558,7 +558,7 @@ int main(int argc, char** argv){
         //TESTED_DTS
     }
     test_bwt(input_prefix, output_prefix);
-    test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
+    //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
     //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }

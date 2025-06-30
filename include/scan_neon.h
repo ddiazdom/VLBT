@@ -548,8 +548,8 @@ static inline uint8_t access_neon_64x2(const uint8_t ** stream, uint8_t sigma, u
     return 0;
 }
 
-template<bool overflow16, bool overflow32=false>
-static inline int64_t rank_neon_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
+template<bool overflow16, bool overflow32=false, bool check_head>
+static inline auto rank_neon_8x16(const uint8_t **stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
@@ -567,7 +567,6 @@ static inline int64_t rank_neon_8x16(const uint8_t **stream, uint8_t sigma, uint
     uint32_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
     uint32_t rank=0;
-    size_t l=0;
     while(acc<=idx){
         bk_lengths = vandq_u8(bk_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
         tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
@@ -580,8 +579,6 @@ static inline int64_t rank_neon_8x16(const uint8_t **stream, uint8_t sigma, uint
         prev_acc = acc;
         tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
         acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-
-        l++;
     }
 
     idx-=prev_acc;
@@ -619,11 +616,16 @@ static inline int64_t rank_neon_8x16(const uint8_t **stream, uint8_t sigma, uint
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
     rank -=(pf_sum-idx) * (last_symbol==symbol);
-    return rank;
+
+    if constexpr (check_head){
+        return std::make_pair(rank, false);
+    }else{
+        return rank;
+    }
 }
 
-template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
-static inline int64_t rank_neon_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
+template<bool vbyte_compressed, bool overflow8, bool overflow16=false, bool check_head>
+static inline auto rank_neon_16x8(const uint8_t **stream, const uint8_t sigma, uint64_t idx, uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const int16x8_t alpha_shift = vdupq_n_u16(-sigma_bits);
@@ -694,11 +696,15 @@ static inline int64_t rank_neon_16x8(const uint8_t **stream, uint8_t sigma, uint
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     rank -=(pf_sum-idx)*(last_symbol==symbol);
 
-    return (int64_t)rank;
+    if constexpr (check_head){
+        return std::make_pair((int64_t)rank, false);
+    }else{
+        return (int64_t)rank;
+    }
 }
 
-template<bool vbyte_compressed, uint8_t bytes_per_run>
-static inline int64_t rank_neon_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
+template<bool vbyte_compressed, uint8_t bytes_per_run, bool check_head>
+static inline auto rank_neon_32x4(const uint8_t ** stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const int32x4_t alpha_shift = vdupq_n_u32(-sigma_bits);
@@ -761,11 +767,15 @@ static inline int64_t rank_neon_32x4(const uint8_t ** stream, uint8_t sigma, uin
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     rank -= (pf_sum-idx)*(last_symbol==symbol);
 
-    return (int64_t)rank;
+    if constexpr (check_head){
+        return std::make_pair((int64_t)rank, false);
+    }else{
+        return (int64_t)rank;
+    }
 }
 
-template<uint8_t bytes_per_run>
-static inline int64_t rank_neon_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
+template<uint8_t bytes_per_run, bool check_head>
+static inline auto rank_neon_64x2(const uint8_t ** stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
     return 0;
 }
 

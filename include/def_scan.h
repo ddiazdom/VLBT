@@ -43,16 +43,16 @@ template<uint8_t bytes_per_run>
 static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sigma, uint64_t idx){
 }
 
-template<bool overflow16, bool overflow32=false>
+template<bool overflow16, bool overflow32, bool check_head>
 static inline uint64_t rank_scl_8(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
 }
-template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
+template<bool vbyte_compressed, bool overflow8, bool overflow16, bool check_head>
 static inline uint64_t rank_scl_16(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
 }
-template<bool vbyte_compressed, uint8_t bytes_per_run>
+template<bool vbyte_compressed, uint8_t bytes_per_run, bool check_head>
 static inline uint64_t rank_scl_32(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
 }
-template<uint8_t bytes_per_run>
+template<uint8_t bytes_per_run, bool check_head>
 static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
 }
 
