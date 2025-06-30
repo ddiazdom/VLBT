@@ -384,40 +384,40 @@ struct vlbt_bwt {
             //scan the runs in the leaf according to the leaf encoding
             switch(leaf_enc) {
                 case 0:
-                    auto res = RANK_8<false, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                    return RANK_8<false, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 1 byte (no vbyte)
                 case 1:
-                    auto res =  RANK_8<true, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                    return RANK_8<true, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 1 byte (no vbyte)
                 case 2:
-                    auto res = RANK_8<true, true, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 2 bytes (no vbyte)
+                    return RANK_8<true, true, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 2 bytes (no vbyte)
 
                 case 3://template param: vbyte?, overflow8?, overflow16?
-                    auto res = RANK_16<false, false, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 3 bytes (no vbyte)
+                    return RANK_16<false, false, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 3 bytes (no vbyte)
                 case 4:
-                    auto res = RANK_16<false, true, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (no vbyte)
+                    return RANK_16<false, true, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 4 bytes (no vbyte)
                 case 5:
-                    auto res =  RANK_16<false, true, true, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 5 bytes (no vbyte)
+                    return RANK_16<false, true, true, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 5 bytes (no vbyte)
                 case 6:
-                    auto res = RANK_16<true, false, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 2 bytes (vbyte)
+                    return RANK_16<true, false, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 2 bytes (vbyte)
                 case 7:
-                    auto res = RANK_16<true, true, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 3 bytes (vbyte)
+                    return RANK_16<true, true, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 3 bytes (vbyte)
                 case 8:
-                    auto res = RANK_16<true, true, true, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    return RANK_16<true, true, true, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 4 bytes (vbyte)
 
                 case 9://template param: vbyte?, bpr
-                    auto res = RANK_32<false,3, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    return RANK_32<false,3, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 4 bytes (vbyte)
                 case 10:
-                    auto res = RANK_32<true,3, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    return RANK_32<true,3, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 4 bytes (vbyte)
                 case 11:
-                    auto res = RANK_32<false,4, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    return RANK_32<false,4, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 4 bytes (vbyte)
                 case 12:
-                    auto res = RANK_32<true,4, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    return RANK_32<true,4, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 4 bytes (vbyte)
 
                 case 13://template param: bpr
-                    auto res = RANK_64<5, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    return RANK_64<5, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 5 bytes (vbyte)
                 case 14:
-                    auto res = RANK_64<6, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    return RANK_64<6, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 5 bytes (vbyte)
                 case 15:
-                    auto res = RANK_64<7, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    return RANK_64<7, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol, rank);//runs use 5 bytes (vbyte)
                 default:
                     std::cout<<"Undefined encoding"<<std::endl;
                     exit(1);
