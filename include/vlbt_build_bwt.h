@@ -1248,7 +1248,7 @@ struct rl_node {//state of the compression
         bit_pos+=bwt_rep.int_pt_width;
         //
 
-        //store the number of runs (zero-based value). We use this value to perform a popcount operation over the next n_run bits
+        //store the number of runs (zero-based value). we use this value to perform a popcount operation over the next n_run bits
         buffer.write(bit_pos, bit_pos+bwt_rep.run_width, n_runs-1);
         bit_pos+=bwt_rep.run_width;
         //
