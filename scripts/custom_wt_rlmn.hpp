@@ -404,19 +404,43 @@ class custom_wt_rlmn
          *        \f$ \Order{H_0} \f$ on average, where \f$ H_0 \f$ is the
          *        zero order entropy of the sequence
          */
-        size_type rank(size_type i, value_type c)const {
+        template<bool check_head=false>
+        auto rank(size_type i, value_type c)const {
             assert(i <= size());
-            if (i == 0)
-                return 0;
+
+            if (i == 0){
+                if constexpr (check_head) {
+                    return std::make_pair<size_type, bool>(0, true);
+                } else {
+                    return 0ULL;
+                }
+            }
+
             size_type wt_ex_pos = m_bl_rank(i);
             size_type c_runs = m_wt.rank(wt_ex_pos, c);
-            if (c_runs == 0)
-                return 0;
+
+            if (c_runs == 0) {
+                if constexpr (check_head) {
+                    return std::make_pair<size_type, bool>(0, true);
+                } else {
+                    return 0ULL;
+                }
+            }
+
             if (m_wt[wt_ex_pos-1] == c) {
                 size_type c_run_begin = m_bl_select(wt_ex_pos);
-                return m_bf_select(m_C_bf_rank[c]+c_runs)-m_C[c]+i-c_run_begin;
+                if constexpr (check_head){
+                    return std::make_pair<size_type, bool>(m_bf_select(m_C_bf_rank[c]+c_runs)-m_C[c] + (i-c_run_begin),
+                                                           m_bl[i]);
+                }else{
+                    return m_bf_select(m_C_bf_rank[c]+c_runs)-m_C[c] + (i-c_run_begin);
+                }
             } else {
-                return m_bf_select(m_C_bf_rank[c] + c_runs + 1) - m_C[c];
+                if constexpr (check_head){
+                    return std::make_pair<size_type, bool>(m_bf_select(m_C_bf_rank[c]+c_runs+1)-m_C[c], true);
+                }else{
+                    return m_bf_select(m_C_bf_rank[c]+c_runs+1)-m_C[c];
+                }
             }
         };
 
@@ -429,6 +453,14 @@ class custom_wt_rlmn
         [[nodiscard]] inline bool is_run_head(size_type i) const {
             assert(i<size());
            return m_bl[i];
+        }
+
+        [[nodiscard]] inline bool next_is_head(size_type i, value_type c) const {
+            assert(i<size());
+            if(this[i]==c){
+                return m_bl[i];
+            }
+            return true;
         }
 
         [[nodiscard]] inline size_t n_strings() const {
@@ -543,10 +575,6 @@ class custom_wt_rlmn
             m_C.load(in);
             m_C_bf_rank.load(in);
         }
-
-
-
-
 };
 
 }// end namespace sdsl

@@ -1124,7 +1124,7 @@ struct rl_node {//state of the compression
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
                 run.sym = packed_alphabet[run.sym];
-                //I need to use a fixed number of bits for the symbols (i.e., sym_width(node_sigma) bits)
+                //We need to use a fixed number of bits for the symbols (i.e., sym_width(node_sigma) bits)
                 bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.len)), 8);
                 bfr_dist[bytes]++;
                 tmp_psum[bk>>3] += run.len;

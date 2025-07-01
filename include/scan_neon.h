@@ -549,7 +549,7 @@ static inline uint8_t access_neon_64x2(const uint8_t ** stream, uint8_t sigma, u
 }
 
 template<bool overflow16, bool overflow32, bool check_head>
-static inline auto rank_neon_8x16(const uint8_t **stream, const uint8_t sigma, uint64_t idx, uint8_t symbol, int64_t base_rank){
+static inline int64_t rank_neon_8x16(const uint8_t **stream, const uint8_t sigma, uint64_t idx, uint8_t symbol){
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
@@ -615,17 +615,21 @@ static inline auto rank_neon_8x16(const uint8_t **stream, const uint8_t sigma, u
     tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
-    rank -=(pf_sum-idx) * (last_symbol==symbol);
-
-    if constexpr (check_head){
-        return std::make_pair(base_rank+rank, false);
-    }else{
-        return base_rank+rank;
+    if constexpr (check_head) {
+        uint8_t len = run >> sigma_bits;//get the length of the run where idx falls
+        bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        rank -=(pf_sum-idx) * is_same_sym;
+        rank = (rank<<1) | is_head;
+        rank = (rank<<1) | is_same_sym;
+    } else {
+        rank -=(pf_sum-idx) * (last_symbol==symbol);
     }
+    return (int64_t)rank;
 }
 
 template<bool vbyte_compressed, bool overflow8, bool overflow16, bool check_head>
-static inline auto rank_neon_16x8(const uint8_t **stream, const uint8_t sigma, uint64_t idx, uint8_t symbol, int64_t base_rank){
+static inline int64_t rank_neon_16x8(const uint8_t **stream, const uint8_t sigma, uint64_t idx, uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const int16x8_t alpha_shift = vdupq_n_u16(-sigma_bits);
@@ -694,17 +698,22 @@ static inline auto rank_neon_16x8(const uint8_t **stream, const uint8_t sigma, u
 
     tmp = vpaddlq_u32(vpaddlq_u16(bk_lengths));
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-    rank -=(pf_sum-idx)*(last_symbol==symbol);
 
-    if constexpr (check_head){
-        return std::make_pair(base_rank+ (int64_t)rank, false);
+    if constexpr (check_head) {
+        uint16_t len = run >> sigma_bits;//get the length of the run where idx falls
+        bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        rank -=(pf_sum-idx) * is_same_sym;
+        rank = (rank<<1) | is_head;
+        rank = (rank<<1) | is_same_sym;
     } else {
-        return base_rank + (int64_t)rank;
+        rank -=(pf_sum-idx) * (last_symbol==symbol);
     }
+    return (int64_t)rank;
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run, bool check_head>
-static inline auto rank_neon_32x4(const uint8_t ** stream, const uint8_t sigma, uint64_t idx, uint8_t symbol, int64_t base_rank){
+static inline auto rank_neon_32x4(const uint8_t ** stream, const uint8_t sigma, uint64_t idx, uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const int32x4_t alpha_shift = vdupq_n_u32(-sigma_bits);
@@ -765,23 +774,23 @@ static inline auto rank_neon_32x4(const uint8_t ** stream, const uint8_t sigma, 
 
     tmp = vpaddlq_u32(bk_lengths);
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
-    rank -= (pf_sum-idx)*(last_symbol==symbol);
 
-    if constexpr (check_head){
-        return std::make_pair(base_rank+ (int64_t)rank, false);
+    if constexpr (check_head) {
+        uint32_t len = run >> sigma_bits;//get the length of the run where idx falls
+        bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        rank -= (pf_sum-idx) * is_same_sym;
+        rank = (rank<<1) | is_head;
+        rank = (rank<<1) | is_same_sym;
     } else {
-        return base_rank + (int64_t)rank;
+        rank -= (pf_sum-idx) * (last_symbol==symbol);
     }
+    return (int64_t)rank;
 }
 
 template<uint8_t bytes_per_run, bool check_head>
-static inline auto rank_neon_64x2(const uint8_t ** stream, const uint8_t sigma, uint64_t idx, uint8_t symbol, int64_t base_rank){
-
-    if constexpr (check_head){
-        return std::make_pair(base_rank, false);
-    } else {
-        return base_rank;
-    }
+static inline int64_t rank_neon_64x2(const uint8_t ** stream, const uint8_t sigma, uint64_t idx, uint8_t symbol){
+    return 0;
 }
 
 #endif //VLBT_SCAN_NEON_H

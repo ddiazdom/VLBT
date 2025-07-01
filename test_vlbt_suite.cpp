@@ -294,6 +294,12 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     C[wt_rlmn.sigma] = acc;
 
     fm_index<sdsl::custom_wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
+
+    //std::string pat = "rd, w";
+    //my_dt.count_with_head(pat);
+    //csa_rlmn.count_with_head(pat);
+    //exit(1);
+
     std::string pat_file = input_prefix+".pats";
     std::ifstream ifs(pat_file);
     std::string header;
@@ -314,19 +320,19 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     size_t acc_count=0;
     size_t j=0;
     double rlmn_acc_time=0;
-    std::vector<std::pair<uint64_t, uint64_t>> rlmn_ans(n_pats);
+    std::vector<std::tuple<uint64_t, uint64_t, uint64_t>> rlmn_ans(n_pats);
     for(auto const& p : pat_list) {
-        MEASURE(csa_rlmn.backward_search(p), rlmn_acc_time, rlmn_ans[j], std::chrono::nanoseconds)
-        acc_count+=rlmn_ans[j].second-rlmn_ans[j].first+1;
+        MEASURE(csa_rlmn.count_with_head(p), rlmn_acc_time, rlmn_ans[j], std::chrono::nanoseconds)
+        acc_count+=std::get<1>(rlmn_ans[j])-std::get<0>(rlmn_ans[j])+1;
         j++;
     }
     //std::cout<<"\tTotal number of occurrences "<<acc_count<<" avg:"<<double(acc_count)/double(n_pats)<<std::endl;
 
     double my_acc_time=0;
     j=0;
-    std::vector<std::pair<uint64_t, uint64_t>> my_ans(n_pats);
+    std::vector<std::tuple<uint64_t, uint64_t, uint64_t>> my_ans(n_pats);
     for(auto const& p : pat_list) {
-        MEASURE(my_dt.count(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
+        MEASURE(my_dt.count_with_head(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
         j++;
     }
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(acc_count)<<"), ";
@@ -334,11 +340,16 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
 
     size_t n_errors=0, acc_occ=0;
     for(size_t i=0;i<pat_list.size();i++){
-        if(my_ans[i].first!=rlmn_ans[i].first || my_ans[i].second!=rlmn_ans[i].second){
-            std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<my_ans[i].first<<"!="<<rlmn_ans[i].first <<" or "<<my_ans[i].second<<"!="<<rlmn_ans[i].second<<std::endl;
+        if(std::get<0>(my_ans[i])!=std::get<0>(rlmn_ans[i]) ||
+           std::get<1>(my_ans[i])!=std::get<1>(rlmn_ans[i]) ||
+           std::get<2>(my_ans[i])!=std::get<2>(rlmn_ans[i])){
+            std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<std::get<0>(my_ans[i])<<"!="<<std::get<0>(rlmn_ans[i])<<" or "
+                                                                        <<std::get<1>(my_ans[i])<<"!="<<std::get<1>(rlmn_ans[i])<<" or "
+                                                                        <<std::get<2>(my_ans[i])<<"!="<<std::get<2>(rlmn_ans[i])<<std::endl;
             n_errors++;
+            exit(1);
         }
-        acc_occ+=rlmn_ans[i].second-rlmn_ans[i].first+1;
+        acc_occ+=std::get<1>(rlmn_ans[i])-std::get<0>(rlmn_ans[i])+1;
     }
     if(n_errors>0){
         std::cout<<"There are "<<n_errors<<"/"<<pat_list.size()<<" errors "<<std::endl;
@@ -423,7 +434,7 @@ void test_inverse_select(bwt_type& my_dt, std::string& input_file, std::string m
     sdsl::custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
 
-    size_t samp_size = 10000000;
+    size_t samp_size = 1000000;
     std::vector<uint64_t> samples = sample_unique(wt_rlmn.size(), samp_size);
 
     double acc_time=0;
@@ -557,8 +568,8 @@ int main(int argc, char** argv){
         //rl2plain(bwt_file, plain_input_file);
         //TESTED_DTS
     }
-    test_bwt(input_prefix, output_prefix);
-    //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
+    //test_bwt(input_prefix, output_prefix);
+    test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
     //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }

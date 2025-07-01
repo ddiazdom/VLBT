@@ -51,13 +51,27 @@ struct fm_index{
         uint8_t cc;
         while(j-->0 && l<=r){
             cc = byte2comp[uint8_t(pat[j])];
-            //std::cout<<l<<" "<<r<<" "<<pat[j]<<" ? "<<bwt.rank(r+1, pat[j])<<" "<<C[cc]<<" "<<int(cc)<<std::endl;
             l = C[cc] + bwt.rank(l, pat[j]); // count c in bwt[0..l-1]
             r = C[cc] + bwt.rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
-            //assert(l<bwt.size() && r<bwt.size());
         }
-        //std::cout<<"done"<<std::endl;
         return {l, r};
+    }
+
+    [[nodiscard]] inline std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
+        size_t l=0, r=bwt.size()-1, j=pat.size();
+        uint8_t cc;
+        std::pair<uint64_t, uint64_t> head[2]={{0,0}, {j-1, l}};
+        while(j-->0 && l<=r){
+            cc = byte2comp[uint8_t(pat[j])];
+            auto res = bwt.template rank<true>(l, pat[j]);
+            head[res.second] = {j, l};
+            //std::cout<<head[1].first<<" "<<head[1].second<<std::endl;
+
+            l = C[cc] + res.first; // count c in bwt[0..l-1]
+            r = C[cc] + bwt.rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
+        }
+        //std::cout<<"A:"<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
+        return {l, r, head[1].second};
     }
 };
 #endif //TEST_RL_BCR_BWT_FM_INDEX_H
