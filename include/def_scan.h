@@ -75,6 +75,11 @@ static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64
 #define RANK_32 rank_neon_32x4
 #define RANK_64 rank_neon_64x2
 
+#define FIRST_RUN_8 first_run_neon_8x16
+#define FIRST_RUN_16 first_run_neon_16x8
+#define FIRST_RUN_32 first_run_neon_32x4
+#define FIRST_RUN_64 first_run_neon_64x2
+
 /*#elif defined(__AVX2__)
 #include "scan_avx2.h"
 

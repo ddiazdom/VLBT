@@ -793,4 +793,93 @@ static inline int64_t rank_neon_64x2(const uint8_t ** stream, const uint8_t sigm
     return 0;
 }
 
+static inline size_t first_run_neon_8x16(const uint8_t **stream, const uint8_t sigma, uint8_t symbol){
+
+    //NOTE here I do not need to vbyte compress the block
+    const uint8_t sigma_bits = sym_width(sigma);
+    uint8_t alpha_m = (1UL << sigma_bits)-1;
+    const uint8x16_t alpha_mask = vdupq_n_u8(alpha_m);
+    uint8x16_t sym_vec = vdupq_n_u8(symbol);
+
+    uint8x16_t block = vld1q_u8(*stream);
+    *stream+=16;
+    uint8x16_t sym_mask = vceqq_u8(vandq_u8(block, alpha_mask), sym_vec);
+    bool has_sym = vmaxvq_u8(sym_mask)==255;
+    size_t run_idx = 0;
+
+    while(!has_sym){
+        run_idx += 16;
+        block = vld1q_u8(*stream);
+        *stream += 16;
+        sym_mask = vceqq_u8(vandq_u8(block, alpha_mask), sym_vec);
+        has_sym = vmaxvq_u8(sym_mask)==255;
+    }
+
+    const uint16x8_t sym_mask_16 = vreinterpretq_u16_u8(sym_mask);
+    const uint8x8_t res = vshrn_n_u16(sym_mask_16, 4);
+    const uint64_t matches = vget_lane_u64(vreinterpret_u64_u8(res), 0);
+    uint8_t first = __builtin_ctzll(matches)>>2;
+
+    return run_idx+first;
+}
+
+template<bool vbyte_compressed>
+static inline size_t first_run_neon_16x8(const uint8_t **stream, const uint8_t sigma, uint8_t symbol){
+
+    const uint8_t sigma_bits = sym_width(sigma);
+    uint16_t alpha_m = (1UL << sigma_bits)-1;
+    const uint16x8_t alpha_mask = vdupq_n_u16(alpha_m);
+    const uint16x8_t sym_vec = vdupq_n_u16(symbol);
+
+    uint16x8_t block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
+    uint16x8_t sym_mask = vceqq_u16(vandq_u16(block, alpha_mask), sym_vec);
+    bool has_sym = vmaxvq_u16(sym_mask);
+    size_t run_idx = 0;
+
+    while(!has_sym){
+        run_idx+=8;
+        block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
+        sym_mask = vceqq_u16(vandq_u16(block, alpha_mask), sym_vec);
+        has_sym = vmaxvq_u16(sym_mask);
+    }
+
+    const uint8x8_t res = vshrn_n_u16(sym_mask, 4);
+    const uint64_t matches = vget_lane_u64(vreinterpret_u64_u8(res), 0);
+    uint8_t first = __builtin_ctzll(matches)>>3;
+    return run_idx+first;
+}
+
+template<bool vbyte_compressed, uint8_t bytes_per_run>
+static inline size_t first_run_neon_32x4(const uint8_t **stream, const uint8_t sigma, uint8_t symbol){
+
+    const uint8_t sigma_bits = sym_width(sigma);
+    uint32_t alpha_m = (1UL << sigma_bits)-1;
+    const uint32x4_t alpha_mask = vdupq_n_u32(alpha_m);
+    const uint32x4_t sym_vec = vdupq_n_u32(symbol);
+
+    const uint8_t *prev_state = *stream;
+
+    uint32x4_t block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
+    uint32x4_t sym_mask = vceqq_u32(vandq_u32(block, alpha_mask), sym_vec);
+    bool has_sym = vmaxvq_u32(sym_mask);
+    size_t run_idx = 0;
+
+    while(!has_sym){
+        run_idx+=4;
+        block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
+        sym_mask = vceqq_u32(vandq_u32(block, alpha_mask), sym_vec);
+        has_sym = vmaxvq_u32(sym_mask);
+    }
+
+
+    const uint16x4_t res = vshrn_n_u32(sym_mask, 16);
+    const uint64_t matches = vget_lane_u64(vreinterpret_u64_u16(res), 0);
+    uint8_t first= __builtin_ctzll(matches)>>4;
+    return run_idx+first;
+}
+
+template<uint8_t bytes_per_run>
+static inline size_t first_run_neon_64x2(const uint8_t **stream, const uint8_t sigma, uint8_t symbol){
+    return 0;
+}
 #endif //VLBT_SCAN_NEON_H

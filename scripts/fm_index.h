@@ -49,10 +49,12 @@ struct fm_index{
     [[nodiscard]] inline std::pair<uint64_t, uint64_t> backward_search(const std::string &pat) const {
         size_t l=0, r=bwt.size()-1, j=pat.size();
         uint8_t cc;
+        //std::cout<<l<<" "<<r<<std::endl;
         while(j-->0 && l<=r){
             cc = byte2comp[uint8_t(pat[j])];
             l = C[cc] + bwt.rank(l, pat[j]); // count c in bwt[0..l-1]
             r = C[cc] + bwt.rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
+            //std::cout<<l<<" "<<r<<std::endl;
         }
         return {l, r};
     }

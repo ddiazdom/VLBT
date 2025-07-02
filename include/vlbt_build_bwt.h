@@ -554,6 +554,13 @@ struct rl_node {//state of the compression
                     bool out_of_range = tree_offset[active_succ[s].second] > tree_bounds[b].second &&
                                        (active_pred[s].second<0 || (tree_offset[active_pred[s].second+1]-1)<tree_bounds[b].first);
 
+                    //if(tree_dist==5 || tree_dist==6){
+                    //    if(tree_offset[b]<=151244694 && 151244694<tree_offset[b+1]){
+                    //        std::cout<<"symbol:"<<int(s)<<" "<<tree_dist<<" -> "<<tree_offset[b]<<"-"<<tree_offset[active_succ[s].second]<<" out of range?: "<<out_of_range<<std::endl;
+                    //        std::cout<<tree_bounds[b].second<<" "<<(tree_offset[active_succ[s].second] > tree_bounds[b].second)<<std::endl;
+                    //    }
+                    //}
+
                     ext_succ_info[sym_pos] = tree_dist>5 && !out_of_range;
                     if(ext_succ_info[sym_pos]){
                         real_dist = (tree_offset[b+tree_dist]-tree_offset[b])/b_size;

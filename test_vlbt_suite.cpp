@@ -207,11 +207,13 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
     fm_index<sdsl::custom_wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
     //TODO checking for errors
     //std::string pattern = "wart ";
+    //my_dt.count(pattern);
     //csa_rlmn.backward_search(pattern);
-    //std::cout<<my_dt.rank(151244695, 'w')<<std::endl;
-    //std::cout<<my_dt.rank(151208662, 'w')<<std::endl;
+    //std::cout<<my_dt.sa_head_for_next(151244695, 'w')<<std::endl;
+    //std::cout<<my_dt.sa_head_for_next(151208662, 'w')<<std::endl;
     //std::cout<<wt_rlmn.rank(151208662, 'w')<<std::endl;
     //std::cout<<wt_rlmn.rank(151244695, 'w')<<std::endl;
+    //exit(1);
     //csa_mydt.backward_search(pattern);
     //return;
     //std::cout<<wt_rlmn.rank(228579272, 'b')<<std::endl;
@@ -568,7 +570,7 @@ int main(int argc, char** argv){
         //rl2plain(bwt_file, plain_input_file);
         //TESTED_DTS
     }
-    //test_bwt(input_prefix, output_prefix);
+    test_bwt(input_prefix, output_prefix);
     test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
     //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
