@@ -1202,7 +1202,7 @@ struct rl_node {//state of the compression
         //allocate bytes for the information of this leaf
         buffer.reserve_in_bits(header_bits + run_bits + samp_bits);
 
-        //start writing the in the buffer
+        //start writing in the buffer
         size_t bit_pos = 0;
         //1 bit (true) to indicate this node is a leaf
         buffer.write(bit_pos, bit_pos, 1);

@@ -46,7 +46,14 @@ struct vlbt_bwt {
         uint8_t leaf_enc=0;
     };
 
+    struct inv_sel_sa_ans{
+        uint8_t sym;
+        int64_t rank;
+        uint64_t sa_samp;
+    };
+
     struct succ_info{
+
         size_t bit_pos=0xffffffffffffffff;
         uint64_t rank=0;
         uint8_t symbol=0;
@@ -61,13 +68,12 @@ struct vlbt_bwt {
             rank += st.read(r_pos, r_pos+r_width-1);
         }*/
 
-        inline uint64_t get_sa_from_leftmost_leaf(const stream_type& st){
+        inline std::pair<int64_t, uint64_t> get_sa_from_leftmost_leaf(const stream_type& st){
 
             bool is_leaf = st.read_bit(bit_pos++);
 
             //remove
-            bool has_symbol = st.read_bit(bit_pos+symbol);
-            assert(has_symbol);
+            assert(st.read_bit(bit_pos+symbol));
             //
 
             //initialize the block size
@@ -134,7 +140,12 @@ struct vlbt_bwt {
 
             uint8_t leaf_enc = st.read(bit_pos, bit_pos+leaf_enc_width-1);
             bit_pos+= leaf_enc_width;
-            const uint8_t *leaf_addr = ((uint8_t *)st.stream)+(INT_CEIL(bit_pos, 8));
+
+            size_t run_bytes= st.read(bit_pos, bit_pos+runs_mt_bits-2);
+            bit_pos+= runs_mt_bits;
+            size_t byte_pos = INT_CEIL(bit_pos, 8);
+
+            const uint8_t *leaf_addr = ((uint8_t *)st.stream)+byte_pos;
 
             size_t run_idx;
 
@@ -184,8 +195,9 @@ struct vlbt_bwt {
                     exit(1);
             }
 
-            //TODO now that I have the run_idx, extract the SA value in the leaf
-            return 0;
+            bit_pos = (byte_pos + run_bytes)*8;
+
+            return {run_idx, rank};
         }
     };
 
@@ -595,13 +607,13 @@ struct vlbt_bwt {
         }
     }
 
-    inline int64_t sa_head_for_next(size_t i, uint8_t symbol) const {
+    [[nodiscard]] inline int64_t sa_samp_of_succ_head(size_t i, uint8_t symbol) const {
 
-        //static_assert(var==WITH_TOEHOLDS);
+        static_assert(var==WITH_TOEHOLDS);
 
         symbol = packed_alpha[symbol];
         // NOTE this is a partial successor, because it can sometimes answer -1 for a valid query.
-        // However, it will never return -1 for a query comming for a pattern that exists in the text
+        // However, it will never return -1 for a query coming for a pattern that exists in the text
 
         //initialize the block size
         size_t bk_sz = block_size;
@@ -747,11 +759,95 @@ struct vlbt_bwt {
 
             uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
             bit_pos+= leaf_enc_width;
-            const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(INT_CEIL(bit_pos, 8));
-            size_t run_idx;
 
-            //TODO perform a successor operation
-            //if the successor operation works, then extract the SA value, if not, go to the successor stored before
+            size_t run_bytes= stream.read(bit_pos, bit_pos+runs_mt_bits-2);
+            bit_pos+= runs_mt_bits;
+            size_t byte_pos = INT_CEIL(bit_pos, 8);
+
+            const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(byte_pos);
+
+            std::pair<int64_t, int64_t> ans;//(run_id, rank)
+
+            //scan the runs in the leaf according to the leaf encoding
+            switch(leaf_enc) {
+                case 0:
+                    ans = SUCC_8<false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                    break;
+                case 1:
+                    ans = SUCC_8<true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                    break;
+                case 2:
+                    ans = SUCC_8<true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 2 bytes (no vbyte)
+                    break;
+
+                case 3://template param: vbyte?, overflow8?, overflow16?
+                    ans = SUCC_16<false, false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 3 bytes (no vbyte)
+                    break;
+                case 4:
+                    ans = SUCC_16<false, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (no vbyte)
+                    break;
+                case 5:
+                    ans = SUCC_16<false, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 5 bytes (no vbyte)
+                    break;
+                case 6:
+                    ans = SUCC_16<true, false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 2 bytes (vbyte)
+                    break;
+                case 7:
+                    ans = SUCC_16<true, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 3 bytes (vbyte)
+                    break;
+                case 8:
+                    ans = SUCC_16<true, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    break;
+
+                case 9://template param: vbyte?, bpr
+                    ans = SUCC_32<false,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    break;
+                case 10:
+                    ans = SUCC_32<true,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    break;
+                case 11:
+                    ans = SUCC_32<false,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    break;
+                case 12:
+                    ans = SUCC_32<true,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    break;
+
+                case 13://template param: bpr
+                    ans = SUCC_64<5>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    break;
+                case 14:
+                    ans = SUCC_64<6>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    break;
+                case 15:
+                    ans = SUCC_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    break;
+                default:
+                    std::cout<<"Undefined encoding"<<std::endl;
+                    exit(1);
+            }
+
+            if(ans.first>=0){//it means we found a successor
+                bit_pos = (byte_pos + run_bytes)*8;
+                bool has_sa_sample = stream.read_bit(bit_pos+int_pt_width + run_width+ans.first);
+
+                int64_t sa_samp=0;
+                if(has_sa_sample){
+                    sa_samp = decode_sa_value(bit_pos, ans.first);
+                    return sa_samp;
+                }
+
+                int64_t n_steps = 0;
+                rank += ans.second;
+                while(!has_sa_sample){
+                    size_t lf = C[symbol] + rank;
+                    auto res = inverse_select_with_sa(lf);
+                    symbol = res.sym;
+                    rank = res.rank;
+                    sa_samp =  res.sa_samp;
+                    has_sa_sample = sa_samp>=0;
+                }
+                return sa_samp-n_steps;
+            }
         }
 
         //we did not find the symbol, so we need to follow the successor
@@ -759,7 +855,28 @@ struct vlbt_bwt {
             return -1;
         }
 
-        return find_leftmost_leaf(s_info[1]);
+        auto ans = s_info[1].get_sa_from_leftmost_leaf(stream);
+        bit_pos = s_info[1].bit_pos;
+
+        bool has_sa_sample = stream.read_bit(bit_pos+int_pt_width + run_width+ans.first);
+        int64_t sa_samp=0;
+        if(has_sa_sample){
+            sa_samp = decode_sa_value(bit_pos, ans.first);
+            return sa_samp;
+        }
+
+        int64_t n_steps = 0;
+        rank = ans.second;
+        while(!has_sa_sample){
+            size_t lf = C[symbol] + rank;
+            auto res = inverse_select_with_sa(lf);
+            symbol = res.sym;
+            rank = res.rank;
+            sa_samp =  res.sa_samp;
+            has_sa_sample = sa_samp>=0;
+        }
+        return sa_samp-n_steps;
+
     }
 
     inline void find_path_to_leaf(tree_path_type& path, size_t& i) const {
@@ -958,6 +1075,143 @@ struct vlbt_bwt {
         return rank_answer;
     }
 
+    [[nodiscard]] inline uint64_t decode_sa_value(size_t bit_pos, size_t run_id) const {
+        //NOTE: this function does ont check if run_id is valid
+        size_t sa_width = stream.read(bit_pos, bit_pos + int_pt_width - 1);//read the width
+        bit_pos += int_pt_width;
+        size_t n_runs = stream.read(bit_pos, bit_pos + run_width - 1) + 1;//read the number of runs (they are zero-based)
+        bit_pos += run_width;
+        //NOTE: this operation assumes stream[bit_pos+run_id] is true
+        size_t pos = stream.pop_count(bit_pos, bit_pos + run_id);//position of the sample in the encoding
+        bit_pos += n_runs;//move to the area where the SA values lie
+        bit_pos += sa_width*pos;//move to the area where the SA for run_id lies
+        return stream.read(bit_pos, bit_pos + sa_width - 1);
+    }
+
+    //this function returns a tuple (symbol, rank, sa_sample)
+    //symbol: symbol at index BWT[i]
+    //rank: number of occurrences of BWT[i] in the prefix BWT[0..i-1];
+    //sa_sample: SA value for BWT[i] *iff* BWT[i] is the head of its run *and* it was subsampled,
+    // otherwise sa_sample=-1
+    [[nodiscard]] inline inv_sel_sa_ans inverse_select_with_sa(size_t i) const {
+
+        tree_path_type p;
+        find_path_to_leaf(p, i);
+        size_t byte_pos = INT_CEIL(p.bit_pos, 8);
+
+        const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+byte_pos;
+        inv_sel_sa_ans ans;
+
+        //scan the runs in the leaf according to the leaf encoding
+        //NOTE: in this context, INV_SELECT_X returns a tuple (rank (uint64), sym (uint8_t), run_id (int64_t))
+        //"sym" is the symbol at position i in the block of runs encoded by the leaf
+        //"rank" is number of occurrences of sym in the prefix before the run where "i" falls
+        //"run_id" is the id of the run where "i" falls. this value is -1 if "i" is not the head of that run
+        switch(p.leaf_enc) {
+            case 0:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_8<false, false, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                            p.node_sigma[p.lvl], i);//runs use 1 byte (no vbyte)
+                break;
+            case 1:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_8<true, false, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                           p.node_sigma[p.lvl], i);//runs use 1 byte (no vbyte)
+                break;
+            case 2:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_8<true, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                          p.node_sigma[p.lvl], i);//runs use 2 bytes (no vbyte)
+                break;
+
+            case 3://template param: vbyte?, overflow8?, overflow16?
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_16<false, false, false, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                                    p.node_sigma[p.lvl], i);//runs use 3 bytes (no vbyte)
+                break;
+            case 4:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_16<false, true, false, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                                   p.node_sigma[p.lvl], i);//runs use 4 bytes (no vbyte)
+                break;
+            case 5:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_16<false, true, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                                  p.node_sigma[p.lvl], i);//runs use 5 bytes (no vbyte)
+                break;
+            case 6:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_16<true, false, false, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                                   p.node_sigma[p.lvl], i);//runs use 2 bytes (vbyte)
+                break;
+            case 7:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_16<true, true, false, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                                  p.node_sigma[p.lvl], i);//runs use 3 bytes (vbyte)
+                break;
+            case 8:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_16<true, true, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                                 p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+
+            case 9://template param: vbyte?, bpr
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_32<false,3, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                        p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+            case 10:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_32<true,3, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                       p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+            case 11:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_32<false,4, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                        p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+            case 12:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_32<true,4, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                       p.node_sigma[p.lvl], i);//runs use 4 bytes (vbyte)
+                break;
+
+            case 13://template param: bpr
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_64<5, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                  p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
+                break;
+            case 14:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_64<6, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                  p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
+                break;
+            case 15:
+                std::tie(ans.rank, ans.sym, ans.sa_samp) = INV_SELECT_64<7, true>(reinterpret_cast<const uint8_t **>(&leaf_addr),
+                                                                                  p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
+                break;
+            default:
+                std::cout<<"Undefined encoding"<<std::endl;
+                exit(1);
+        }
+
+        //recover the sa sample (if any)
+        if(ans.sa_samp>=0) {//"i" is the head of its run run_id=ans.sa_samp
+            size_t bit_pos = p.bit_pos - runs_mt_bits;
+            size_t run_bytes = stream.read(bit_pos, bit_pos + runs_mt_bits - 2);//read the number of bytes for the runs
+            bit_pos = (byte_pos + run_bytes) * 8;
+
+            //we are now at the start of the area for the SA values. it contains:
+            //  the width of the SA values and the number of runs (int_pt_width + run_width)
+            //  a bit stream marking each run with a sampled SA value,
+            //  the sampled SA values
+            bool has_sample = stream.read_bit(bit_pos + int_pt_width + run_width + ans.sa_samp);//run_id has a SA sample
+            if(has_sample) {
+                ans.sa_samp = decode_sa_value(bit_pos, ans.sa_samp);//ans.sa_samp is the run_id where i lies in the runs
+            }
+        }
+        //
+
+        //go back in the path to compute the rank information and the original symbol
+        p.bit_pos = p.rank_pos[p.lvl]+(ans.sym*p.rank_width[p.lvl]);
+        ans.rank += stream.read(p.bit_pos, p.bit_pos+p.rank_width[p.lvl]-1);//add rank information
+        ans.sym = stream.select(p.sigma_pos[p.lvl], p.sigma_pos[p.lvl]+p.node_sigma[p.lvl-1]-1, ans.sym+1);//update the symbol
+        p.lvl--;
+
+        while(p.lvl>0){
+            p.bit_pos = p.rank_pos[p.lvl]+(ans.sym*p.rank_width[p.lvl]);
+            ans.rank += stream.read(p.bit_pos, p.bit_pos+p.rank_width[p.lvl]-1);
+            ans.sym = stream.select(p.sigma_pos[p.lvl], p.sigma_pos[p.lvl]+p.node_sigma[p.lvl-1]-1, ans.sym+1);
+            p.lvl--;
+        }
+        return ans;
+    }
+
     [[nodiscard]] inline uint8_t operator[](size_t i) const {
         assert(i<tot_syms);
         tree_path_type p;
@@ -1085,8 +1339,9 @@ struct vlbt_bwt {
             l = C[cc] + res.first;// count c in bwt[0..l-1]
             r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
         }
+        int64_t sa_samp = sa_samp_of_succ_head(head[1].second, packed_alpha[uint8_t(pat[j])]);
         //std::cout<<"MIO: "<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
-        return {l, r, head[1].second};
+        return {l, r, sa_samp};
     }
 
     [[nodiscard]] inline uint8_t eff2byte(uint8_t eff_sym) const {
