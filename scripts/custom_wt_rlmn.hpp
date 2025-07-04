@@ -483,9 +483,28 @@ class custom_wt_rlmn
         //one based
         [[nodiscard]] inline size_t pos2run(size_type i) const {
             assert(i<size());
-            size_t run = m_bl_rank(i);
-            run+=m_bl[i];
+            size_t run = m_bl_rank(i+1);
             return run;
+        }
+
+        [[nodiscard]] inline int64_t succ_run(size_type i, value_type& c) const {
+            assert(i<size());
+
+            int64_t wt_ex_pos = m_bl_rank(i+1)-1;
+            if(m_wt[wt_ex_pos]==c){
+                if(is_run_head(i)){
+                    return wt_ex_pos;
+                } else {
+                    return -1;
+                }
+            }
+
+            size_t c_runs = m_wt.rank(wt_ex_pos, c);
+            int64_t next_c_run = m_wt.select(c_runs+1, c);
+            if(next_c_run==m_wt.size()){
+                return -1;
+            }
+            return next_c_run;
         }
 
         //! Calculates how many times symbol wt[i] occurs in the prefix [0..i-1].

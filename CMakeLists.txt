@@ -65,7 +65,7 @@ target_compile_options(test_vlbt
         PUBLIC
         #-O3 -funroll-loops -fomit-frame-pointer -ffast-math
         -Wall -pedantic
-        -O3
+        #-O3
         ${SIMD_FLAGS}
 )
 target_link_libraries(test_vlbt LINK_PUBLIC ${LIBSDSL_LIBRARIES})
@@ -84,7 +84,9 @@ endif()
 add_executable(get_r_sa_samp scripts/get_r_sa_samples.cpp)
 target_link_libraries(get_r_sa_samp LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
 target_include_directories(get_r_sa_samp PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
-target_compile_options(get_r_sa_samp PUBLIC -O3 ${SIMD_FLAGS})
+target_compile_options(get_r_sa_samp PUBLIC
+        -O3
+        ${SIMD_FLAGS})
 
 add_executable(gen_patterns scripts/genpatterns.cpp)
 target_compile_options(gen_patterns PUBLIC -O3

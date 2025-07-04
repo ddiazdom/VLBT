@@ -78,7 +78,19 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, s
 
             std::reverse(tmp.begin(), tmp.end());
             for(auto &samp : tmp){
+                //TODO
+                //if(samp.run_id==193146 || samp.run_id==77031){
+                //    std::cout<<"before: "<<samp.run_id<<" "<<samp.pos<<" "<<samp.annotation<<std::endl;
+                //}
+                //
                 samp.pos = len-samp.pos;
+
+                //TODO
+                //if(samp.run_id==193146 || samp.run_id==77031){
+                //    std::cout<<"after: "<<samp.run_id<<" "<<samp.pos<<" "<<samp.annotation<<std::endl;
+                //}
+                //
+
                 thread_sa_samples[t].push_back(samp);
             }
             tmp.clear();
@@ -126,9 +138,9 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, s
         if(a.run_id!=b.run_id){
             return a.run_id<b.run_id;
         }
-        if(a.pos!=b.pos){
-            return a.pos < b.pos;
-        }
+        //if(a.pos!=b.pos){
+        //    return a.pos < b.pos;
+        //}
 
         return a.annotation < b.annotation;
     });
@@ -142,7 +154,7 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, s
     }*/
 
     //assert((sa_samples.size()/2)==bwt.n_runs());
-    //we use 9 bytes per entry : 8 for the position, and 1 for the annotation (HEAD, TAIL, STR_START)
+    //we use 9 bytes per entry: 8 for the position, and 1 for the annotation (HEAD, TAIL, STR_START)
 
     off_t buff_size = sizeof(uint64_t)*4096;
     auto *buffer = (uint64_t *) malloc(buff_size);
@@ -154,6 +166,12 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, s
         /*if(k>=117142022 && k<=117142024){
             std::cout<<k<<" "<<sa_sample.pos<<" "<<sa_sample.run_id<<" "<<sa_sample.annotation<<std::endl;
         }*/
+        //TODO
+        if(sa_sample.run_id==193146 || sa_sample.run_id==77031){
+            std::cout<<"before: "<<sa_sample.run_id<<" "<<sa_sample.pos<<" "<<sa_sample.annotation<<std::endl;
+        }
+        //
+
         buffer[b_pos] = sa_sample.pos;
         b_pos++;
         if(b_pos==4096){

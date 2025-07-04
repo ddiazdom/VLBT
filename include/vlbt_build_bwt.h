@@ -1444,7 +1444,7 @@ struct rl_node {//state of the compression
             std::cout<<pad<<"runs: ";
             for(size_t k=0;k<n_blocks;k++){
                 for(auto & l : bkl[k]){
-                    std::cout<<"(packed_sym:"<<int(l.first)<<",len:"<<l.second<<") ";
+                    std::cout<<"(packed_sym:"<<int(l.sym)<<",len:"<<l.len<<") ";
                 }
             }
             std::cout<<""<<std::endl;
@@ -1489,11 +1489,14 @@ struct rl_node {//state of the compression
             stats.children_freq[tmp_node->n_children]++;
         }else{
             assert(n_blocks>=1);
+            if(tmp_node->syms_before==60227584){
+                std::cout<<"holaa"<<std::endl;
+            }
             tmp_node->create_leaf(active_blocks, n_blocks, node_sigma, node_sigma_bv, block_ranks);
         }
 
         //print the node information for debugging purposes
-        //tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
+        tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
         //
 
         //add the rank information of the active child node (tmp_node) to the

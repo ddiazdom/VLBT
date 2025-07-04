@@ -204,7 +204,7 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
     }
     C[wt_rlmn.sigma] = acc;
 
-    fm_index<sdsl::custom_wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
+    fm_index<sdsl::custom_wt_rlmn<>> csa_rlmn(wt_rlmn, C, "", my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
     //TODO checking for errors
     //std::string pattern = "wart ";
     //my_dt.count(pattern);
@@ -295,11 +295,11 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     }
     C[wt_rlmn.sigma] = acc;
 
-    fm_index<sdsl::custom_wt_rlmn<>> csa_rlmn(wt_rlmn, C, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
+    fm_index<sdsl::custom_wt_rlmn<>, true> csa_rlmn(wt_rlmn, C, samp_sa_file, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
 
-    //std::string pat = "rd, w";
-    //my_dt.count_with_head(pat);
-    //csa_rlmn.count_with_head(pat);
+    std::string pat = " who ";
+    my_dt.count_with_head(pat);
+    csa_rlmn.count_with_head(pat);
     //exit(1);
 
     std::string pat_file = input_prefix+".pats";
@@ -318,6 +318,10 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
             pat_list[i].push_back(c);
         }
     }
+
+    //TODO just to test
+    pat_list.resize(20);
+    //
 
     size_t acc_count=0;
     size_t j=0;
@@ -570,7 +574,7 @@ int main(int argc, char** argv){
         //rl2plain(bwt_file, plain_input_file);
         //TESTED_DTS
     }
-    test_bwt(input_prefix, output_prefix);
+    //test_bwt(input_prefix, output_prefix);
     test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
     //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);

@@ -49,7 +49,7 @@ struct vlbt_bwt {
     struct inv_sel_sa_ans{
         uint8_t sym;
         int64_t rank;
-        uint64_t sa_samp;
+        int64_t sa_samp;
     };
 
     struct succ_info{
@@ -610,8 +610,8 @@ struct vlbt_bwt {
     [[nodiscard]] inline int64_t sa_samp_of_succ_head(size_t i, uint8_t symbol) const {
 
         static_assert(var==WITH_TOEHOLDS);
-
-        symbol = packed_alpha[symbol];
+        uint8_t pck_sym = packed_alpha[symbol];
+        symbol = pck_sym;
         // NOTE this is a partial successor, because it can sometimes answer -1 for a valid query.
         // However, it will never return -1 for a query coming for a pattern that exists in the text
 
@@ -838,6 +838,7 @@ struct vlbt_bwt {
 
                 int64_t n_steps = 0;
                 rank += ans.second;
+                symbol = pck_sym;
                 while(!has_sa_sample){
                     size_t lf = C[symbol] + rank;
                     auto res = inverse_select_with_sa(lf);
@@ -845,8 +846,10 @@ struct vlbt_bwt {
                     rank = res.rank;
                     sa_samp =  res.sa_samp;
                     has_sa_sample = sa_samp>=0;
+                    n_steps++;
                 }
-                return sa_samp-n_steps;
+                assert(n_steps<=sa_samp);
+                return sa_samp+n_steps;
             }
         }
 
@@ -867,6 +870,7 @@ struct vlbt_bwt {
 
         int64_t n_steps = 0;
         rank = ans.second;
+        symbol = pck_sym;
         while(!has_sa_sample){
             size_t lf = C[symbol] + rank;
             auto res = inverse_select_with_sa(lf);
@@ -874,8 +878,10 @@ struct vlbt_bwt {
             rank = res.rank;
             sa_samp =  res.sa_samp;
             has_sa_sample = sa_samp>=0;
+            n_steps++;
         }
-        return sa_samp-n_steps;
+        assert(n_steps<=sa_samp);
+        return sa_samp+n_steps;
 
     }
 
@@ -1080,9 +1086,10 @@ struct vlbt_bwt {
         size_t sa_width = stream.read(bit_pos, bit_pos + int_pt_width - 1);//read the width
         bit_pos += int_pt_width;
         size_t n_runs = stream.read(bit_pos, bit_pos + run_width - 1) + 1;//read the number of runs (they are zero-based)
+        assert(run_id<n_runs);
         bit_pos += run_width;
         //NOTE: this operation assumes stream[bit_pos+run_id] is true
-        size_t pos = stream.pop_count(bit_pos, bit_pos + run_id);//position of the sample in the encoding
+        size_t pos = stream.pop_count(bit_pos, bit_pos + run_id-1);//position of the sample in the encoding
         bit_pos += n_runs;//move to the area where the SA values lie
         bit_pos += sa_width*pos;//move to the area where the SA for run_id lies
         return stream.read(bit_pos, bit_pos + sa_width - 1);
@@ -1193,6 +1200,8 @@ struct vlbt_bwt {
             bool has_sample = stream.read_bit(bit_pos + int_pt_width + run_width + ans.sa_samp);//run_id has a SA sample
             if(has_sample) {
                 ans.sa_samp = decode_sa_value(bit_pos, ans.sa_samp);//ans.sa_samp is the run_id where i lies in the runs
+            }else{
+                ans.sa_samp = -1;
             }
         }
         //
@@ -1327,6 +1336,7 @@ struct vlbt_bwt {
     }
 
     [[nodiscard]] inline std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
+
         size_t l=0, r=size()-1, j=pat.size();
         uint8_t cc;
         std::pair<uint64_t, uint64_t> head[2]={{0,0}, {j-1, l}};
@@ -1339,8 +1349,8 @@ struct vlbt_bwt {
             l = C[cc] + res.first;// count c in bwt[0..l-1]
             r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
         }
-        int64_t sa_samp = sa_samp_of_succ_head(head[1].second, packed_alpha[uint8_t(pat[j])]);
-        //std::cout<<"MIO: "<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
+        int64_t sa_samp = sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
+        std::cout<<"mio: \""<<pat<<"\" -> "<<l<<" "<<r<<" "<<sa_samp<<std::endl;
         return {l, r, sa_samp};
     }
 
