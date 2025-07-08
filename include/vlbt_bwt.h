@@ -57,6 +57,7 @@ struct vlbt_bwt {
         uint8_t symbol=0;
         uint8_t r_width=0;
         uint8_t node_sigma=0;
+        size_t bk_sz;
     };
 
     uint64_t tot_syms=0;//total symbols in the text
@@ -472,15 +473,13 @@ struct vlbt_bwt {
         uint64_t bit_pos = si.bit_pos;
         uint8_t symbol = si.symbol;
         uint8_t node_sigma = si.node_sigma;
-        uint8_t r_width = si.r_width;
+        uint8_t rank_width = si.r_width;
         uint64_t rank = si.rank;
+        size_t bk_sz = si.bk_sz;
 
         //remove
-        assert(stream.read_bit(bit_pos+symbol));
+        //assert(stream.read_bit(bit_pos+symbol));
         //
-
-        //initialize the block size
-        size_t bk_sz = block_size;
 
         size_t succ_child;
 
@@ -489,9 +488,9 @@ struct vlbt_bwt {
             uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
             symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//this works only because bit_stream[bit_pos+symbol] is true
             bit_pos+=node_sigma;
-            size_t r_pos = bit_pos + symbol*r_width;
-            rank+=stream.read(r_pos, r_pos+r_width-1);
-            bit_pos+=new_sigma*r_width;
+            size_t r_pos = bit_pos + symbol*rank_width;
+            rank+=stream.read(r_pos, r_pos+rank_width-1);
+            bit_pos+=new_sigma*rank_width;
 
             node_sigma=new_sigma;
 
@@ -524,7 +523,7 @@ struct vlbt_bwt {
 
             //skip the pointer to the children and position the bit in the next byte-aligned position
             bit_pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
-            r_width = sym_width(bk_sz*scale_factor);
+            rank_width = sym_width(bk_sz*scale_factor);
 
             //add the bit offset. now bit_pos points to child
             bit_pos+= p_succ*8;
@@ -537,9 +536,9 @@ struct vlbt_bwt {
         uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
         symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//only works because bit_stream[bit_pos+symbol] is true
         bit_pos+=node_sigma;
-        size_t r_pos = bit_pos + symbol*r_width;
-        rank+=stream.read(r_pos, r_pos+r_width-1);
-        bit_pos+=new_sigma*r_width;
+        size_t r_pos = bit_pos + symbol*rank_width;
+        rank+=stream.read(r_pos, r_pos+rank_width-1);
+        bit_pos+=new_sigma*rank_width;
 
         uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
         bit_pos+= leaf_enc_width;
@@ -647,11 +646,10 @@ struct vlbt_bwt {
         size_t bit_pos = find_prev(child);//bit-position where "child" begins in the stream
 
         //find the successor tree containing sym
-        bool succ_found = stream.read_bit(bit_pos+symbol);
         size_t succ_bit_pos=0xffffffffffffffff;
 
+        bool succ_found = stream.read_bit(bit_pos+symbol);
         if(!succ_found) {
-
             succ_child = child;
             size_t steps = 0;
 
@@ -685,6 +683,7 @@ struct vlbt_bwt {
         s_info[succ_found].node_sigma = node_sigma;
         s_info[succ_found].symbol = symbol;
         s_info[succ_found].r_width = rank_width;
+        s_info[succ_found].bk_sz = bk_sz;
 
         //read the node header
         bool is_leaf = stream.read_bit(bit_pos++);
@@ -756,6 +755,7 @@ struct vlbt_bwt {
             s_info[succ_found].node_sigma = node_sigma;
             s_info[succ_found].rank = rank;
             s_info[succ_found].r_width = rank_width;
+            s_info[succ_found].bk_sz = bk_sz;
             //
 
             //add the bit offset. now bit_pos points to child

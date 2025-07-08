@@ -297,9 +297,9 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
 
     fm_index<sdsl::custom_wt_rlmn<>, true> csa_rlmn(wt_rlmn, C, samp_sa_file, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
 
-    std::string pat = "im.\n=";
-    my_dt.count_with_head(pat);
-    csa_rlmn.count_with_head(pat);
+    //std::string pat = "im.\n=";
+    //my_dt.count_with_head(pat);
+    //csa_rlmn.count_with_head(pat);
     //exit(1);
 
     std::string pat_file = input_prefix+".pats";

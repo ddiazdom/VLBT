@@ -65,7 +65,7 @@ target_compile_options(test_vlbt
         PUBLIC
         #-O3 -funroll-loops -fomit-frame-pointer -ffast-math
         -Wall -pedantic
-        #-O3
+        -O3
         ${SIMD_FLAGS}
 )
 target_link_libraries(test_vlbt LINK_PUBLIC ${LIBSDSL_LIBRARIES})
