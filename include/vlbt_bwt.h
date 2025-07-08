@@ -1350,7 +1350,7 @@ struct vlbt_bwt {
             r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
         }
         int64_t sa_samp = sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
-        std::cout<<"mio: \""<<pat<<"\" -> "<<l<<" "<<r<<" "<<sa_samp<<std::endl;
+        //std::cout<<"mio: \""<<pat<<"\" -> "<<l<<" "<<r<<" "<<sa_samp<<std::endl;
         return {l, r, sa_samp};
     }
 

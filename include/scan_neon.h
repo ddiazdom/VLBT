@@ -1032,6 +1032,7 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_16x8(const uint8_t **strea
     const uint16x8_t sym_vec = vdupq_n_u16(symbol);
 
     const uint8_t *prev_state = *stream;
+    const uint8_t *boundary = *stream + stream_bytes;
 
     uint16x8_t block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
     uint16x8_t bk_lengths = vshlq_u16(block, alpha_shift);
@@ -1108,7 +1109,6 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_16x8(const uint8_t **strea
         return {opts[is_head], rank};
     }
 
-    const uint8_t * boundary = prev_state + stream_bytes;
     uint8x16_t mask_suff = vmvnq_u16(mask_pref);//only keep the runs after idx_run
     bool has_sym = vmaxvq_u16(vandq_u16(sym_mask, mask_suff))==0xFFFF;
 
@@ -1139,6 +1139,7 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_32x4(const uint8_t ** stre
     const uint32x4_t sym_vec = vdupq_n_u32(symbol);
 
     const uint8_t *prev_state = *stream;
+    const uint8_t *boundary = *stream + stream_bytes;
 
     uint32x4_t block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
     uint32x4_t bk_lengths = vshlq_u32(block, alpha_shift);
@@ -1205,16 +1206,17 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_32x4(const uint8_t ** stre
         return {opts[is_head], rank};
     }
 
-    const uint8_t * boundary = prev_state + stream_bytes;
     uint32x4_t mask_suff =  vmvnq_u32(mask_pref);
     bool has_sym = vmaxvq_u32(vandq_u32(sym_mask, mask_suff))==0xFFFFFFFF;
 
     while(*stream < boundary && !has_sym){
+        //std::cout<<reinterpret_cast<std::uintptr_t>(*stream)<<" // "<<reinterpret_cast<std::uintptr_t>(boundary)<<std::endl;
         run_id+=4;
         block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
         sym_mask = vceqq_u32(vandq_u32(block, alpha_mask), sym_vec);
         has_sym = vmaxvq_u32(sym_mask)==0xFFFFFFFF;
     }
+    //TODO this is still unsafe
 
     const uint16x4_t res2 = vshrn_n_u32(sym_mask, 16);
     const uint64_t matches = vget_lane_u64(vreinterpret_u64_u16(res2), 0);

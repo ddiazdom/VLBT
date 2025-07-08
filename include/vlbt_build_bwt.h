@@ -117,9 +117,6 @@ struct rl_node {//state of the compression
     std::vector<bool> node_sigma_bv; //buffer to compute the leaf's effective alphabet
     std::vector<std::vector<bool>> int_succ_pred_info; //bits indicating internal successor/predecessor info for each symbol in the alphabet
 
-    //next_ext_pred[s]=false (resp., next_ext_succ[s]=false) means the symbol s needs predecessor (resp, successor) information
-    //these vectors only consider symbols that are *in* the alphabet of the node
-    std::vector<bool> need_ext_succ;//symbols in the alphabet of the need that need external successor info (symbols not in the right branch)
     std::vector<bool> child_marks;//int a block of size b_size, it is a bit vector B[1..s_factor] that marks the original blocks of size b_size/s_factor in the collapsed blocks
 
     std::vector<uint64_t> block_ranks;//rank information we store in the header of every internal node
@@ -136,8 +133,7 @@ struct rl_node {//state of the compression
     std::vector<std::vector<uint64_t>> sigma_trees;
 
     //list of the symbols for each tree (as a bitvector) that require external successor information
-    //That is, each symbol need_ext_succ[s] \cup the symbols not appearing in the tree
-    //ext_pred_info and ext_succ_info are information for the nodes with level 1 (i.e., tree roots)
+    //the information in ext_succ_info is valid only for nodes with level 1 (i.e., tree roots)
     std::vector<bool> ext_succ_info;
     //
 
@@ -151,7 +147,6 @@ struct rl_node {//state of the compression
             active_blocks(b_runs),
             node_sigma_bv(bwt_rep.sigma, false),
             int_succ_pred_info(bwt_rep.sigma, std::vector<bool>(s_factor, false)),
-            need_ext_succ(bwt_rep.sigma, true),
             block_ranks(bwt_rep.sigma, 0),
             packed_alphabet(bwt_rep.sigma, 0),
             stats(st){
@@ -216,7 +211,6 @@ struct rl_node {//state of the compression
         for(auto vec : int_succ_pred_info){
             destroy_vector(vec);
         }
-        destroy_vector(need_ext_succ);
         destroy_vector(block_ranks);
         destroy_vector(block_ptr);
         destroy_vector(tree_offset);
@@ -543,28 +537,18 @@ struct rl_node {//state of the compression
                     active_succ[s].second = sigma_trees[s][active_succ[s].first];
                 }
 
-                size_t sym_pos =(b*bwt_rep.sigma)+s;
-                ext_succ_info[sym_pos] = ext_succ_info[sym_pos] && !low_freq_syms[s];
+                int64_t tree_dist = active_succ[s].second-b;
+                assert(tree_dist>0 && tree_dist<n_children);
+                size_t sym_pos = (b * bwt_rep.sigma) + s;
+                ext_succ_info[sym_pos] = tree_dist>5 && !low_freq_syms[s];
 
-                if(ext_succ_info[sym_pos]){
-
-                    int64_t tree_dist = active_succ[s].second-b;
-                    assert(tree_dist>0 && tree_dist<n_children);
-
+                if(ext_succ_info[sym_pos]) {
                     bool out_of_range = tree_offset[active_succ[s].second] > tree_bounds[b].second &&
-                                       (active_pred[s].second<0 || (tree_offset[active_pred[s].second+1]-1)<tree_bounds[b].first);
-
-                    //if(tree_dist==5 || tree_dist==6){
-                    //    if(tree_offset[b]<=151244694 && 151244694<tree_offset[b+1]){
-                    //        std::cout<<"symbol:"<<int(s)<<" "<<tree_dist<<" -> "<<tree_offset[b]<<"-"<<tree_offset[active_succ[s].second]<<" out of range?: "<<out_of_range<<std::endl;
-                    //        std::cout<<tree_bounds[b].second<<" "<<(tree_offset[active_succ[s].second] > tree_bounds[b].second)<<std::endl;
-                    //    }
-                    //}
-
-                    ext_succ_info[sym_pos] = tree_dist>5 && !out_of_range;
-                    if(ext_succ_info[sym_pos]){
-                        real_dist = (tree_offset[b+tree_dist]-tree_offset[b])/b_size;
-                        if(real_dist>max_tree_dist) max_tree_dist = real_dist;
+                                        (active_pred[s].second < 0 || (tree_offset[active_pred[s].second + 1] - 1) < tree_bounds[b].first);
+                    ext_succ_info[sym_pos] = !out_of_range;
+                    if(ext_succ_info[sym_pos]) {
+                        real_dist = (tree_offset[b + tree_dist] - tree_offset[b]) / b_size;
+                        if (real_dist > max_tree_dist) max_tree_dist = real_dist;
                         concat_ext_suc_info.push_back(real_dist);
                         succ_samp++;
                     }
@@ -673,7 +657,7 @@ struct rl_node {//state of the compression
         size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
 
         //pt_bits indicates how many bits we use to encode pointers to the trees:
-        //node_n_bits/8 is the pointer and b_runs indicate collapsed blocks
+        //node_n_bits/8 is the pointer, and b_runs indicate collapsed blocks
         //so far, node_n_bits considers:
         // * the sum of the tree sizes in bits (excluding the external su/pred information)
         // * the sum of the ext. succ/pred information for the trees
@@ -681,7 +665,7 @@ struct rl_node {//state of the compression
         bwt_rep.ext_pt_width = std::max<uint16_t>(sym_width(node_n_bits/8), 2*run_width)+1;
 
         //(pt_bits*n_blocks) for the pointers to the trees
-        //+1 because we add a dummy tree at end for consistency
+        //+1 because we add a fake tree at the end for consistency
         size_t tree_ptr_bits = (bwt_rep.ext_pt_width*(n_blocks+1));
         size_t header_bits = bwt_rep.lfs_bits+tree_ptr_bits;
         bwt_rep.header_bytes = INT_CEIL(header_bits, 8);
@@ -1026,10 +1010,6 @@ struct rl_node {//state of the compression
         assert((written_bytes*8)==run_bits);
 
         node_n_bits = header_bits+run_bits;
-
-        if(rm_tree_branch){
-            need_ext_succ = node_sigma_bv;
-        }
         bwt_rep.eff_runs += n_runs;
 
         //gather statistics
@@ -1279,10 +1259,6 @@ struct rl_node {//state of the compression
         //
 
         node_n_bits = header_bits+run_bits+samp_bits;
-
-        if(rm_tree_branch){
-            need_ext_succ = node_sigma_bv;
-        }
         bwt_rep.eff_runs += n_runs;
 
         //gather statistics
@@ -1449,17 +1425,6 @@ struct rl_node {//state of the compression
             }
             std::cout<<""<<std::endl;
         }
-
-        if(lvl==1){
-            std::cout<<pad<<"ext succ:(";
-            p=0;
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                if(node_sigma_bv[s] && !need_ext_succ[s]) {
-                    std::cout<<(p++>0 ?", ":"")<<s;
-                }
-            }
-            std::cout<<")"<<std::endl;
-        }
         std::cout<<""<<std::endl;
     }
 
@@ -1504,14 +1469,6 @@ struct rl_node {//state of the compression
         for(size_t s=0;s<bwt_rep.sigma;s++){
             block_ranks[s] += tmp_node->block_ranks[s];
         }
-
-        //get the symbols that need successor information to other trees
-        if(tmp_node->rm_tree_branch){
-            for(size_t s=0;s<bwt_rep.sigma;s++){
-                need_ext_succ[s] = need_ext_succ[s] && tmp_node->need_ext_succ[s];
-            }
-        }
-        //
         assert(aligned<8>(node_n_bits+tmp_node->node_n_bits));
 
         if(lvl>0){
@@ -1543,8 +1500,6 @@ struct rl_node {//state of the compression
                 if(tmp_node->node_sigma_bv[s]){
                     sigma_trees[s].push_back(n_children);
                 }
-                //symbols within this tree requiring successor information to trees on the right side
-                ext_succ_info[(n_children*bwt_rep.sigma)+s] = !tmp_node->node_sigma_bv[s] || !tmp_node->need_ext_succ[s];
             }
 
             //store to disk
@@ -1565,7 +1520,6 @@ struct rl_node {//state of the compression
         memset(block_ranks.data(), 0, block_ranks.size()*sizeof(uint64_t));
         std::fill(child_marks.begin(), child_marks.end(), false);
         std::fill(node_sigma_bv.begin(), node_sigma_bv.end(), false);
-        std::fill(need_ext_succ.begin(), need_ext_succ.end(), true);
         for(size_t s=0;s<bwt_rep.sigma;s++){
             std::fill(int_succ_pred_info[s].begin(), int_succ_pred_info[s].end(), false);
         }

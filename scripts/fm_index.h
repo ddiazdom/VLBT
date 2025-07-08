@@ -77,13 +77,13 @@ struct fm_index{
             return -1;
         }
 
-        std::cout<<sa_samps[2*run]<<std::endl;
+        //std::cout<<sa_samps[2*run]<<std::endl;
         auto lf = bwt.inverse_select(i);
         i = C[byte2comp[lf.second]] + lf.first;
         lf = bwt.inverse_select(i);
         i = C[byte2comp[lf.second]] + lf.first;
         size_t r = bwt.pos2run(i);
-        std::cout<<sa_samps[2*(r-1)]<<std::endl;
+        //std::cout<<sa_samps[2*(r-1)]<<std::endl;
         return sa_samps[2*run];
     }
 
@@ -102,7 +102,7 @@ struct fm_index{
         }
         //std::cout<<"A:"<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
         int64_t sa_samp = get_sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
-        std::cout<<"ground_tr: \""<<pat<<"\" -> "<<l<<" "<<r<<" "<<sa_samp<<std::endl;
+        //std::cout<<"ground_tr: \""<<pat<<"\" -> "<<l<<" "<<r<<" "<<sa_samp<<std::endl;
         return {l, r, sa_samp};
     }
 
