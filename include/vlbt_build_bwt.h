@@ -1489,7 +1489,7 @@ struct rl_node {//state of the compression
             stats.children_freq[tmp_node->n_children]++;
         }else{
             assert(n_blocks>=1);
-            if(tmp_node->syms_before==60227584){
+            if(tmp_node->syms_before==17399808){
                 std::cout<<"holaa"<<std::endl;
             }
             tmp_node->create_leaf(active_blocks, n_blocks, node_sigma, node_sigma_bv, block_ranks);
