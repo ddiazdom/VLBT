@@ -76,13 +76,12 @@ struct fm_index{
         if(run<0){
             return -1;
         }
-
         //std::cout<<sa_samps[2*run]<<std::endl;
-        auto lf = bwt.inverse_select(i);
-        i = C[byte2comp[lf.second]] + lf.first;
-        lf = bwt.inverse_select(i);
-        i = C[byte2comp[lf.second]] + lf.first;
-        size_t r = bwt.pos2run(i);
+        //auto lf = bwt.inverse_select(i);
+        //i = C[byte2comp[lf.second]] + lf.first;
+        //lf = bwt.inverse_select(i);
+        //i = C[byte2comp[lf.second]] + lf.first;
+        //size_t r = bwt.pos2run(i);
         //std::cout<<sa_samps[2*(r-1)]<<std::endl;
         return sa_samps[2*run];
     }

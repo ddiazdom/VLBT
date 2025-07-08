@@ -1133,8 +1133,8 @@ struct rl_node {//state of the compression
         }
         get_max_psum(tmp_psum, max_psum);
         assert(bfr_dist[0]==0);
-        size_t samp_bits = bwt_rep.int_pt_width + bwt_rep.run_width + n_runs + (n_sa_samples*sym_width(max_samp));
-        samp_bits = INT_CEIL(samp_bits, 8)*8;//byte-aligned
+        size_t sa_samp_bits = bwt_rep.int_pt_width + n_runs + (n_sa_samples*sym_width(max_samp));
+        sa_samp_bits = INT_CEIL(sa_samp_bits, 8)*8;//byte-aligned
 
         size_t total_vbytes=0, max_bytes=0;
         for(size_t b=1;b<9;b++){
@@ -1176,11 +1176,11 @@ struct rl_node {//state of the compression
             r_width = sym_width(b_size*s_factor*s_factor);
         }
         size_t rank_bits = r_width*node_sigma;
-        size_t header_bits = 1+bwt_rep.leaf_enc_width+parent_sigma+rank_bits+bwt_rep.runs_mt_bits;
+        size_t header_bits = 1+parent_sigma+rank_bits+bwt_rep.leaf_enc_width+(bwt_rep.run_byte_w + bwt_rep.run_width + 1);
         header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
 
         //allocate bytes for the information of this leaf
-        buffer.reserve_in_bits(header_bits + run_bits + samp_bits);
+        buffer.reserve_in_bits(header_bits + run_bits + sa_samp_bits);
 
         //start writing in the buffer
         size_t bit_pos = 0;
@@ -1211,12 +1211,13 @@ struct rl_node {//state of the compression
         bit_pos+=bwt_rep.leaf_enc_width;
         //
 
-        //store the number of bytes we use to encode the runs (this value allows us to jump to the SA samples)
-        assert(sym_width(run_bits/8)<=(bwt_rep.runs_mt_bits-1));
-        buffer.write(bit_pos, bit_pos+bwt_rep.runs_mt_bits-2, (run_bits/8));
-        bit_pos+=bwt_rep.runs_mt_bits-1;
-        //store if the head of the first run is fake (true) break
-        buffer.write(bit_pos, bit_pos, blocks[0][0].run_break);
+        //store the metadata of the runs:
+        assert(sym_width(run_bits/8)<=(bwt_rep.run_byte_w-1));
+        buffer.write(bit_pos, bit_pos+bwt_rep.run_byte_w-1, (run_bits/8));//bytes to encode the runs (this value allows us to jump to the SA samples)
+        bit_pos+=bwt_rep.run_byte_w;
+        buffer.write(bit_pos, bit_pos+bwt_rep.run_width-1, n_runs-1);//number of runs
+        bit_pos+=bwt_rep.run_width;
+        buffer.write(bit_pos, bit_pos, blocks[0][0].run_break);//if the head of the leftmost run is fake (true) break
         bit_pos++;
         //
 
@@ -1235,11 +1236,6 @@ struct rl_node {//state of the compression
         bit_pos+=bwt_rep.int_pt_width;
         //
 
-        //store the number of runs (zero-based value). we use this value to perform a popcount operation over the next n_run bits
-        buffer.write(bit_pos, bit_pos+bwt_rep.run_width, n_runs-1);
-        bit_pos+=bwt_rep.run_width;
-        //
-
         //store the SA sub samples
         size_t samp_pos = bit_pos+n_runs;
         bool is_samp;
@@ -1254,16 +1250,16 @@ struct rl_node {//state of the compression
                 bit_pos++;
             }
         }
-        assert((INT_CEIL(samp_pos, 8)*8)==(header_bits+run_bits+samp_bits));
-        assert(bit_pos==(header_bits+run_bits+bwt_rep.int_pt_width+bwt_rep.run_width+n_runs));
+        assert((INT_CEIL(samp_pos, 8)*8)==(header_bits+run_bits+sa_samp_bits));
+        assert(bit_pos==(header_bits+run_bits+bwt_rep.int_pt_width+n_runs));
         //
 
-        node_n_bits = header_bits+run_bits+samp_bits;
+        node_n_bits = header_bits+run_bits+sa_samp_bits;
         bwt_rep.eff_runs += n_runs;
 
         //gather statistics
         if(n_blocks>stats.max_n_blocks) stats.max_n_blocks = n_blocks;
-        stats.samp_overhead+=samp_bits;
+        stats.samp_overhead+=sa_samp_bits;
         stats.runs_overhead += run_bits;
         stats.header_overhead+=header_bits;
         stats.rank_overhead+=rank_bits;
@@ -1454,9 +1450,11 @@ struct rl_node {//state of the compression
             stats.children_freq[tmp_node->n_children]++;
         }else{
             assert(n_blocks>=1);
-            if(tmp_node->syms_before==17399808){
-                std::cout<<"holaa"<<std::endl;
-            }
+            //TODO testing
+            //if(tmp_node->syms_before==287801344){
+            //    std::cout<<"holaa"<<std::endl;
+            //}
+            //
             tmp_node->create_leaf(active_blocks, n_blocks, node_sigma, node_sigma_bv, block_ranks);
         }
 

@@ -29,10 +29,9 @@ struct vlbt_bwt {
     static constexpr uint8_t leaf_enc_width = 4;
     static constexpr bool has_toeholds = var;
 
-    //the number of bits to encode metadata about the sequence of runs:
+    //the number of bits to encode the number of bytes the run sequence uses:
     // number of bits we use to encode the number of bytes that the runs use in a leaf
-    // one extra bit that indicates if the head of the first run is real or artificial
-    static constexpr uint8_t runs_mt_bits = ((sizeof(unsigned long)*8) - __builtin_clzl((b_runs*8) + (b_runs/8)))+1;
+    static constexpr uint8_t run_byte_w = ((sizeof(unsigned long)*8) - __builtin_clzl((b_runs*8) + (b_runs/8)))+1;
 
     typedef bit_stream<size_t> stream_type;
 
@@ -53,152 +52,11 @@ struct vlbt_bwt {
     };
 
     struct succ_info{
-
         size_t bit_pos=0xffffffffffffffff;
         uint64_t rank=0;
         uint8_t symbol=0;
         uint8_t r_width=0;
         uint8_t node_sigma=0;
-
-        /*inline void get_rank(const stream_type& st) {
-            bit_pos++;//the +1 is to skip the bit indicating if this node is a leaf
-            symbol = st.pop_count(bit_pos, bit_pos+symbol-1);
-            bit_pos+=node_sigma;
-            size_t r_pos = bit_pos + (symbol*r_width);
-            rank += st.read(r_pos, r_pos+r_width-1);
-        }*/
-
-        inline std::pair<int64_t, uint64_t> get_sa_from_leftmost_leaf(const stream_type& st){
-
-            bool is_leaf = st.read_bit(bit_pos++);
-
-            //remove
-            assert(st.read_bit(bit_pos+symbol));
-            //
-
-            //initialize the block size
-            size_t bk_sz = block_size;
-
-            size_t succ_child;
-
-            while(!is_leaf){
-
-                uint8_t new_sigma = st.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
-                symbol = st.pop_count(bit_pos, bit_pos+symbol)-1;//this works only because bit_stream[bit_pos+symbol] is true
-                bit_pos+=node_sigma;
-                size_t r_pos = bit_pos + symbol*r_width;
-                rank+=st.read(r_pos, r_pos+r_width-1);
-                bit_pos+=new_sigma*r_width;
-
-                node_sigma=new_sigma;
-
-                bk_sz/=scale_factor;
-
-                size_t child_info = st.read(bit_pos, bit_pos+scale_factor-1);
-                bit_pos += scale_factor;
-
-                size_t n_children = __builtin_popcount(child_info);//number of eff children
-                assert(n_children>0);
-
-                size_t succ_info = bit_pos + (symbol*n_children);
-                succ_info = st.read(succ_info, succ_info+n_children-1);
-                assert(succ_info>0);
-
-                //succ_info>0=true, meaning there is a right sibling containing the symbol
-                succ_child = __builtin_ctz(succ_info);
-
-                bit_pos+=new_sigma*n_children;//skip int succ/pred info
-
-                //read how many bits we use to encode the pointers to the children
-                size_t p_width = st.read(bit_pos, bit_pos+int_pt_width-1);
-                bit_pos+=int_pt_width;
-                //
-
-                //read the pointer to the next sibling of "child" containing the symbol
-                size_t p_succ = bit_pos+(succ_child*p_width);
-                p_succ = st.read(p_succ, p_succ+p_width-1);
-                //
-
-                //skip the pointer to the children and position the bit in the next byte-aligned position
-                bit_pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
-                r_width = sym_width(bk_sz*scale_factor);
-
-                //add the bit offset. now bit_pos points to child
-                bit_pos+= p_succ*8;
-
-                //start reading the header of child (there is no ext succ/pred info)
-                is_leaf = st.read_bit(bit_pos++);
-                assert(st.read_bit(bit_pos+symbol));
-            }
-
-            uint8_t new_sigma = st.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
-            symbol = st.pop_count(bit_pos, bit_pos+symbol)-1;//only works because bit_stream[bit_pos+symbol] is true
-            bit_pos+=node_sigma;
-            size_t r_pos = bit_pos + symbol*r_width;
-            rank+=st.read(r_pos, r_pos+r_width-1);
-            bit_pos+=new_sigma*r_width;
-
-            uint8_t leaf_enc = st.read(bit_pos, bit_pos+leaf_enc_width-1);
-            bit_pos+= leaf_enc_width;
-
-            size_t run_bytes= st.read(bit_pos, bit_pos+runs_mt_bits-2);
-            bit_pos+= runs_mt_bits;
-            size_t byte_pos = INT_CEIL(bit_pos, 8);
-
-            const uint8_t *leaf_addr = ((uint8_t *)st.stream)+byte_pos;
-
-            size_t run_idx;
-
-            //scan the runs in the leaf according to the leaf encoding
-            switch(leaf_enc) {
-                case 0:
-                case 1:
-                case 2:
-                    run_idx = FIRST_RUN_8(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 2 bytes (no vbyte)
-                    break;
-
-                case 3://template param: vbyte?
-                case 4:
-                case 5:
-                    run_idx = FIRST_RUN_16<false>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 5 bytes (no vbyte)
-                    break;
-                case 6:
-                case 7:
-                case 8:
-                    run_idx = FIRST_RUN_16<true>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 4 bytes (vbyte)
-                    break;
-
-                case 9://template param: vbyte?, bpr
-                    run_idx = FIRST_RUN_32<false,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 4 bytes (vbyte)
-                    break;
-                case 10:
-                    run_idx = FIRST_RUN_32<true,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 4 bytes (vbyte)
-                    break;
-                case 11:
-                    run_idx = FIRST_RUN_32<false,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 4 bytes (vbyte)
-                    break;
-                case 12:
-                    run_idx = FIRST_RUN_32<true,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 4 bytes (vbyte)
-                    break;
-
-                case 13://template param: bpr
-                    run_idx = FIRST_RUN_64<5>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 5 bytes (vbyte)
-                    break;
-                case 14:
-                    run_idx = FIRST_RUN_64<6>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 5 bytes (vbyte)
-                    break;
-                case 15:
-                    run_idx = FIRST_RUN_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 5 bytes (vbyte)
-                    break;
-                default:
-                    std::cout<<"Undefined encoding"<<std::endl;
-                    exit(1);
-            }
-
-            bit_pos = (byte_pos + run_bytes)*8;
-
-            return {run_idx, rank};
-        }
     };
 
     uint64_t tot_syms=0;//total symbols in the text
@@ -519,10 +377,10 @@ struct vlbt_bwt {
             bool false_break;
             if constexpr (var==WITH_TOEHOLDS){
                 if constexpr (check_head){
-                    bit_pos+= runs_mt_bits-1;//skip the number of bytes we use to encode the runs
+                    bit_pos+= run_byte_w + run_width;//skip the number of bytes we use to encode the runs
                     false_break = stream.read_bit(bit_pos++);//read if the leftmost run in this head is artificial
                 }else{
-                    bit_pos+= runs_mt_bits;//skip the metadata of the runs
+                    bit_pos+= run_byte_w + run_width + 1;//skip the metadata of the runs
                 }
             }
 
@@ -605,6 +463,166 @@ struct vlbt_bwt {
         } else {
             return rank;
         }
+    }
+
+    inline int64_t get_sa_from_leftmost_leaf(succ_info& si, uint8_t pck_sym) const {
+
+        bool is_leaf = stream.read_bit(si.bit_pos++);
+
+        uint64_t bit_pos = si.bit_pos;
+        uint8_t symbol = si.symbol;
+        uint8_t node_sigma = si.node_sigma;
+        uint8_t r_width = si.r_width;
+        uint64_t rank = si.rank;
+
+        //remove
+        assert(stream.read_bit(bit_pos+symbol));
+        //
+
+        //initialize the block size
+        size_t bk_sz = block_size;
+
+        size_t succ_child;
+
+        while(!is_leaf){
+
+            uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//this works only because bit_stream[bit_pos+symbol] is true
+            bit_pos+=node_sigma;
+            size_t r_pos = bit_pos + symbol*r_width;
+            rank+=stream.read(r_pos, r_pos+r_width-1);
+            bit_pos+=new_sigma*r_width;
+
+            node_sigma=new_sigma;
+
+            bk_sz/=scale_factor;
+
+            size_t child_info = stream.read(bit_pos, bit_pos+scale_factor-1);
+            bit_pos += scale_factor;
+
+            size_t n_children = __builtin_popcount(child_info);//number of eff children
+            assert(n_children>0);
+
+            size_t succ_info = bit_pos + (symbol*n_children);
+            succ_info = stream.read(succ_info, succ_info+n_children-1);
+            assert(succ_info>0);
+
+            //succ_info>0=true, meaning there is a right sibling containing the symbol
+            succ_child = __builtin_ctz(succ_info);
+
+            bit_pos+=new_sigma*n_children;//skip int succ/pred info
+
+            //read how many bits we use to encode the pointers to the children
+            size_t p_width = stream.read(bit_pos, bit_pos+int_pt_width-1);
+            bit_pos+=int_pt_width;
+            //
+
+            //read the pointer to the next sibling of "child" containing the symbol
+            size_t p_succ = bit_pos+(succ_child*p_width);
+            p_succ = stream.read(p_succ, p_succ+p_width-1);
+            //
+
+            //skip the pointer to the children and position the bit in the next byte-aligned position
+            bit_pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
+            r_width = sym_width(bk_sz*scale_factor);
+
+            //add the bit offset. now bit_pos points to child
+            bit_pos+= p_succ*8;
+
+            //start reading the header of child (there is no ext succ/pred info)
+            is_leaf = stream.read_bit(bit_pos++);
+            assert(stream.read_bit(bit_pos+symbol));
+        }
+
+        uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
+        symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//only works because bit_stream[bit_pos+symbol] is true
+        bit_pos+=node_sigma;
+        size_t r_pos = bit_pos + symbol*r_width;
+        rank+=stream.read(r_pos, r_pos+r_width-1);
+        bit_pos+=new_sigma*r_width;
+
+        uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
+        bit_pos+= leaf_enc_width;
+
+        size_t run_bytes= stream.read(bit_pos, bit_pos+run_byte_w-1);
+        bit_pos+= run_byte_w;
+        size_t n_runs = stream.read(bit_pos, bit_pos+run_width-1)+1;
+        bit_pos+= run_width+1;//+1 to skip the bit indicating if the head of the leftmost run is fake
+        size_t byte_pos = INT_CEIL(bit_pos, 8);
+
+        const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+byte_pos;
+
+        size_t run_idx;
+
+        //scan the runs in the leaf according to the leaf encoding
+        switch(leaf_enc) {
+            case 0:
+            case 1:
+            case 2:
+                run_idx = FIRST_RUN_8(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 2 bytes (no vbyte)
+                break;
+
+            case 3://template param: vbyte?
+            case 4:
+            case 5:
+                run_idx = FIRST_RUN_16<false>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 5 bytes (no vbyte)
+                break;
+            case 6:
+            case 7:
+            case 8:
+                run_idx = FIRST_RUN_16<true>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 4 bytes (vbyte)
+                break;
+
+            case 9://template param: vbyte?, bpr
+                run_idx = FIRST_RUN_32<false,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 4 bytes (vbyte)
+                break;
+            case 10:
+                run_idx = FIRST_RUN_32<true,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 4 bytes (vbyte)
+                break;
+            case 11:
+                run_idx = FIRST_RUN_32<false,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 4 bytes (vbyte)
+                break;
+            case 12:
+                run_idx = FIRST_RUN_32<true,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 4 bytes (vbyte)
+                break;
+
+            case 13://template param: bpr
+                run_idx = FIRST_RUN_64<5>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 5 bytes (vbyte)
+                break;
+            case 14:
+                run_idx = FIRST_RUN_64<6>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 5 bytes (vbyte)
+                break;
+            case 15:
+                run_idx = FIRST_RUN_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 5 bytes (vbyte)
+                break;
+            default:
+                std::cout<<"Undefined encoding"<<std::endl;
+                exit(1);
+        }
+
+        bit_pos = (byte_pos + run_bytes)*8;
+
+        bool has_sa_sample = stream.read_bit(bit_pos+int_pt_width+run_idx);
+        int64_t sa_samp=0;
+        if(has_sa_sample){
+            sa_samp = decode_sa_value(bit_pos, run_idx, n_runs);
+            return sa_samp;
+        }
+
+        int64_t n_steps = 0;
+
+        symbol = pck_sym;
+        while(!has_sa_sample){
+            size_t lf = C[symbol] + rank;
+            auto res = inverse_select_with_sa(lf);
+            symbol = res.sym;
+            rank = res.rank;
+            sa_samp =  res.sa_samp;
+            has_sa_sample = sa_samp>=0;
+            n_steps++;
+        }
+        assert(n_steps<=sa_samp);
+        return sa_samp+n_steps;
     }
 
     [[nodiscard]] inline int64_t sa_samp_of_succ_head(size_t i, uint8_t symbol) const {
@@ -760,8 +778,10 @@ struct vlbt_bwt {
             uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
             bit_pos+= leaf_enc_width;
 
-            size_t run_bytes= stream.read(bit_pos, bit_pos+runs_mt_bits-2);
-            bit_pos+= runs_mt_bits;
+            size_t run_bytes= stream.read(bit_pos, bit_pos+run_byte_w-1);
+            bit_pos+= run_byte_w;
+            size_t n_runs = stream.read(bit_pos, bit_pos+run_width-1)+1;
+            bit_pos+= run_width+1;//we also skip the bit indicating if the head of the leftmost run is fake
             size_t byte_pos = INT_CEIL(bit_pos, 8);
 
             const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(byte_pos);
@@ -771,55 +791,55 @@ struct vlbt_bwt {
             //scan the runs in the leaf according to the leaf encoding
             switch(leaf_enc) {
                 case 0:
-                    ans = SUCC_8<false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                    ans = SUCC_8<false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
                     break;
                 case 1:
-                    ans = SUCC_8<true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                    ans = SUCC_8<true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
                     break;
                 case 2:
-                    ans = SUCC_8<true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 2 bytes (no vbyte)
+                    ans = SUCC_8<true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 2 bytes (no vbyte)
                     break;
 
                 case 3://template param: vbyte?, overflow8?, overflow16?
-                    ans = SUCC_16<false, false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 3 bytes (no vbyte)
+                    ans = SUCC_16<false, false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 3 bytes (no vbyte)
                     break;
                 case 4:
-                    ans = SUCC_16<false, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (no vbyte)
+                    ans = SUCC_16<false, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 4 bytes (no vbyte)
                     break;
                 case 5:
-                    ans = SUCC_16<false, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 5 bytes (no vbyte)
+                    ans = SUCC_16<false, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 5 bytes (no vbyte)
                     break;
                 case 6:
-                    ans = SUCC_16<true, false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 2 bytes (vbyte)
+                    ans = SUCC_16<true, false, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 2 bytes (vbyte)
                     break;
                 case 7:
-                    ans = SUCC_16<true, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 3 bytes (vbyte)
+                    ans = SUCC_16<true, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 3 bytes (vbyte)
                     break;
                 case 8:
-                    ans = SUCC_16<true, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    ans = SUCC_16<true, true, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
                     break;
 
                 case 9://template param: vbyte?, bpr
-                    ans = SUCC_32<false,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    ans = SUCC_32<false,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
                     break;
                 case 10:
-                    ans = SUCC_32<true,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    ans = SUCC_32<true,3>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
                     break;
                 case 11:
-                    ans = SUCC_32<false,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    ans = SUCC_32<false,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
                     break;
                 case 12:
-                    ans = SUCC_32<true,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    ans = SUCC_32<true,4>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
                     break;
 
                 case 13://template param: bpr
-                    ans = SUCC_64<5>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    ans = SUCC_64<5>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
                     break;
                 case 14:
-                    ans = SUCC_64<6>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    ans = SUCC_64<6>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
                     break;
                 case 15:
-                    ans = SUCC_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), run_bytes, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    ans = SUCC_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
                     break;
                 default:
                     std::cout<<"Undefined encoding"<<std::endl;
@@ -828,11 +848,11 @@ struct vlbt_bwt {
 
             if(ans.first>=0){//it means we found a successor
                 bit_pos = (byte_pos + run_bytes)*8;
-                bool has_sa_sample = stream.read_bit(bit_pos+int_pt_width + run_width+ans.first);
+                bool has_sa_sample = stream.read_bit(bit_pos+int_pt_width+ans.first);
 
                 int64_t sa_samp=0;
                 if(has_sa_sample){
-                    sa_samp = decode_sa_value(bit_pos, ans.first);
+                    sa_samp = decode_sa_value(bit_pos, ans.first, n_runs);
                     return sa_samp;
                 }
 
@@ -858,31 +878,7 @@ struct vlbt_bwt {
             return -1;
         }
 
-        auto ans = s_info[1].get_sa_from_leftmost_leaf(stream);
-        bit_pos = s_info[1].bit_pos;
-
-        bool has_sa_sample = stream.read_bit(bit_pos+int_pt_width + run_width+ans.first);
-        int64_t sa_samp=0;
-        if(has_sa_sample){
-            sa_samp = decode_sa_value(bit_pos, ans.first);
-            return sa_samp;
-        }
-
-        int64_t n_steps = 0;
-        rank = ans.second;
-        symbol = pck_sym;
-        while(!has_sa_sample){
-            size_t lf = C[symbol] + rank;
-            auto res = inverse_select_with_sa(lf);
-            symbol = res.sym;
-            rank = res.rank;
-            sa_samp =  res.sa_samp;
-            has_sa_sample = sa_samp>=0;
-            n_steps++;
-        }
-        assert(n_steps<=sa_samp);
-        return sa_samp+n_steps;
-
+        return get_sa_from_leftmost_leaf(s_info[1], pck_sym);
     }
 
     inline void find_path_to_leaf(tree_path_type& path, size_t& i) const {
@@ -975,7 +971,7 @@ struct vlbt_bwt {
         path.leaf_enc = stream.read(path.bit_pos, path.bit_pos+leaf_enc_width-1);
         path.bit_pos+= leaf_enc_width;
         if constexpr (var==WITH_TOEHOLDS){
-            path.bit_pos+= runs_mt_bits;//skip the bits encoding the number of bytes we use to store the runs in their encoding
+            path.bit_pos+= run_byte_w+run_width+1;//skip the bits encoding the number of bytes we use to store the runs in their encoding
         }
     }
 
@@ -1081,13 +1077,10 @@ struct vlbt_bwt {
         return rank_answer;
     }
 
-    [[nodiscard]] inline uint64_t decode_sa_value(size_t bit_pos, size_t run_id) const {
+    [[nodiscard]] inline uint64_t decode_sa_value(size_t bit_pos, size_t run_id, size_t n_runs) const {
         //NOTE: this function does ont check if run_id is valid
         size_t sa_width = stream.read(bit_pos, bit_pos + int_pt_width - 1);//read the width
         bit_pos += int_pt_width;
-        size_t n_runs = stream.read(bit_pos, bit_pos + run_width - 1) + 1;//read the number of runs (they are zero-based)
-        assert(run_id<n_runs);
-        bit_pos += run_width;
         //NOTE: this operation assumes stream[bit_pos+run_id] is true
         size_t pos = stream.pop_count(bit_pos, bit_pos + run_id-1);//position of the sample in the encoding
         bit_pos += n_runs;//move to the area where the SA values lie
@@ -1189,17 +1182,19 @@ struct vlbt_bwt {
 
         //recover the sa sample (if any)
         if(ans.sa_samp>=0) {//"i" is the head of its run run_id=ans.sa_samp
-            size_t bit_pos = p.bit_pos - runs_mt_bits;
-            size_t run_bytes = stream.read(bit_pos, bit_pos + runs_mt_bits - 2);//read the number of bytes for the runs
+            size_t bit_pos = p.bit_pos - (run_byte_w+run_width+1);
+            size_t run_bytes = stream.read(bit_pos, bit_pos + run_byte_w - 1);//read the number of bytes for the runs
+            bit_pos+=run_byte_w;
+            size_t n_runs = stream.read(bit_pos, bit_pos + run_width - 1)+1;
             bit_pos = (byte_pos + run_bytes) * 8;
 
             //we are now at the start of the area for the SA values. it contains:
             //  the width of the SA values and the number of runs (int_pt_width + run_width)
             //  a bit stream marking each run with a sampled SA value,
             //  the sampled SA values
-            bool has_sample = stream.read_bit(bit_pos + int_pt_width + run_width + ans.sa_samp);//run_id has a SA sample
+            bool has_sample = stream.read_bit(bit_pos + int_pt_width +  ans.sa_samp);//run_id has a SA sample
             if(has_sample) {
-                ans.sa_samp = decode_sa_value(bit_pos, ans.sa_samp);//ans.sa_samp is the run_id where i lies in the runs
+                ans.sa_samp = decode_sa_value(bit_pos, ans.sa_samp, n_runs);//ans.sa_samp is the run_id where i lies in the runs
             }else{
                 ans.sa_samp = -1;
             }

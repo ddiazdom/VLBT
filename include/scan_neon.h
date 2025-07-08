@@ -915,7 +915,7 @@ static inline size_t first_run_neon_64x2(const uint8_t **stream, const uint8_t s
 //NOTE: run_id = -1 if there is no run labeled "symbol" from *i* onwards
 //NOTE: if "idx" is the head of its run and that run is labeled "symbol", then run_id is the id for that run
 template<bool overflow16, bool overflow32>
-static inline std::pair<int64_t, uint64_t> succ_neon_8x16(const uint8_t **stream, const size_t stream_bytes,
+static inline std::pair<int64_t, uint64_t> succ_neon_8x16(const uint8_t **stream, const size_t n_runs,
                                                           const uint8_t sigma, uint64_t idx, uint8_t symbol){
 
     //NOTE here I do not need to vbyte compress the block
@@ -934,7 +934,7 @@ static inline std::pair<int64_t, uint64_t> succ_neon_8x16(const uint8_t **stream
     uint32_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
     uint32_t rank=0;
-    int64_t run_id=0;
+    uint64_t run_id=0;
     while(acc<=idx){
         bk_lengths = vandq_u8(bk_lengths, vceqq_u8(vandq_u8(block, alpha_mask), sym_vec));
         tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(bk_lengths)));
@@ -991,7 +991,7 @@ static inline std::pair<int64_t, uint64_t> succ_neon_8x16(const uint8_t **stream
     rank -= (pf_sum-idx) * is_same_sym;
 
     //return if "symbol" matches the symbol where "i" lies
-    int64_t opts[2] ={-1, run_id+idx_run};
+    int64_t opts[2] ={-1, (int64_t)run_id+idx_run};
     if(is_same_sym){
         bool is_head = (pf_sum-(run>>sigma_bits))==idx;//"i" is also the head position within the run
         return {opts[is_head], rank};
@@ -999,15 +999,16 @@ static inline std::pair<int64_t, uint64_t> succ_neon_8x16(const uint8_t **stream
 
     //the run where "idx" lies does not contain the successor information, we have scan forward to find it
     uint16x8_t mask_suff = vmvnq_u8(mask_pref);//only keep the runs after idx_run
-    bool has_sym = vmaxvq_u8(vandq_u8(sym_mask, mask_suff))==0xFF;
-    size_t rem_bytes = stream_bytes-run_id;
-    while(rem_bytes>0 && !has_sym){
-        run_id+=16;
+    sym_mask = vandq_u8(sym_mask, mask_suff);
+    bool has_sym = vmaxvq_u8(sym_mask)==0xFF;
+    run_id+=16;
+
+    while(run_id<n_runs && !has_sym){
         *stream+=16;
-        rem_bytes-=16;
         block = vld1q_u8(*stream);
         sym_mask = vceqq_u8(vandq_u8(block, alpha_mask), sym_vec);
         has_sym = vmaxvq_u8(sym_mask)==0xFF;
+        run_id+=16;
     }
 
     //get the leftmost occurrence of the symbol
@@ -1015,14 +1016,14 @@ static inline std::pair<int64_t, uint64_t> succ_neon_8x16(const uint8_t **stream
     const uint8x8_t res = vshrn_n_u16(sym_mask_16, 4);
     const uint64_t matches = vget_lane_u64(vreinterpret_u64_u8(res), 0);
     uint8_t first = __builtin_ctzll(matches)>>2;
-    run_id += first;
+    run_id = run_id - 16 + first;
 
-    opts[1] = run_id;
-    return {opts[has_sym], rank};
+    opts[1] = (int64_t)run_id;
+    return {opts[has_sym && run_id<n_runs], rank};
 }
 
 template<bool vbyte_compressed, bool overflow8, bool overflow16>
-static inline std::pair<uint64_t, uint64_t> succ_neon_16x8(const uint8_t **stream, const size_t stream_bytes,
+static inline std::pair<uint64_t, uint64_t> succ_neon_16x8(const uint8_t **stream, const size_t n_runs,
                                                            const uint8_t sigma, uint64_t idx, uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
@@ -1032,7 +1033,6 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_16x8(const uint8_t **strea
     const uint16x8_t sym_vec = vdupq_n_u16(symbol);
 
     const uint8_t *prev_state = *stream;
-    const uint8_t *boundary = *stream + stream_bytes;
 
     uint16x8_t block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
     uint16x8_t bk_lengths = vshlq_u16(block, alpha_shift);
@@ -1041,7 +1041,7 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_16x8(const uint8_t **strea
     uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(bk_lengths));
     uint64_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     uint64_t rank = 0;
-    int64_t run_id = 0;
+    uint64_t run_id = 0;
 
     while(acc<=idx){
         bk_lengths = vandq_u16(bk_lengths, vceqq_u16(vandq_u16(block, alpha_mask), sym_vec));
@@ -1102,7 +1102,7 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_16x8(const uint8_t **strea
     bool is_same_sym = last_symbol==symbol;
     rank -=(pf_sum-idx) * is_same_sym;
 
-    int64_t opts[2] ={-1, run_id+idx_run};
+    int64_t opts[2] ={-1, (int64_t)run_id+idx_run};
     if(is_same_sym){
         uint16_t len = run >> sigma_bits;//get the length of the run where idx falls
         bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
@@ -1110,26 +1110,28 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_16x8(const uint8_t **strea
     }
 
     uint8x16_t mask_suff = vmvnq_u16(mask_pref);//only keep the runs after idx_run
-    bool has_sym = vmaxvq_u16(vandq_u16(sym_mask, mask_suff))==0xFFFF;
+    sym_mask = vandq_u16(sym_mask, mask_suff);
+    bool has_sym = vmaxvq_u16(sym_mask)==0xFFFF;
+    run_id+=8;
 
-    while(*stream < boundary && !has_sym){
-        run_id+=8;
+    while(run_id<n_runs && !has_sym){
         block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
         sym_mask = vceqq_u16(vandq_u16(block, alpha_mask), sym_vec);
         has_sym = vmaxvq_u16(sym_mask)==0xFFFF;
+        run_id+=8;
     }
 
     const uint8x8_t res = vshrn_n_u16(sym_mask, 4);
     const uint64_t matches = vget_lane_u64(vreinterpret_u64_u8(res), 0);
     uint8_t first = __builtin_ctzll(matches)>>3;
-    run_id+=first;
-    opts[1] = run_id;
+    run_id = run_id - 8 + first;
+    opts[1] = (int64_t) run_id;
 
-    return {opts[has_sym], rank};
+    return {opts[has_sym && run_id<n_runs], rank};
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run>
-static inline std::pair<uint64_t, uint64_t> succ_neon_32x4(const uint8_t ** stream, const size_t stream_bytes,
+static inline std::pair<uint64_t, uint64_t> succ_neon_32x4(const uint8_t ** stream, const size_t n_runs,
                                                            const uint8_t sigma, uint64_t idx, uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
@@ -1139,7 +1141,6 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_32x4(const uint8_t ** stre
     const uint32x4_t sym_vec = vdupq_n_u32(symbol);
 
     const uint8_t *prev_state = *stream;
-    const uint8_t *boundary = *stream + stream_bytes;
 
     uint32x4_t block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
     uint32x4_t bk_lengths = vshlq_u32(block, alpha_shift);
@@ -1148,7 +1149,7 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_32x4(const uint8_t ** stre
     uint64_t prev_acc=0;
     uint64_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
     uint64_t rank = 0;
-    int64_t run_id=0;
+    uint64_t run_id=0;
 
     while(acc<=idx){
         bk_lengths = vandq_u32(bk_lengths, vceqq_u32(vandq_u32(block, alpha_mask), sym_vec));
@@ -1199,7 +1200,7 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_32x4(const uint8_t ** stre
     bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
     rank -= (pf_sum-idx) * is_same_sym;
 
-    int64_t opts[2] = {-1, run_id+idx_run};
+    int64_t opts[2] = {-1, (int64_t)run_id+idx_run};
     if(is_same_sym){
         uint32_t len = run>>sigma_bits;
         bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
@@ -1207,24 +1208,24 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_32x4(const uint8_t ** stre
     }
 
     uint32x4_t mask_suff =  vmvnq_u32(mask_pref);
-    bool has_sym = vmaxvq_u32(vandq_u32(sym_mask, mask_suff))==0xFFFFFFFF;
+    sym_mask = vandq_u32(sym_mask, mask_suff);
+    bool has_sym = vmaxvq_u32(sym_mask)==0xFFFFFFFF;
+    run_id+=4;
 
-    while(*stream < boundary && !has_sym){
-        //std::cout<<reinterpret_cast<std::uintptr_t>(*stream)<<" // "<<reinterpret_cast<std::uintptr_t>(boundary)<<std::endl;
-        run_id+=4;
+    while(run_id<n_runs && !has_sym){
         block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
         sym_mask = vceqq_u32(vandq_u32(block, alpha_mask), sym_vec);
         has_sym = vmaxvq_u32(sym_mask)==0xFFFFFFFF;
+        run_id+=4;
     }
-    //TODO this is still unsafe
 
     const uint16x4_t res2 = vshrn_n_u32(sym_mask, 16);
     const uint64_t matches = vget_lane_u64(vreinterpret_u64_u16(res2), 0);
     uint8_t first = __builtin_ctzll(matches)>>4;
-    run_id+=first;
+    run_id = run_id - 4 + first;
 
-    opts[1] = run_id;
-    return {opts[has_sym], rank};
+    opts[1] = (int64_t)run_id;
+    return {opts[has_sym && run_id<n_runs], rank};
 }
 
 template<uint8_t bytes_per_run>
