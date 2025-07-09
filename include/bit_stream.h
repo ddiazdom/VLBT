@@ -12,6 +12,10 @@
 #ifdef __linux__
 #include <malloc.h>
 #endif
+#ifdef __BMI2__
+#include <immintrin.h>
+#endif
+
 
 #include "utils.h"
 

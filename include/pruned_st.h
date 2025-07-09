@@ -7,6 +7,7 @@
 
 #include "bwt_io.h"
 #include "utils.h"
+#include <stack>
 
 //suffix tree node represented as the range of the leaves it covers
 struct st_node_t {

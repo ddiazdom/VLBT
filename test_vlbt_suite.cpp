@@ -145,11 +145,12 @@ build_dt(sdsl::rlmn<>, "wt_rlmn");               \*/
                    \
 #define TESTED_DTS \
 build_dt(sdsl::wt_rlmn<>, "wt_rlmn");\
-//build_dt(sdsl::wt_huff<>, "wt_huff_bv");\
-//build_dt(wt_fbb<sdsl::bit_vector>, "wt_fbb_bv");\
-//build_dt(wt_fbb<sdsl::rrr_vector<>>, "wt_fbb_rrr");\
-//build_dt(wt_fbb<sdsl::hyb_vector<>>, "wt_fbb_hyb");\
-//build_dt(wt_fbb<sdsl::bit_vector_il<>>, "wt_fbb_il");\
+/*build_dt(sdsl::wt_huff<>, "wt_huff_bv");\
+build_dt(wt_fbb<sdsl::bit_vector>, "wt_fbb_bv");\
+build_dt(wt_fbb<sdsl::rrr_vector<>>, "wt_fbb_rrr");\
+build_dt(wt_fbb<sdsl::hyb_vector<>>, "wt_fbb_hyb");\
+build_dt(wt_fbb<sdsl::bit_vector_il<>>, "wt_fbb_il");\
+*/
 
 void rl2plain(std::string& rl_file, std::string& output_plain_file){
 
@@ -424,12 +425,12 @@ void test_rank(bwt_type& my_dt, std::string& input_file, std::string my_dt_name)
 
     for(size_t j=0;j<tests.size();j++){
         if(my_dt_ans[j]<0) continue;
-        if(wt_rlmn_ans[j]!=uint64_t(my_dt_ans[j])){
+        if(wt_rlmn_ans[j]!=my_dt_ans[j]){
             std::cout<<"query:  idx:"<<tests[j].first<<", sym:"<<int(my_dt.eff2byte(tests[j].second))<<", test_id:"<<j<<std::endl;
             std::cout<<"wt_huff rank answer: "<<wt_rlmn_ans[j]<<std::endl;
             std::cout<<"my_dt   rank answer: "<<my_dt_ans[j]<<"\n"<<std::endl;
         }
-        assert(wt_rlmn_ans[j]==uint64_t(my_dt_ans[j]));
+        assert(wt_rlmn_ans[j]==my_dt_ans[j]);
     }
 }
 

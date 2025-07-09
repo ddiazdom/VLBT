@@ -263,9 +263,9 @@ struct vlbt_bwt {
 
             if(!succ_found){
                 if constexpr (check_head){
-                    return std::make_pair(-1LL, true);
+                    return std::make_pair(static_cast<int64_t>(-1), true);
                 }else{
-                    return -1LL;
+                    return static_cast<int64_t>(-1);
                 }
             }
 
@@ -383,61 +383,61 @@ struct vlbt_bwt {
                 }
             }
 
-            const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+(INT_CEIL(bit_pos, 8));
+            const uint8_t *leaf_addr = reinterpret_cast<uint8_t *>(stream.stream)+(INT_CEIL(bit_pos, 8));
             int64_t ans;
 
             //scan the runs in the leaf according to the leaf encoding
             switch(leaf_enc) {
                 case 0:
-                    ans = RANK_8<false, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                    ans = RANK_8<false, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
                     break;
                 case 1:
-                    ans = RANK_8<true, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                    ans = RANK_8<true, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
                     break;
                 case 2:
-                    ans = RANK_8<true, true, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 2 bytes (no vbyte)
+                    ans = RANK_8<true, true, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 2 bytes (no vbyte)
                     break;
 
                 case 3://template param: vbyte?, overflow8?, overflow16?
-                    ans = RANK_16<false, false, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 3 bytes (no vbyte)
+                    ans = RANK_16<false, false, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 3 bytes (no vbyte)
                     break;
                 case 4:
-                    ans = RANK_16<false, true, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (no vbyte)
+                    ans = RANK_16<false, true, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (no vbyte)
                     break;
                 case 5:
-                    ans = RANK_16<false, true, true, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 5 bytes (no vbyte)
+                    ans = RANK_16<false, true, true, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (no vbyte)
                     break;
                 case 6:
-                    ans = RANK_16<true, false, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 2 bytes (vbyte)
+                    ans = RANK_16<true, false, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 2 bytes (vbyte)
                     break;
                 case 7:
-                    ans = RANK_16<true, true, false, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 3 bytes (vbyte)
+                    ans = RANK_16<true, true, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 3 bytes (vbyte)
                     break;
                 case 8:
-                    ans = RANK_16<true, true, true, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    ans = RANK_16<true, true, true, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
                     break;
 
                 case 9://template param: vbyte?, bpr
-                    ans = RANK_32<false,3, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    ans = RANK_32<false,3, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
                     break;
                 case 10:
-                    ans = RANK_32<true,3, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    ans = RANK_32<true,3, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
                     break;
                 case 11:
-                    ans = RANK_32<false,4, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    ans = RANK_32<false,4, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
                     break;
                 case 12:
-                    ans = RANK_32<true,4, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    ans = RANK_32<true,4, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
                     break;
 
                 case 13://template param: bpr
-                    ans = RANK_64<5, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    ans = RANK_64<5, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
                     break;
                 case 14:
-                    ans = RANK_64<6, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    ans = RANK_64<6, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
                     break;
                 case 15:
-                    ans = RANK_64<7, check_head>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    ans = RANK_64<7, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
                     break;
                 default:
                     std::cout<<"Undefined encoding"<<std::endl;
@@ -451,9 +451,9 @@ struct vlbt_bwt {
                 bool is_head = ans & 1UL;//the query symbol is the same as the symbol of the run where "i" falls and "i" is the head of that run
                 ans>>=1;
                 //
-                return std::make_pair(rank+ans, (!is_same_sym || (is_head && i>0) || (is_head && !false_break)));
+                return std::make_pair(rank + ans, (!is_same_sym || (is_head && i>0) || (is_head && !false_break)));
             }else{
-                return (int64_t)rank+ans;
+                return rank + ans;
             }
         }
 

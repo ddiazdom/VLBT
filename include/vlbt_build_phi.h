@@ -716,7 +716,7 @@ struct phi_node {//state of the compression
         } else {
             tree_offset[n_children] = consumed_syms;
             //store to disk
-            assert(ofs->tellp()==block_ptr[n_children]);
+            assert(ofs->tellp()==static_cast<long int>(block_ptr[n_children]));
             assert(aligned<8>(tmp_node->node_n_bits));
             ofs->write((char *)tmp_node->buffer.stream, tmp_node->node_n_bits/8);
             stats.trees_overhead+=tmp_node->node_n_bits;

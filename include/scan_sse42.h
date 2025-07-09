@@ -302,8 +302,8 @@ static inline __m128i decode_block_sse42(const uint8_t **stream) {
     }
 }
 
-template<bool overflow16, bool overflow32=false>
-static inline std::pair<uint64_t, uint8_t> inv_select_sse42_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx) {
+template<bool overflow16, bool overflow32=false, bool get_run_id=false>
+static inline auto inv_select_sse42_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx) {
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
@@ -395,13 +395,19 @@ static inline std::pair<uint64_t, uint8_t> inv_select_sse42_8x16(const uint8_t *
     }else{
         rank += hsum_epi8(bk_lengths);
     }
-
     rank +=idx-pf_sum;
-    return {rank, sym};
+
+    if constexpr (get_run_id){
+        const auto run_id= l*16 + idx_run;
+        int64_t options[2] = {-1, static_cast<int64_t>(run_id)};
+        return std::make_tuple(rank, sym, options[idx==pf_sum]);
+    }else{
+        return std::make_pair(rank, sym);
+    }
 }
 
-template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
-static inline std::pair<uint64_t, uint8_t> inv_select_sse42_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx) {
+template<bool vbyte_compressed, bool overflow8, bool overflow16=false, bool get_run_id=false>
+static inline auto inv_select_sse42_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx) {
 
     const uint8_t sigma_bits = sym_width(sigma);
     const uint8_t *stream_start = *stream;
@@ -486,13 +492,20 @@ static inline std::pair<uint64_t, uint8_t> inv_select_sse42_16x8(const uint8_t *
     }else{
         rank += hsum_epi16(bk_lengths);
     }
-
     rank +=idx-pf_sum;
-    return {rank, sym};
+
+    if constexpr (get_run_id){
+        const auto run_id= l*8 + idx_run;
+        int64_t options[2] = {-1, static_cast<int64_t>(run_id)};
+        return std::make_tuple(rank, sym, options[idx==pf_sum]);
+    }else{
+        return std::make_pair(rank, sym);
+    }
+
 }
 
-template<bool vbyte_compressed, uint8_t bytes_per_run>
-static inline std::pair<uint64_t, uint8_t> inv_select_sse42_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx) {
+template<bool vbyte_compressed, uint8_t bytes_per_run, bool get_run_id=false>
+static inline auto inv_select_sse42_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx) {
 
     //TODO: assert idx fits 2 bytes
     const uint8_t sigma_bits = sym_width(sigma);
@@ -501,9 +514,9 @@ static inline std::pair<uint64_t, uint8_t> inv_select_sse42_32x4(const uint8_t *
     size_t l=0;
     __m128i block = decode_block_sse42<vbyte_compressed, 2, bytes_per_run>(stream);
     __m128i bk_lengths =  shift_right_epi32(block, sigma_bits);
-    uint32_t prev_acc=0, acc;
+    uint32_t prev_acc=0;
 
-    acc= hsum_epi32(bk_lengths);
+    uint32_t acc = hsum_epi32(bk_lengths);
     //print32x4(bk_lengths);
 
     while(acc<=idx){
@@ -571,15 +584,25 @@ static inline std::pair<uint64_t, uint8_t> inv_select_sse42_32x4(const uint8_t *
     //print32x4(bk_lengths);
 
     rank += hsum_epi32(bk_lengths);
-    rank +=idx-pf_sum;
+    rank += idx-pf_sum;
 
-    return {rank, sym};
+    if constexpr (get_run_id){
+        const auto run_id= l*4 + idx_run;
+        int64_t options[2] = {-1, static_cast<int64_t>(run_id)};
+        return std::make_tuple(rank, sym, options[idx==pf_sum]);
+    }else{
+        return std::make_pair(rank, sym);
+    }
 }
 
 //byte compressed by default
-template<uint8_t bytes_per_run>
-static inline std::pair<uint64_t, uint8_t> inv_select_sse42_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
-    return {0,0};
+template<uint8_t bytes_per_run, bool get_run_id=false>
+static inline auto inv_select_sse42_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+    if constexpr (get_run_id){
+        return std::make_tuple<int64_t, uint8_t, uint64_t>(0,0, 0);
+    }else{
+        return std::make_pair<int64_t, uint8_t>(0,0);
+    }
 }
 
 template<bool overflow16, bool overflow32=false>
@@ -738,7 +761,7 @@ static inline uint8_t access_sse42_64x2(const uint8_t **stream, uint8_t sigma, u
     return 0;
 }
 
-template<bool overflow16, bool overflow32=false>
+template<bool overflow16, bool overflow32=false, bool check_head>
 static inline int64_t rank_sse42_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
 
     //NOTE here I do not need to vbyte compress the block
@@ -813,11 +836,21 @@ static inline int64_t rank_sse42_8x16(const uint8_t **stream, uint8_t sigma, uin
         rank += hsum_epi8(bk_lengths);
     }
 
-    rank -=(pf_sum-idx) * (last_symbol==symbol);
+    if constexpr (check_head) {
+        const uint8_t len = run >> sigma_bits;//get the length of the run where idx falls
+        const bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        const bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        rank -=(pf_sum-idx) * is_same_sym;
+        rank = (rank<<1) | is_head;
+        rank = (rank<<1) | is_same_sym;
+    } else {
+        rank -=(pf_sum-idx) * (last_symbol==symbol);
+    }
+
     return rank;
 }
 
-template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
+template<bool vbyte_compressed, bool overflow8, bool overflow16=false, bool check_head>
 static inline int64_t rank_sse42_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
@@ -901,11 +934,21 @@ static inline int64_t rank_sse42_16x8(const uint8_t **stream, uint8_t sigma, uin
         rank += hsum_epi16(bk_lengths);
     }
 
-    rank -=(pf_sum-idx)*(last_symbol==symbol);
+    if constexpr (check_head) {
+        const uint16_t len = run >> sigma_bits;//get the length of the run where idx falls
+        const bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        const bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        rank -= (pf_sum-idx) * is_same_sym;
+        rank = (rank<<1) | is_head;
+        rank = (rank<<1) | is_same_sym;
+    } else {
+        rank -= (pf_sum-idx) * (last_symbol==symbol);
+    }
+
     return (int64_t)rank;
 }
 
-template<bool vbyte_compressed, uint8_t bytes_per_run>
+template<bool vbyte_compressed, uint8_t bytes_per_run, bool check_head>
 static inline int64_t rank_sse42_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
@@ -975,13 +1018,71 @@ static inline int64_t rank_sse42_32x4(const uint8_t ** stream, uint8_t sigma, ui
     //print32x4(bk_lengths);
 
     rank += hsum_epi32(bk_lengths);
-    rank -=(pf_sum-idx)*(last_symbol==symbol);
+
+    if constexpr (check_head) {
+        const uint32_t len = run >> sigma_bits;//get the length of the run where idx falls
+        const bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        const bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        rank -= (pf_sum-idx) * is_same_sym;
+        rank = (rank<<1) | is_head;
+        rank = (rank<<1) | is_same_sym;
+    } else {
+        rank -= (pf_sum-idx)*(last_symbol==symbol);
+    }
 
     return (int64_t)rank;
 }
 
-template<uint8_t bytes_per_run>
+template<uint8_t bytes_per_run, bool check_head>
 static inline int64_t rank_sse42_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
     return 0;
 }
+
+static inline size_t first_run_sse42_8x16(const uint8_t **stream, const uint8_t sigma, uint8_t symbol) {
+    return 0;
+}
+
+template<bool vbyte_compressed>
+static inline size_t first_run_sse42_16x8(const uint8_t **stream, const uint8_t sigma, uint8_t symbol) {
+    return 0;
+}
+
+template<bool vbyte_compressed, uint8_t bytes_per_run>
+static inline size_t first_run_sse42_32x4(const uint8_t **stream, const uint8_t sigma, uint8_t symbol) {
+    return 0;
+}
+
+template<uint8_t bytes_per_run>
+static inline size_t first_run_sse42_64x2(const uint8_t **stream, const uint8_t sigma, uint8_t symbol){
+    return 0;
+}
+
+//the function succ_neon_*** returns the run id for the leftmost run labeled "symbol" after position "idx".
+//the output is a pair (run_id (int64_t), rank (uint64_t)), where "rank" is the number of times "symbol" occurs before "i"
+//NOTE: run_id = -1 if there is no run labeled "symbol" from *i* onwards
+//NOTE: if "idx" is the head of its run and that run is labeled "symbol", then run_id is the id for that run
+template<bool overflow16, bool overflow32>
+static inline std::pair<int64_t, uint64_t> succ_sse42_8x16(const uint8_t **stream, const size_t n_runs,
+                                                           const uint8_t sigma, uint64_t idx, uint8_t symbol) {
+    return {0, 0};
+}
+
+template<bool vbyte_compressed, bool overflow8, bool overflow16>
+static inline std::pair<uint64_t, uint64_t> succ_sse42_16x8(const uint8_t **stream, const size_t n_runs,
+                                                           const uint8_t sigma, uint64_t idx, uint8_t symbol) {
+    return {0, 0};
+}
+
+template<bool vbyte_compressed, uint8_t bytes_per_run>
+static inline std::pair<uint64_t, uint64_t> succ_sse42_32x4(const uint8_t ** stream, const size_t n_runs,
+                                                            const uint8_t sigma, uint64_t idx, uint8_t symbol) {
+
+    return {0, 0};
+}
+
+template<uint8_t bytes_per_run>
+static inline std::pair<uint64_t, uint64_t> succ_sse42_64x2(const uint8_t ** stream, const size_t stream_bytes, const uint8_t sigma, uint64_t idx, uint8_t symbol){
+    return {0, 0};
+}
+
 #endif //VLBT_SCAN_SSE42_H

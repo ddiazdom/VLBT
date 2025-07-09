@@ -7,15 +7,19 @@
 
 template<bool overflow16, bool overflow32=false>
 static inline uint8_t access_scl_8(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+    return 0;
 }
 template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
 static inline uint8_t access_scl_16(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+    return 0;
 }
 template<bool vbyte_compressed, uint8_t bytes_per_run>
 static inline uint8_t access_scl_32(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+    return 0;
 }
 template<uint8_t bytes_per_run>
 static inline uint8_t access_scl_64(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+    return 0;
     /*uint8_t alpha_bits = 4;
     uint8_t alpha_mask = 15;
 
@@ -32,30 +36,37 @@ static inline uint8_t access_scl_64(const uint16_t* stream, uint8_t sigma, uint6
 
 template<bool overflow16, bool overflow32=false>
 static inline uint64_t inv_select_scl_8(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+    return 0;
 }
 template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
 static inline uint64_t inv_select_scl_16(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+    return 0;
 }
 template<bool vbyte_compressed, uint8_t bytes_per_run>
 static inline uint64_t inv_select_scl_32(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+    return 0;
 }
 template<uint8_t bytes_per_run>
 static inline uint64_t inv_select_scl_64(const uint16_t* stream, uint8_t sigma, uint64_t idx){
+    return 0;
 }
 
 template<bool overflow16, bool overflow32, bool check_head>
 static inline uint64_t rank_scl_8(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
+    return 0;
 }
 template<bool vbyte_compressed, bool overflow8, bool overflow16, bool check_head>
 static inline uint64_t rank_scl_16(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
+    return 0;
 }
 template<bool vbyte_compressed, uint8_t bytes_per_run, bool check_head>
 static inline uint64_t rank_scl_32(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
+    return 0;
 }
 template<uint8_t bytes_per_run, bool check_head>
 static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64_t idx, uint8_t sym){
+    return 0;
 }
-
 
 #if defined(__ARM_NEON__)
 #include "scan_neon.h"
@@ -121,6 +132,16 @@ static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64
 #define RANK_16 rank_sse42_16x8
 #define RANK_32 rank_sse42_32x4
 #define RANK_64 rank_sse42_64x2
+
+#define FIRST_RUN_8 first_run_sse42_8x16
+#define FIRST_RUN_16 first_run_sse42_16x8
+#define FIRST_RUN_32 first_run_sse42_32x4
+#define FIRST_RUN_64 first_run_sse42_64x2
+
+#define SUCC_8 succ_sse42_8x16
+#define SUCC_16 succ_sse42_16x8
+#define SUCC_32 succ_sse42_32x4
+#define SUCC_64 succ_sse42_64x2
 
 #else
 #define INV_SELECT_8 inv_select_scl_8

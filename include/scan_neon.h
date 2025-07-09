@@ -643,16 +643,16 @@ static inline int64_t rank_neon_8x16(const uint8_t **stream, const uint8_t sigma
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
     if constexpr (check_head) {
-        uint8_t len = run >> sigma_bits;//get the length of the run where idx falls
-        bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
-        bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
-        rank -=(pf_sum-idx) * is_same_sym;
+        const uint8_t len = run >> sigma_bits;//get the length of the run where idx falls
+        const bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        const bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        rank -= (pf_sum-idx) * is_same_sym;
         rank = (rank<<1) | is_head;
         rank = (rank<<1) | is_same_sym;
     } else {
         rank -=(pf_sum-idx) * (last_symbol==symbol);
     }
-    return (int64_t)rank;
+    return rank;
 }
 
 template<bool vbyte_compressed, bool overflow8, bool overflow16, bool check_head>
@@ -803,9 +803,9 @@ static inline int64_t rank_neon_32x4(const uint8_t ** stream, const uint8_t sigm
     rank += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
 
     if constexpr (check_head) {
-        uint32_t len = run >> sigma_bits;//get the length of the run where idx falls
-        bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
-        bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        const uint32_t len = run >> sigma_bits;//get the length of the run where idx falls
+        const bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        const bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
         rank -= (pf_sum-idx) * is_same_sym;
         rank = (rank<<1) | is_head;
         rank = (rank<<1) | is_same_sym;
@@ -884,7 +884,7 @@ static inline size_t first_run_neon_32x4(const uint8_t **stream, const uint8_t s
     const uint32x4_t alpha_mask = vdupq_n_u32(alpha_m);
     const uint32x4_t sym_vec = vdupq_n_u32(symbol);
 
-    const uint8_t *prev_state = *stream;
+    //const uint8_t *prev_state = *stream;
 
     uint32x4_t block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
     uint32x4_t sym_mask = vceqq_u32(vandq_u32(block, alpha_mask), sym_vec);
@@ -898,10 +898,9 @@ static inline size_t first_run_neon_32x4(const uint8_t **stream, const uint8_t s
         has_sym = vmaxvq_u32(sym_mask)==0xFFFFFFFF;
     }
 
-
     const uint16x4_t res = vshrn_n_u32(sym_mask, 16);
     const uint64_t matches = vget_lane_u64(vreinterpret_u64_u16(res), 0);
-    uint8_t first= __builtin_ctzll(matches)>>4;
+    const uint8_t first= __builtin_ctzll(matches)>>4;
     return run_idx+first;
 }
 

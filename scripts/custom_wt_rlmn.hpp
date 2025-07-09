@@ -412,7 +412,7 @@ class custom_wt_rlmn
                 if constexpr (check_head) {
                     return std::make_pair<size_type, bool>(0, true);
                 } else {
-                    return 0ULL;
+                    return static_cast<size_type>(0);
                 }
             }
 
@@ -423,7 +423,7 @@ class custom_wt_rlmn
                 if constexpr (check_head) {
                     return std::make_pair<size_type, bool>(0, true);
                 } else {
-                    return 0ULL;
+                    return static_cast<size_type>(0);
                 }
             }
 
@@ -435,14 +435,14 @@ class custom_wt_rlmn
                 }else{
                     return m_bf_select(m_C_bf_rank[c]+c_runs)-m_C[c] + (i-c_run_begin);
                 }
-            } else {
-                if constexpr (check_head){
-                    return std::make_pair<size_type, bool>(m_bf_select(m_C_bf_rank[c]+c_runs+1)-m_C[c], true);
-                }else{
-                    return m_bf_select(m_C_bf_rank[c]+c_runs+1)-m_C[c];
-                }
             }
-        };
+
+            if constexpr (check_head){
+                return std::make_pair<size_type, bool>(m_bf_select(m_C_bf_rank[c]+c_runs+1)-m_C[c], true);
+            }else{
+                return m_bf_select(m_C_bf_rank[c]+c_runs+1)-m_C[c];
+            }
+        }
 
         [[nodiscard]] std::pair<uint8_t, size_t> lf(size_type i) const {
             auto res = inverse_select(i);
@@ -500,11 +500,11 @@ class custom_wt_rlmn
             }
 
             size_t c_runs = m_wt.rank(wt_ex_pos, c);
-            int64_t next_c_run = m_wt.select(c_runs+1, c);
+            size_t next_c_run = m_wt.select(c_runs+1, c);
             if(next_c_run==m_wt.size()){
                 return -1;
             }
-            return next_c_run;
+            return static_cast<int64_t>(next_c_run);
         }
 
         //! Calculates how many times symbol wt[i] occurs in the prefix [0..i-1].

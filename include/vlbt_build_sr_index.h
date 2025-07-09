@@ -253,15 +253,16 @@ void subsample_sa_samples(std::string& sa_samples_file, std::string& str_ranges_
     size_t n_blocks = n_elements/buffer_size;
     size_t rem = n_elements;
 
-    //read samples from disk and reorganize them
+    //read samples from the disk and reorganize them
     size_type discard_mark = std::numeric_limits<size_type>::max();
     size_type prev_tail_val = discard_mark;
     for(size_t i=0;i<n_blocks;i++){
-        ifs_orig_samples.read((char *)buffer.data(), off_t(sizeof(size_type)*buffer_size));
+        ifs_orig_samples.read((char *)buffer.data(), static_cast<off_t>(sizeof(size_type) * buffer_size));
         for(size_t j=0;j<buffer_size;j+=2){
             samples[s_pos].prev_tail_val = prev_tail_val;
             samples[s_pos].head_val = buffer[j];
-            samples[s_pos].run_id = s_pos++;
+            samples[s_pos].run_id = s_pos;
+            ++s_pos;
             prev_tail_val = buffer[j+1];
         }
         rem -=buffer_size;
@@ -274,7 +275,8 @@ void subsample_sa_samples(std::string& sa_samples_file, std::string& str_ranges_
         for(size_t j=0;j<rem;j+=2){
             samples[s_pos].prev_tail_val = prev_tail_val;
             samples[s_pos].head_val = buffer[j];
-            samples[s_pos].run_id = s_pos++;
+            samples[s_pos].run_id = s_pos;
+            ++s_pos;
             prev_tail_val = buffer[j+1];
         }
         samples[0].prev_tail_val = buffer[rem-1];

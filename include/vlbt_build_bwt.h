@@ -524,7 +524,9 @@ struct rl_node {//state of the compression
         std::cout<<"Computing ext. succ info"<<std::endl;
         int64_t max_dist=0;
 
-        for(int64_t b=0;b<n_children;b++){
+        const int64_t n_ch = n_children;
+
+        for(int64_t b=0;b<n_ch;b++){
 
             size_t succ_samp=0;
             int64_t max_tree_dist=0, real_dist;
@@ -538,7 +540,7 @@ struct rl_node {//state of the compression
                 }
 
                 int64_t tree_dist = active_succ[s].second-b;
-                assert(tree_dist>0 && tree_dist<n_children);
+                assert(tree_dist>0 && tree_dist<n_ch);
                 size_t sym_pos = (b * bwt_rep.sigma) + s;
                 ext_succ_info[sym_pos] = tree_dist>5 && !low_freq_syms[s];
 
@@ -554,7 +556,7 @@ struct rl_node {//state of the compression
                     }
                 }
 
-                if(sigma_trees[s][active_pred[s].first]==b){
+                if(static_cast<int64_t>(sigma_trees[s][active_pred[s].first])==b){
                     active_pred[s].first++;
                     active_pred[s].second = b;
                 }
@@ -1501,7 +1503,7 @@ struct rl_node {//state of the compression
             }
 
             //store to disk
-            assert(ofs->tellp()==block_ptr[n_children]);
+            assert(ofs->tellp()==static_cast<long int>(block_ptr[n_children]));
             assert(aligned<8>(tmp_node->node_n_bits));
             ofs->write((char *)tmp_node->buffer.stream, tmp_node->node_n_bits/8);
             stats.trees_overhead+=tmp_node->node_n_bits;
