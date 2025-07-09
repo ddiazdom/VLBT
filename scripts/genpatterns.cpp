@@ -218,6 +218,7 @@ int main (int argc, char **argv) {
 #include <unordered_set>
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 
 std::vector<uint64_t> sample_random_positions(std::unordered_set<uint64_t>& seen_positions, uint64_t n, uint64_t x) {
 

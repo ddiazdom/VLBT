@@ -217,6 +217,7 @@ struct vlbt_bwt {
 
     template<bool check_head=false>
     [[nodiscard]] inline auto rank(size_t i, uint8_t symbol) const {
+        //TODO fix rank by adding one extra symbol, not the best solution, but it works
 
         symbol = packed_alpha[symbol];
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.
@@ -1322,7 +1323,7 @@ struct vlbt_bwt {
         size_t l=0, r=size()-1, j=pat.size();
         uint8_t cc;
         while(j-->0 && l<=r){
-            cc = packed_alpha[uint8_t(pat[j])];
+            cc = packed_alpha[static_cast<uint8_t>(pat[j])];
             l = C[cc] + rank(l, pat[j]); // count c in bwt[0..l-1]
             r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
             //std::cout<<"MIO: "<<l<<" "<<r<<std::endl;
