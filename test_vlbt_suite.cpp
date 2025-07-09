@@ -297,10 +297,6 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
 
     fm_index<sdsl::custom_wt_rlmn<>, true> csa_rlmn(wt_rlmn, C, samp_sa_file, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
 
-    //std::string pat = "im.\n=";
-    //my_dt.count_with_head(pat);
-    //csa_rlmn.count_with_head(pat);
-    //exit(1);
 
     std::string pat_file = input_prefix+".pats";
     std::ifstream ifs(pat_file);
@@ -318,6 +314,10 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
             pat_list[i].push_back(c);
         }
     }
+
+    //my_dt.count_with_head(pat_list[287]);
+    //csa_rlmn.count_with_head(pat_list[287]);
+    //exit(1);
 
     //TODO just to test
     //pat_list.resize(20);
@@ -544,10 +544,10 @@ void test_sr_index(std::string& input_prefix, size_t ssamp_val, std::string& out
     size_t written_bytes = store_to_file(output_sr_index_file, sr_index);
     std::cout<<"Final sr-index uses "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps)"<<std::endl;
 
-    //test_count(sr_index, input_prefix, "sr_index");
-    //test_inverse_select(sr_index.bwt_with_th, input_prefix, "sr_index");
-    //test_rank(sr_index.bwt_with_th, input_prefix, "sr_index");
-    //test_access(sr_index.bwt_with_th, input_prefix, "sr_index");
+    test_count(sr_index, input_prefix, "sr_index");
+    test_inverse_select(sr_index.bwt, input_prefix, "sr_index");
+    test_rank(sr_index.bwt, input_prefix, "sr_index");
+    test_access(sr_index.bwt, input_prefix, "sr_index");
 }
 
 int main(int argc, char** argv){
@@ -575,7 +575,7 @@ int main(int argc, char** argv){
         //TESTED_DTS
     }
     //test_bwt(input_prefix, output_prefix);
-    test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
+    //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }

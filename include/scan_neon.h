@@ -236,8 +236,8 @@ static inline auto inv_select_neon_8x16(const uint8_t **stream, uint8_t sigma, u
     rank +=idx-pf_sum;
 
     if constexpr (get_run_id){
-        auto run_id= l*16 + idx_run;
-        int64_t options[2] = {-1, (int64_t)run_id};
+        const auto run_id= l*16 + idx_run;
+        int64_t options[2] = {-1, static_cast<int64_t>(run_id)};
         return std::make_tuple(rank, sym, options[idx==pf_sum]);
     }else{
         return std::make_pair(rank, sym);
@@ -294,7 +294,7 @@ static inline auto inv_select_neon_16x8(const uint8_t **stream, uint8_t sigma, u
     const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(idx_run<<1));
 
     const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
-    uint16_t run = vgetq_lane_u16(run_vec, 0);
+    const uint16_t run = vgetq_lane_u16(run_vec, 0);
     uint8_t sym = run & alpha_m;
     const uint16x8_t sym_vec = vandq_u16(run_vec, alpha_mask);
 
@@ -329,8 +329,8 @@ static inline auto inv_select_neon_16x8(const uint8_t **stream, uint8_t sigma, u
     rank +=idx-pf_sum;
 
     if constexpr (get_run_id){
-        auto run_id= l*8 + idx_run;
-        int64_t options[2] = {-1, (int64_t)run_id};
+        const auto run_id= l*8 + idx_run;
+        int64_t options[2] = {-1, static_cast<int64_t>(run_id)};
         return std::make_tuple(rank, sym, options[idx==pf_sum]);
     }else{
         return std::make_pair(rank, sym);
@@ -338,7 +338,7 @@ static inline auto inv_select_neon_16x8(const uint8_t **stream, uint8_t sigma, u
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run, bool get_run_id=false>
-static inline auto inv_select_neon_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+static inline auto inv_select_neon_32x4(const uint8_t ** stream, const uint8_t sigma, uint64_t idx){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const int32x4_t alpha_shift = vdupq_n_u32(-sigma_bits);
@@ -370,8 +370,8 @@ static inline auto inv_select_neon_32x4(const uint8_t ** stream, uint8_t sigma, 
     const uint32x4_t idx_mask = vcgtq_u32(bk_lengths, vdupq_n_u32(idx));// mask for >idx
     const uint16x4_t res = vshrn_n_u32(idx_mask, 16);
     const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u16(res), 0);
-    uint8_t idx_run = __builtin_ctzll(less_than)>>4;
-    uint32_t alpha_m = (1UL << sigma_bits)-1;
+    const uint8_t idx_run = __builtin_ctzll(less_than)>>4;
+    const uint32_t alpha_m = (1UL << sigma_bits)-1;
     const uint32x4_t alpha_mask = vdupq_n_u32(alpha_m);
 
     const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
@@ -380,7 +380,7 @@ static inline auto inv_select_neon_32x4(const uint8_t ** stream, uint8_t sigma, 
     const uint32x4_t run_vec = vreinterpretq_u32_u8(vqtbl1q_u8(block, shuff));
     const uint32x4_t sym_vec = vandq_u32(run_vec, alpha_mask);
 
-    uint32_t run = vgetq_lane_u32(run_vec, 0);
+    const uint32_t run = vgetq_lane_u32(run_vec, 0);
     uint32_t pf_sum = vgetq_lane_u32(vreinterpretq_u32_u8(vqtbl1q_u8(bk_lengths, shuff)), 0);
     pf_sum-= run>>sigma_bits;
     uint8_t sym = run & alpha_m;
@@ -410,8 +410,8 @@ static inline auto inv_select_neon_32x4(const uint8_t ** stream, uint8_t sigma, 
     rank +=idx-pf_sum;
 
     if constexpr (get_run_id){
-        auto run_id= l*4 + idx_run;
-        int64_t options[2] = {-1, (int64_t)run_id};
+        const auto run_id= l*4 + idx_run;
+        int64_t options[2] = {-1, static_cast<int64_t>(run_id)};
         return std::make_tuple(rank, sym, options[idx==pf_sum]);
     }else{
         return std::make_pair(rank, sym);

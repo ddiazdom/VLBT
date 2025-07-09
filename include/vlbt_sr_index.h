@@ -21,13 +21,18 @@ struct vlbt_sr_index{
         return bwt.count(pat);
     }
 
-    inline uint64_t locate(std::string& pattern) const {
-
+    inline auto locate(std::string& pattern) const {
+        return bwt.count_with_head(pattern);
     }
 
     [[nodiscard]] inline uint64_t size() const {
         return bwt.size();
     }
+
+    [[nodiscard]] inline std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {
+        return bwt.inverse_select(i);
+    }
+
 
     [[nodiscard]] inline int64_t rank(size_t i, uint8_t symbol) const {
         return bwt.rank(i, symbol);

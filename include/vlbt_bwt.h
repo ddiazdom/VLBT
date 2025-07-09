@@ -57,7 +57,7 @@ struct vlbt_bwt {
         uint8_t symbol=0;
         uint8_t r_width=0;
         uint8_t node_sigma=0;
-        size_t bk_sz;
+        size_t bk_sz=0;
     };
 
     uint64_t tot_syms=0;//total symbols in the text
@@ -142,7 +142,7 @@ struct vlbt_bwt {
         p = stream.read(p, p+loc_ext_pt_width-1);
         //size_t offset = (p >> (run_width+1)) * ((p & 1)>0);
         //child -= offset;//eff child in the representation where "i" lies
-        child -= (p >> (run_width+1)) * ((p & 1)>0);
+        child -= (p >> (run_width+1)) & -(p & 1);
         p = loc_lfs_bits + (loc_ext_pt_width*child);
         return (header_bytes + (stream.read(p, p+loc_ext_pt_width-1)>>1)) * 8;//bit-position where "child" begins in the stream
     }
@@ -156,16 +156,16 @@ struct vlbt_bwt {
         p = stream.read(p, p+loc_ext_pt_width-1);
         //size_t offset = ((p >> 1) & ((1<<run_width)-1)) * ((p & 1)>0);
         //child += offset;//eff child in the representation where "i" lies
-        child += ((p >> 1) & ((1<<run_width)-1)) * ((p & 1)>0);
+        child += ((p >> 1) & ((1<<run_width)-1)) & -(p & 1);
         p = loc_lfs_bits + (loc_ext_pt_width * child);
         return (header_bytes + (stream.read(p, p+loc_ext_pt_width - 1) >> 1)) * 8;
     }
 
     inline void skip_ext_succ_info(size_t& bit_pos) const {
         //skip ext succ/pred information
-        size_t n_samps = stream.pop_count(bit_pos, bit_pos+sigma-1);
+        const size_t n_samps = stream.pop_count(bit_pos, bit_pos+sigma-1);
         bit_pos+=sigma;
-        uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for "child"
+        const uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for "child"
         bit_pos+=mtd_bits;
         bit_pos+=n_samps*w;//skip the n_samp tree distances
         bit_pos= INT_CEIL(bit_pos, 8)*8;//next byte-aligned position (trees are byte-aligned)
@@ -174,11 +174,11 @@ struct vlbt_bwt {
 
     inline void decode_ext_succ_info(size_t& bit_pos, size_t child, uint8_t symbol) const {
         //the position where the offset for the successor is located
-        size_t succ_pos = stream.pop_count(bit_pos, bit_pos+symbol)-1;//works only because bit_stream[bit_pos+symbol] is true
+        const size_t succ_pos = stream.pop_count(bit_pos, bit_pos+symbol)-1;//works only because bit_stream[bit_pos+symbol] is true
         bit_pos+=sigma;
-        uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for "child"
+        const uint8_t w = stream.read(bit_pos, bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for "child"
         bit_pos+=mtd_bits + (succ_pos*w);
-        size_t succ_child = child + stream.read(bit_pos, bit_pos+w-1);//read the offset of the successor
+        const size_t succ_child = child + stream.read(bit_pos, bit_pos+w-1);//read the offset of the successor
         size_t p = lfs_bits + (ext_pt_width*succ_child);
         p = stream.read(p, p+ext_pt_width-1)>>1;
         bit_pos = (header_bytes+p)*8;
@@ -187,8 +187,8 @@ struct vlbt_bwt {
     [[nodiscard]] inline size_t find_low_freq_succ(size_t i, uint8_t symbol) const {
 
         symbol = stream.pop_count(0, symbol)-1;//this works because stream[symbol] is true
-        size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
-        uint8_t w = sym_width(INT_CEIL(tot_syms, block_size)*block_size);
+        const size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
+        const uint8_t w = sym_width(INT_CEIL(tot_syms, block_size)*block_size);
 
         //read the area of the stream where the info of "symbol" lies
         size_t ptr = c_bits + symbol*40;
@@ -199,7 +199,7 @@ struct vlbt_bwt {
 
         size_t idx;
         while(first<=last){
-            int64_t mid = first + int64_t((n/2)*w);
+            const int64_t mid = first + static_cast<int64_t>((n / 2) * w);
             idx = stream.read(mid, mid+w-1);
             if(idx<i){
                 first = mid+w;
@@ -233,9 +233,7 @@ struct vlbt_bwt {
         size_t prev_bit_pos=bit_pos;
         skip_ext_succ_info(bit_pos);
 
-        bool has_symbol = stream.read_bit(bit_pos+1+symbol);//does the tree have the symbol?
-
-        if(!has_symbol){
+        if(bool has_symbol = stream.read_bit(bit_pos+1+symbol); !has_symbol){
             //find successor containing sym
             size_t succ_bit_pos = prev_bit_pos;
             bool succ_found = stream.read_bit(succ_bit_pos+symbol);
@@ -271,7 +269,7 @@ struct vlbt_bwt {
                 }
             }
 
-            succ_bit_pos++;//the +1 is to skip the bit indicating if this node is a leaf
+            ++succ_bit_pos;//the +1 is to skip the bit indicating if this node is a leaf
             symbol = stream.pop_count(succ_bit_pos, succ_bit_pos+symbol-1);
             succ_bit_pos+=sigma;
             uint8_t r_width = sym_width(max_freq);
@@ -481,8 +479,6 @@ struct vlbt_bwt {
         //assert(stream.read_bit(bit_pos+symbol));
         //
 
-        size_t succ_child;
-
         while(!is_leaf){
 
             uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
@@ -507,7 +503,7 @@ struct vlbt_bwt {
             assert(succ_info>0);
 
             //succ_info>0=true, meaning there is a right sibling containing the symbol
-            succ_child = __builtin_ctz(succ_info);
+            size_t succ_child = __builtin_ctz(succ_info);
 
             bit_pos+=new_sigma*n_children;//skip int succ/pred info
 
@@ -540,16 +536,16 @@ struct vlbt_bwt {
         rank+=stream.read(r_pos, r_pos+rank_width-1);
         bit_pos+=new_sigma*rank_width;
 
-        uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
+        const uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
         bit_pos+= leaf_enc_width;
 
-        size_t run_bytes= stream.read(bit_pos, bit_pos+run_byte_w-1);
+        const size_t run_bytes= stream.read(bit_pos, bit_pos+run_byte_w-1);
         bit_pos+= run_byte_w;
-        size_t n_runs = stream.read(bit_pos, bit_pos+run_width-1)+1;
+        const size_t n_runs = stream.read(bit_pos, bit_pos+run_width-1)+1;
         bit_pos+= run_width+1;//+1 to skip the bit indicating if the head of the leftmost run is fake
         size_t byte_pos = INT_CEIL(bit_pos, 8);
 
-        const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+byte_pos;
+        const uint8_t *leaf_addr = reinterpret_cast<uint8_t *>(stream.stream)+byte_pos;
 
         size_t run_idx;
 
@@ -630,7 +626,7 @@ struct vlbt_bwt {
         uint8_t pck_sym = packed_alpha[symbol];
         symbol = pck_sym;
         // NOTE this is a partial successor, because it can sometimes answer -1 for a valid query.
-        // However, it will never return -1 for a query coming for a pattern that exists in the text
+        // However, it will never return -1 for a query coming from a pattern that exists in the text
 
         //initialize the block size
         size_t bk_sz = block_size;
@@ -641,37 +637,15 @@ struct vlbt_bwt {
         //we use two variables to avoid branching as we descend over the tree
         succ_info s_info[2];
 
-        //get the block where index i lies
+        //get the block where index "i" lies
         uint64_t child = i/bk_sz, succ_child;
         size_t bit_pos = find_prev(child);//bit-position where "child" begins in the stream
 
-        //find the successor tree containing sym
-        size_t succ_bit_pos=0xffffffffffffffff;
-
-        bool succ_found = stream.read_bit(bit_pos+symbol);
-        if(!succ_found) {
-            succ_child = child;
-            size_t steps = 0;
-
-            while(!succ_found && steps < 5) {
-                succ_bit_pos = find_next(++succ_child);
-                skip_ext_succ_info(succ_bit_pos);
-                succ_found = stream.read_bit(succ_bit_pos+1+symbol);//does the tree have the symbol?
-                steps++;
-            }
-
-            if(!succ_found && stream.read_bit(symbol)) {//last opportunity: check if the node is low freq
-                succ_bit_pos = find_low_freq_succ(i, symbol);
-                skip_ext_succ_info(succ_bit_pos);
-                succ_found = true;
-                //assert(stream.read_bit(succ_bit_pos+1+symbol));
-            }
-        } else {
-            succ_bit_pos = bit_pos;
-            decode_ext_succ_info(succ_bit_pos, child, symbol);
-            skip_ext_succ_info(succ_bit_pos);
-            //assert(stream.read_bit(succ_bit_pos+1+symbol));
-        }
+        //we back up this information in case we have to follow a successor tree
+        size_t bit_pos_root = bit_pos;
+        size_t child_root = child;
+        size_t root_i = i;
+        //
 
         skip_ext_succ_info(bit_pos);
 
@@ -679,15 +653,10 @@ struct vlbt_bwt {
         uint8_t node_sigma = sigma;
         uint8_t rank_width = sym_width(max_freq);
 
-        s_info[succ_found].bit_pos = succ_bit_pos;
-        s_info[succ_found].node_sigma = node_sigma;
-        s_info[succ_found].symbol = symbol;
-        s_info[succ_found].r_width = rank_width;
-        s_info[succ_found].bk_sz = bk_sz;
-
         //read the node header
         bool is_leaf = stream.read_bit(bit_pos++);
         bool has_symbol = stream.read_bit(bit_pos+symbol);
+        bool succ_found;
         i-= child*bk_sz;//relative position of i within the child block
 
         while(!is_leaf && has_symbol) {
@@ -873,9 +842,41 @@ struct vlbt_bwt {
             }
         }
 
-        //we did not find the symbol, so we need to follow the successor
+        //we did not find any successor for "symbol"
         if(s_info[1].bit_pos==0xffffffffffffffff){
-            return -1;
+
+            //find the successor tree containing sym
+            symbol = pck_sym;
+            succ_found = stream.read_bit(bit_pos_root+symbol);
+            if(!succ_found) {
+                succ_child = child_root;
+                size_t steps = 0;
+
+                while(!succ_found && steps < 5) {
+                    s_info[1].bit_pos = find_next(++succ_child);
+                    skip_ext_succ_info(s_info[1].bit_pos);
+                    succ_found = stream.read_bit( s_info[1].bit_pos+1+symbol);//does the tree have the symbol?
+                    steps++;
+                }
+
+                if(!succ_found && stream.read_bit(symbol)) {//last opportunity: check if the node is low freq
+                    s_info[1].bit_pos = find_low_freq_succ(root_i, symbol);
+                    skip_ext_succ_info(s_info[1].bit_pos);
+                    succ_found = true;
+                    //assert(stream.read_bit(succ_bit_pos+1+symbol));
+                }
+            } else {
+                s_info[1].bit_pos = bit_pos_root;
+                decode_ext_succ_info(s_info[1].bit_pos, child_root, symbol);
+                skip_ext_succ_info(s_info[1].bit_pos);
+                //assert(stream.read_bit(succ_bit_pos+1+symbol));
+            }
+
+            if(!succ_found) return -1;
+            s_info[1].node_sigma = sigma;
+            s_info[1].symbol = pck_sym;
+            s_info[1].r_width = sym_width(max_freq);
+            s_info[1].bk_sz = block_size;
         }
 
         return get_sa_from_leftmost_leaf(s_info[1], pck_sym);
@@ -1093,13 +1094,13 @@ struct vlbt_bwt {
     //rank: number of occurrences of BWT[i] in the prefix BWT[0..i-1];
     //sa_sample: SA value for BWT[i] *iff* BWT[i] is the head of its run *and* it was subsampled,
     // otherwise sa_sample=-1
-    [[nodiscard]] inline inv_sel_sa_ans inverse_select_with_sa(size_t i) const {
+    [[nodiscard]] inv_sel_sa_ans inverse_select_with_sa(size_t i) const {
 
         tree_path_type p;
         find_path_to_leaf(p, i);
         size_t byte_pos = INT_CEIL(p.bit_pos, 8);
 
-        const uint8_t *leaf_addr = ((uint8_t *)stream.stream)+byte_pos;
+        const uint8_t *leaf_addr = reinterpret_cast<uint8_t *>(stream.stream)+byte_pos;
         inv_sel_sa_ans ans;
 
         //scan the runs in the leaf according to the leaf encoding
@@ -1183,17 +1184,16 @@ struct vlbt_bwt {
         //recover the sa sample (if any)
         if(ans.sa_samp>=0) {//"i" is the head of its run run_id=ans.sa_samp
             size_t bit_pos = p.bit_pos - (run_byte_w+run_width+1);
-            size_t run_bytes = stream.read(bit_pos, bit_pos + run_byte_w - 1);//read the number of bytes for the runs
+            const size_t run_bytes = stream.read(bit_pos, bit_pos + run_byte_w - 1);//read the number of bytes for the runs
             bit_pos+=run_byte_w;
-            size_t n_runs = stream.read(bit_pos, bit_pos + run_width - 1)+1;
+            const size_t n_runs = stream.read(bit_pos, bit_pos + run_width - 1)+1;
             bit_pos = (byte_pos + run_bytes) * 8;
 
             //we are now at the start of the area for the SA values. it contains:
             //  the width of the SA values and the number of runs (int_pt_width + run_width)
             //  a bit stream marking each run with a sampled SA value,
             //  the sampled SA values
-            bool has_sample = stream.read_bit(bit_pos + int_pt_width +  ans.sa_samp);//run_id has a SA sample
-            if(has_sample) {
+            if(bool has_sample = stream.read_bit(bit_pos + int_pt_width +  ans.sa_samp)) {
                 ans.sa_samp = decode_sa_value(bit_pos, ans.sa_samp, n_runs);//ans.sa_samp is the run_id where i lies in the runs
             }else{
                 ans.sa_samp = -1;
@@ -1205,13 +1205,13 @@ struct vlbt_bwt {
         p.bit_pos = p.rank_pos[p.lvl]+(ans.sym*p.rank_width[p.lvl]);
         ans.rank += stream.read(p.bit_pos, p.bit_pos+p.rank_width[p.lvl]-1);//add rank information
         ans.sym = stream.select(p.sigma_pos[p.lvl], p.sigma_pos[p.lvl]+p.node_sigma[p.lvl-1]-1, ans.sym+1);//update the symbol
-        p.lvl--;
+        --p.lvl;
 
         while(p.lvl>0){
             p.bit_pos = p.rank_pos[p.lvl]+(ans.sym*p.rank_width[p.lvl]);
             ans.rank += stream.read(p.bit_pos, p.bit_pos+p.rank_width[p.lvl]-1);
             ans.sym = stream.select(p.sigma_pos[p.lvl], p.sigma_pos[p.lvl]+p.node_sigma[p.lvl-1]-1, ans.sym+1);
-            p.lvl--;
+            --p.lvl;
         }
         return ans;
     }

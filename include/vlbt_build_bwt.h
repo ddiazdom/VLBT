@@ -1447,8 +1447,8 @@ struct rl_node {//state of the compression
             }
             tmp_node->finish_run_scan();
             tmp_node->finish_int_node(node_sigma, node_sigma_bv, block_ranks);
-            stats.children_freq[tmp_node->n_children]++;
-        }else{
+            ++stats.children_freq[tmp_node->n_children];
+        } else {
             assert(n_blocks>=1);
             //TODO testing
             //if(tmp_node->syms_before==287801344){
@@ -1459,7 +1459,7 @@ struct rl_node {//state of the compression
         }
 
         //print the node information for debugging purposes
-        tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
+        //tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
         //
 
         //add the rank information of the active child node (tmp_node) to the
