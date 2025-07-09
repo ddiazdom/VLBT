@@ -21,6 +21,14 @@ struct vlbt_sr_index{
         return bwt.count(pat);
     }
 
+    [[nodiscard]] inline std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
+        return bwt.count_with_head(pat);
+    }
+
+    [[nodiscard]] inline uint8_t operator[](const size_t idx) const {
+        return bwt[idx];
+    }
+
     inline auto locate(std::string& pattern) const {
         return bwt.count_with_head(pattern);
     }

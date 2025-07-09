@@ -544,10 +544,11 @@ void test_sr_index(std::string& input_prefix, size_t ssamp_val, std::string& out
     size_t written_bytes = store_to_file(output_sr_index_file, sr_index);
     std::cout<<"Final sr-index uses "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps)"<<std::endl;
 
+    test_locate(sr_index, input_prefix, "sr_index");
     test_count(sr_index, input_prefix, "sr_index");
-    test_inverse_select(sr_index.bwt, input_prefix, "sr_index");
-    test_rank(sr_index.bwt, input_prefix, "sr_index");
-    test_access(sr_index.bwt, input_prefix, "sr_index");
+    test_inverse_select(sr_index, input_prefix, "sr_index");
+    test_rank(sr_index, input_prefix, "sr_index");
+    test_access(sr_index, input_prefix, "sr_index");
 }
 
 int main(int argc, char** argv){
