@@ -212,7 +212,7 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
     //csa_rlmn.backward_search(pattern);
     //std::cout<<my_dt.sa_head_for_next(151244695, 'w')<<std::endl;
     //std::cout<<my_dt.sa_head_for_next(151208662, 'w')<<std::endl;
-    std::cout<<my_dt.rank(228000000, 'T')<<std::endl;
+    //std::cout<<my_dt.rank(228000000, 'T')<<std::endl;
     //std::cout<<wt_rlmn.rank(151208662, 'w')<<std::endl;
     //std::cout<<wt_rlmn.rank(151244695, 'w')<<std::endl;
     //exit(1);
@@ -578,8 +578,8 @@ int main(int argc, char** argv){
         //rl2plain(bwt_file, plain_input_file);
         //TESTED_DTS
     }
-    test_bwt(input_prefix, output_prefix);
-    //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
+    //test_bwt(input_prefix, output_prefix);
+    test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
     //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }

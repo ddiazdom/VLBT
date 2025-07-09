@@ -217,7 +217,8 @@ struct vlbt_bwt {
 
     template<bool check_head=false>
     [[nodiscard]] inline auto rank(size_t i, uint8_t symbol) const {
-        //TODO fix rank by adding one extra symbol, not the best solution, but it works
+
+        //assert(i<=tot_syms);
 
         symbol = packed_alpha[symbol];
         // NOTE this is a partial rank, because it can sometimes answer -1 for a valid query.

@@ -197,7 +197,7 @@ class custom_wt_rlmn
                 for(size_t i=0;i<bwt_buff.size();i++){
                     bwt_buff.read_run(i, sym, len);
                     condensed_wt.push_back(sym);
-                    bl[j]=1;
+                    bl[j]=true;
                     C[sym]+=len;
                     j+=len;
                 }
@@ -205,7 +205,7 @@ class custom_wt_rlmn
 
                 //we are assuming the separator symbol is the smallest one in the collection
                 sep_symbol = 0;
-                while(C[sep_symbol]==0) sep_symbol++;
+                while(C[sep_symbol]==0) ++sep_symbol;
 
                 m_C = custom_wt_rlmn_trait<alphabet_category>::init_C(C, size);
 
@@ -215,8 +215,8 @@ class custom_wt_rlmn
                 }
 
                 C_type lf_map = m_C;
-                bit_vector bf = bit_vector(size+1, 0);
-                bf[size] = 1; // initialize last element
+                auto bf = bit_vector(size+1, 0);
+                bf[size] = true; // initialize last element
                 for(size_t i=0;i<bwt_buff.size();i++){
                     bwt_buff.read_run(i, sym, len);
                     bf[lf_map[sym]]=1;
@@ -313,7 +313,7 @@ class custom_wt_rlmn
         }
 
         //! Move constructor
-        custom_wt_rlmn(custom_wt_rlmn&& wt) {
+        custom_wt_rlmn(custom_wt_rlmn&& wt)  noexcept {
             *this = std::move(wt);
         }
 
@@ -483,8 +483,7 @@ class custom_wt_rlmn
         //one based
         [[nodiscard]] inline size_t pos2run(size_type i) const {
             assert(i<size());
-            size_t run = m_bl_rank(i+1);
-            return run;
+            return m_bl_rank(i+1);
         }
 
         [[nodiscard]] inline int64_t succ_run(size_type i, value_type& c) const {
@@ -494,9 +493,8 @@ class custom_wt_rlmn
             if(m_wt[wt_ex_pos]==c){
                 if(is_run_head(i)){
                     return wt_ex_pos;
-                } else {
-                    return -1;
                 }
+                return -1;
             }
 
             size_t c_runs = m_wt.rank(wt_ex_pos, c);
@@ -504,7 +502,8 @@ class custom_wt_rlmn
             if(next_c_run==m_wt.size()){
                 return -1;
             }
-            return static_cast<int64_t>(next_c_run);
+
+            return next_c_run;
         }
 
         //! Calculates how many times symbol wt[i] occurs in the prefix [0..i-1].

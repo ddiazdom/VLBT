@@ -737,7 +737,7 @@ struct rl_node {//state of the compression
         for(size_t b=0;b<=n_children;b++){
 
             buffer.write(bit_pos, bit_pos+bwt_rep.ext_pt_width-1, (block_ptr[b]<<1));
-            std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<" tree_offset:"<<tree_offset[b]<<" "<<tree_offset[b+1]<<std::endl;
+            //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<" tree_offset:"<<tree_offset[b]<<" "<<tree_offset[b+1]<<std::endl;
             bit_pos+=bwt_rep.ext_pt_width;
             size_t r = (tree_offset[b + 1] - tree_offset[b]) / b_size;
             c++;
@@ -1570,13 +1570,14 @@ struct tree_dt{
 
         //compute the tree
         size_t n_runs = bwt_buff.size(), sym, len;
-        run_t run;
         for(size_t i=0;i<n_runs;i++){
+            run_t run;
             bwt_buff.read_run(i, sym, len);
             run.sym = bwt_rep.packed_alpha[sym];
             run.len = len;
             root->process_run(run);
         }
+        root->process_run(run_t{0,1});//fake run for border cases
         root->finish_run_scan();
         trees_ofs.close();
 
@@ -1644,6 +1645,7 @@ struct tree_dt{
             }
         }
         assert(rem_sa_samples==0);
+        root->process_run(run_t{0, 1, run_t::unsamp_mark, false});//fake run for border cases
         root->finish_run_scan();
         trees_ofs.close();
         sa_subsamp_ifs.close();

@@ -72,7 +72,7 @@ struct fm_index{
     }
 
     [[nodiscard]] inline int64_t get_sa_samp_of_succ_head(uint64_t i, uint8_t symbol) const {
-        int64_t run = bwt.succ_run(i, symbol);
+        const int64_t run = bwt.succ_run(i, symbol);
         if(run<0){
             return -1;
         }
