@@ -33,6 +33,10 @@ struct fm_index{
             sa_subsamp_ifs.read((char *)sa_samp_buffer.data(), n_samples*sizeof(sa_samp_type));
             assert(n_samples/2==bwt.n_runs());
             sa_samp_buffer.swap(sa_samps);
+            //std::cout<<"=="<<sa_samps[149841906]<<std::endl;
+            //std::cout<<"=="<<sa_samps[149841907]<<std::endl;
+            //std::cout<<"=="<<sa_samps[169579794]<<std::endl;
+            //std::cout<<"=="<<sa_samps[169579795]<<std::endl;
         }
     }
 
@@ -76,6 +80,16 @@ struct fm_index{
         if(run<0){
             return -1;
         }
+
+        /*size_t hpos = bwt.run2headpos(run+1);
+        std::cout<<"head_pos: "<<hpos<<" has sampled value "<<sa_samps[2*run]<<std::endl;
+        auto res = bwt.inverse_select(hpos);
+        size_t lf = C[byte2comp[res.second]] + res.first;
+        std::cout<<"lf: "<<lf<<std::endl;
+        std::cout<<"is "<<lf<<" head: "<<bwt.is_run_head(lf)<<std::endl;
+        std::cout<<"is "<<lf-1<<" head: "<<bwt.is_run_head(lf-1)<<std::endl;
+        std::cout<<"is "<<hpos<<" head: "<<bwt.is_run_head(hpos)<<std::endl;*/
+
         //std::cout<<sa_samps[2*run]<<std::endl;
         //auto lf = bwt.inverse_select(i);
         //i = C[byte2comp[lf.second]] + lf.first;
@@ -91,7 +105,7 @@ struct fm_index{
         uint8_t cc;
         std::pair<uint64_t, uint64_t> head[2]={{0,0}, {j-1, l}};
         while(j-->0 && l<=r){
-            cc = byte2comp[uint8_t(pat[j])];
+            cc = byte2comp[static_cast<uint8_t>(pat[j])];
             auto res = bwt.template rank<true>(l, pat[j]);
             head[res.second] = {j, l};
             //std::cout<<head[1].first<<" "<<head[1].second<<std::endl;
@@ -101,7 +115,7 @@ struct fm_index{
         }
         //std::cout<<"A:"<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
         int64_t sa_samp = get_sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
-        //std::cout<<"ground_tr: \""<<pat<<"\" -> "<<l<<" "<<r<<" "<<sa_samp<<std::endl;
+        std::cout<<"A: \""<<pat<<"\" -> l:"<<l<<" r:"<<r<<" sa_samp:"<<sa_samp<<std::endl;
         return {l, r, sa_samp};
     }
 

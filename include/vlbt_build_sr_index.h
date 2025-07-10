@@ -63,6 +63,10 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
 
         while((s_pos+1)<samples.size() && samples[s_pos+1].head_val<=str_boundary){
             //std::cout<<"s_pos:"<<s_pos<<", tail_pos:"<<samples[s_pos].tail_val<<", str_boundary:"<<str_boundary<<" ";
+            /*if(samples[s_pos].head_val==37709479){
+                std::cout<<"whut?"<<s_pos<<" "<<samples[last_sampled].head_val<<" "<<samples[s_pos].head_val<<" / "<<samples[s_pos].run_id<<std::endl;
+            }*/
+
             if((samples[s_pos+1].head_val-samples[last_sampled].head_val>ssamp_val)){
                 len = samples[s_pos].head_val-samples[last_sampled].head_val;
                 samples[last_sampled].is_head_sampled = true;
@@ -257,7 +261,7 @@ void subsample_sa_samples(std::string& sa_samples_file, std::string& str_ranges_
     size_type discard_mark = std::numeric_limits<size_type>::max();
     size_type prev_tail_val = discard_mark;
     for(size_t i=0;i<n_blocks;i++){
-        ifs_orig_samples.read((char *)buffer.data(), static_cast<off_t>(sizeof(size_type) * buffer_size));
+        ifs_orig_samples.read((char *)buffer.data(), sizeof(size_type) * buffer_size);
         for(size_t j=0;j<buffer_size;j+=2){
             samples[s_pos].prev_tail_val = prev_tail_val;
             samples[s_pos].head_val = buffer[j];

@@ -317,8 +317,8 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         }
     }
 
-    //my_dt.count_with_head(pat_list[287]);
-    //csa_rlmn.count_with_head(pat_list[287]);
+    csa_rlmn.count_with_head("CTCTACAGTTTGAAAACCACTATTT");
+    my_dt.count_with_head("CTCTACAGTTTGAAAACCACTATTT");
     //exit(1);
 
     //TODO just to test

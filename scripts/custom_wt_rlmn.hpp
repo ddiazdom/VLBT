@@ -181,52 +181,63 @@ class custom_wt_rlmn
             size_type size=0;
             {
                 bwt_buff_reader bwt_buff(bwt_file);
+                auto C = custom_wt_rlmn_trait<alphabet_category>::temp_C();
                 size_t sym, len;
                 for(size_t i=0;i<bwt_buff.size();i++){
                     bwt_buff.read_run(i, sym, len);
                     size+=len;
+                    C[sym]+=len;
                 }
                 m_size = size;
-
-                int_vector_buffer<width> condensed_wt(temp_file, std::ios::out);
-                // scope for bl and bf
-                bit_vector bl = bit_vector(size, 0);
-
-                auto C = custom_wt_rlmn_trait<alphabet_category>::temp_C();
-                size_t j=0;
-                for(size_t i=0;i<bwt_buff.size();i++){
-                    bwt_buff.read_run(i, sym, len);
-                    condensed_wt.push_back(sym);
-                    bl[j]=true;
-                    C[sym]+=len;
-                    j+=len;
-                }
-                condensed_wt.close();
-
                 //we are assuming the separator symbol is the smallest one in the collection
                 sep_symbol = 0;
                 while(C[sep_symbol]==0) ++sep_symbol;
-
                 m_C = custom_wt_rlmn_trait<alphabet_category>::init_C(C, size);
-
                 for (size_type i=0, prefix_sum=0; i<m_C.size(); ++i) {
                     m_C[i] = prefix_sum;
                     prefix_sum += C[i];
                 }
+
+                int_vector_buffer<width> condensed_wt(temp_file, std::ios::out);
+                // scope for bl and bf
+                auto bl = bit_vector(size, 0);
+                size_t j=0;
+                for(size_t i=0;i<bwt_buff.size();i++){
+                    bwt_buff.read_run(i, sym, len);
+                    if(sym!=sep_symbol) {
+                        condensed_wt.push_back(sym);
+                        bl[j]=true;
+                        j+=len;
+                    } else {
+                        for(size_t k=0;k<len;k++){
+                            condensed_wt.push_back(sym);
+                            bl[j]=true;
+                            ++j;
+                        }
+                    }
+                }
+                condensed_wt.close();
+                {
+                    int_vector_buffer<width> temp_bwt_buf(temp_file);
+                    m_wt = wt_type(temp_bwt_buf, temp_bwt_buf.size());
+                }
+                sdsl::remove(temp_file);
 
                 C_type lf_map = m_C;
                 auto bf = bit_vector(size+1, 0);
                 bf[size] = true; // initialize last element
                 for(size_t i=0;i<bwt_buff.size();i++){
                     bwt_buff.read_run(i, sym, len);
-                    bf[lf_map[sym]]=1;
-                    lf_map[sym]+=len;
+                    if(sym!=sep_symbol) {
+                        bf[lf_map[sym]]=true;
+                        lf_map[sym]+=len;
+                    }else {
+                        for(size_t k=0;k<len;k++) {
+                            bf[lf_map[sym]]=true;
+                            ++lf_map[sym];
+                        }
+                    }
                 }
-                {
-                    int_vector_buffer<width> temp_bwt_buf(temp_file);
-                    m_wt = wt_type(temp_bwt_buf, temp_bwt_buf.size());
-                }
-                sdsl::remove(temp_file);
                 m_bl = bit_vector_type(std::move(bl));
                 m_bf = bit_vector_type(std::move(bf));
             }
@@ -259,7 +270,7 @@ class custom_wt_rlmn
                 bit_vector bl = bit_vector(size, 0);
 
                 auto C = custom_wt_rlmn_trait<alphabet_category>::temp_C();
-                value_type last_c = (value_type)0;
+                auto last_c = static_cast<value_type>(0);
                 for (size_type i=0; i < size; ++i) {
                     value_type c = text_buf[i];
                     if (last_c != c or i==0) {
@@ -480,10 +491,16 @@ class custom_wt_rlmn
             return sep_symbol;
         }
 
-        //one based
+        //the output is one-based
         [[nodiscard]] inline size_t pos2run(size_type i) const {
             assert(i<size());
             return m_bl_rank(i+1);
+        }
+
+        //r is one-based
+        [[nodiscard]] inline size_t run2headpos(size_type r) const {
+            assert(r<n_runs());
+            return m_bl_select(r);
         }
 
         [[nodiscard]] inline int64_t succ_run(size_type i, value_type& c) const {

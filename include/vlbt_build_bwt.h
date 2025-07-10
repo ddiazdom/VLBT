@@ -1467,9 +1467,9 @@ struct rl_node {//state of the compression
         //if (tmp_node->syms_before==227999744) {
         //    std::cout<<"holaa"<<std::endl;
         //}
-        //if(tmp_node->syms_before>=227000000 && tmp_node->syms_before<229000000){
-        //    tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
-        //}
+        if(tmp_node->syms_before>=(162279368-131070) && tmp_node->syms_before<=(162279368+131070)){
+            tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
+        }
         //
         //
 
@@ -1694,9 +1694,9 @@ struct tree_dt{
         bwt_rep.C.shrink_to_fit();
         //
         //compute the array C[1..\sigma]
-        size_t acc=0, tmp;
+        size_t acc=0;
         for(size_t i=0;i<sigma;i++){
-            tmp = bwt_rep.C[i];
+            size_t tmp = bwt_rep.C[i];
             bwt_rep.C[i]=acc;
             acc+=tmp;
         }

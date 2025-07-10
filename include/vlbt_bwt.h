@@ -618,7 +618,7 @@ struct vlbt_bwt {
             has_sa_sample = sa_samp>=0;
             n_steps++;
         }
-        assert(n_steps<=sa_samp);
+        assert(n_steps<=4);
         return sa_samp+n_steps;
     }
 
@@ -839,7 +839,7 @@ struct vlbt_bwt {
                     has_sa_sample = sa_samp>=0;
                     n_steps++;
                 }
-                assert(n_steps<=sa_samp);
+                assert(n_steps<=4);
                 return sa_samp+n_steps;
             }
         }
@@ -1339,15 +1339,16 @@ struct vlbt_bwt {
         std::pair<uint64_t, uint64_t> head[2]={{0,0}, {j-1, l}};
 
         while(j-->0 && l<=r){
-            cc = packed_alpha[uint8_t(pat[j])];
+            cc = packed_alpha[static_cast<uint8_t>(pat[j])];
             auto res = rank<true>(l, pat[j]);
             head[res.second] = {j, l};
             //std::cout<<head[1].first<<" "<<head[1].second<<std::endl;
             l = C[cc] + res.first;// count c in bwt[0..l-1]
             r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
         }
+        std::cout<<"mio:"<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
         int64_t sa_samp = sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
-        //std::cout<<"mio: \""<<pat<<"\" -> "<<l<<" "<<r<<" "<<sa_samp<<std::endl;
+        std::cout<<"mio: \""<<pat<<"\" -> "<<l<<" "<<r<<" "<<sa_samp<<std::endl;
         return {l, r, sa_samp};
     }
 

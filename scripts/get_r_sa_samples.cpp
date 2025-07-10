@@ -167,9 +167,9 @@ void compute_samples(size_t n_threads, index_type& bwt, std::string& rsa_file, s
             std::cout<<k<<" "<<sa_sample.pos<<" "<<sa_sample.run_id<<" "<<sa_sample.annotation<<std::endl;
         }*/
         //TODO
-        if(sa_sample.run_id==193146 || sa_sample.run_id==77031){
-            std::cout<<"before: "<<sa_sample.run_id<<" "<<sa_sample.pos<<" "<<sa_sample.annotation<<std::endl;
-        }
+        //if(sa_sample.run_id==193146 || sa_sample.run_id==77031){
+        //    std::cout<<"before: "<<sa_sample.run_id<<" "<<sa_sample.pos<<" "<<sa_sample.annotation<<std::endl;
+        //}
         //
 
         buffer[b_pos] = sa_sample.pos;
