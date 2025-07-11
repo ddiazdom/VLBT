@@ -115,7 +115,7 @@ struct fm_index{
         }
         //std::cout<<"A:"<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
         int64_t sa_samp = get_sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
-        std::cout<<"A: \""<<pat<<"\" -> l:"<<l<<" r:"<<r<<" sa_samp:"<<sa_samp<<std::endl;
+        //std::cout<<"A: \""<<pat<<"\" -> l:"<<l<<" r:"<<r<<" sa_samp:"<<sa_samp<<std::endl;
         return {l, r, sa_samp};
     }
 

@@ -245,6 +245,15 @@ struct rl_node {//state of the compression
     }
 
     inline void process_run(run_t run) {
+
+        //TODO test
+        /*if constexpr (!std::is_same_v<run_t, run_type>) {
+            if (run.sa_samp==215412989) {
+                std::cout<<"holaa"<<std::endl;
+            }
+        }*/
+        //
+
         while(run.len>0){
             if((bk_len+run.len)<b_size){
                 //the run fits the block size
@@ -260,6 +269,9 @@ struct rl_node {//state of the compression
                     active_blocks[bk_id].emplace_back(run.sym, split_run_len);
                 } else {
                     active_blocks[bk_id].emplace_back(run.sym, split_run_len, run.sa_samp, run.run_break);
+                    //if (run.sa_samp==215412989) {
+                    //    std::cout<<"holaa"<<std::endl;
+                    //}
                     run.create_break();
                 }
 
@@ -1067,7 +1079,10 @@ struct rl_node {//state of the compression
             //collapse the run with the first run of the current block if they have the same symbol
             if(sym!=0 && sym==blocks[i][0].sym){
                 //collapse the runs as they are the same
+                //assert( blocks[i-1].back().has_valid_sa_samp() && !blocks[i][0].has_valid_sa_samp());
                 blocks[i][0].len +=len;
+                blocks[i][0].sa_samp = blocks[i-1].back().sa_samp;
+                blocks[i][0].run_break = blocks[i-1].back().run_break;
                 blocks[i-1].pop_back();
             } else {
                 //otherwise process the last run of the previous block as an independent run
@@ -1242,10 +1257,14 @@ struct rl_node {//state of the compression
 
         //store the SA sub samples
         size_t samp_pos = bit_pos+n_runs;
-        bool is_samp;
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
-                is_samp = run.has_valid_sa_samp();
+                //TODO remove later
+                if (run.sa_samp==215412989) {
+                    std::cout<<"holaa"<<std::endl;
+                }
+                //
+                bool is_samp = run.has_valid_sa_samp();
                 if(is_samp){
                     buffer.write(samp_pos, samp_pos+w-1, run.sa_samp);
                     samp_pos+=w;
@@ -1467,9 +1486,9 @@ struct rl_node {//state of the compression
         //if (tmp_node->syms_before==227999744) {
         //    std::cout<<"holaa"<<std::endl;
         //}
-        if(tmp_node->syms_before>=(162279368-131070) && tmp_node->syms_before<=(162279368+131070)){
-            tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
-        }
+        //if(tmp_node->syms_before>=(162279368-131070) && tmp_node->syms_before<=(162279368+131070)){
+        //    tmp_node->print_node_info(active_blocks, n_blocks, block_ranks);
+        //}
         //
         //
 
@@ -1858,9 +1877,9 @@ void build_bwt(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std::st
 
     tree_dt<bwt_type, run_type> tree(tmp_dir, bwt_rep);
 
-    if(fmt == BWT_FORMAT::RL_PLAIN){
+    if(fmt == RL_PLAIN){
         //TODO transform to grlbwt format
-    } else if(fmt == BWT_FORMAT::PLAIN){
+    } else if(fmt == PLAIN){
         //TODO transform to grlbwt format
     }
     tree.build(bwt_file);
@@ -1874,9 +1893,9 @@ void build_bwt_th(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std:
 
     tree_dt<bwt_type, run_with_sa_type<sa_samp_type>> tree(tmp_dir, bwt_rep);
 
-    if(fmt == BWT_FORMAT::RL_PLAIN){
+    if(fmt == RL_PLAIN){
         //TODO transform to grlbwt format
-    } else if(fmt == BWT_FORMAT::PLAIN){
+    } else if(fmt == PLAIN){
         //TODO transform to grlbwt format
     }
 

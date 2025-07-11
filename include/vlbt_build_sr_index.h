@@ -52,7 +52,6 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
     size_t n_strings = n_elements-1, last_sampled, n_samp=0, len, acc_len=0;
     size_type str_boundary;
     size_t s_pos=0;
-    //bool is_diff_neg;
     for(size_t str=0;str<n_strings;str++){
         assert(samples[s_pos].head_val==str_ranges[str]);
         str_boundary = str_ranges[str+1]-1;
@@ -63,9 +62,6 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
 
         while((s_pos+1)<samples.size() && samples[s_pos+1].head_val<=str_boundary){
             //std::cout<<"s_pos:"<<s_pos<<", tail_pos:"<<samples[s_pos].tail_val<<", str_boundary:"<<str_boundary<<" ";
-            /*if(samples[s_pos].head_val==37709479){
-                std::cout<<"whut?"<<s_pos<<" "<<samples[last_sampled].head_val<<" "<<samples[s_pos].head_val<<" / "<<samples[s_pos].run_id<<std::endl;
-            }*/
 
             if((samples[s_pos+1].head_val-samples[last_sampled].head_val>ssamp_val)){
                 len = samples[s_pos].head_val-samples[last_sampled].head_val;
@@ -88,6 +84,17 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
 
         //std::cout<<"string: "<<str<<":"<<samples[last_sampled].tail_val<<" /  "<<samples[s_pos].tail_val<<" / "<<samples[s_pos+1].tail_val<<std::endl;
         if(samples[s_pos].head_val<=str_boundary){
+            /*if(samples[s_pos].head_val == 96923530){
+                size_t x = str_boundary-samples[last_sampled].head_val;
+                std::cout<<"whut?"<<s_pos<<" "<<samples[s_pos].head_val<<" "<<samples[s_pos].is_head_sampled<<" / "<<samples[s_pos].run_id<<" "<<x<<std::endl;
+            }*/
+            if((str_boundary-samples[last_sampled].head_val)>ssamp_val){
+                len = samples[s_pos].head_val-samples[last_sampled].head_val;
+                samples[last_sampled].is_head_sampled = true;
+                acc_len+=len;
+                last_sampled = s_pos;
+                n_samp++;
+            }
             s_pos++;
         }
 
@@ -124,6 +131,12 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
 
     for(size_t i=0;i<n_blocks;i++){
         for(size_t j=0;j<buffer_size;j++){
+
+            //TODO checking
+            //if(samples[s_pos].head_val == 96923530){
+            //    std::cout<<"whut?"<<s_pos<<" "<<samples[s_pos].head_val<<" "<<samples[s_pos].is_head_sampled<<" / "<<samples[s_pos].run_id<<std::endl;
+            //}
+            //
             buffer[j] = samples[s_pos].is_head_sampled ? samples[s_pos].head_val : discard_mark;
             s_pos++;
         }
@@ -141,7 +154,7 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
     ofs_ssamp_heads.close();
 
     //a technical hack: samples[0].prev_tail_val contains the SA value of the last run in the BWT.
-    // The difference of this value with the value of following head should be 0 because there is no head.
+    //the difference of this value with the value of the following head should be 0 because there is no head.
     samples[0].head_val = samples[0].prev_tail_val;
     std::cout<<"We subsampled "<<n_samp<<" elements out of "<<samples.size()<<" ("<<double(n_samp)/double(samples.size())*100<<"%)"<<std::endl;
     //

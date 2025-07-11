@@ -317,13 +317,9 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         }
     }
 
-    csa_rlmn.count_with_head("CTCTACAGTTTGAAAACCACTATTT");
-    my_dt.count_with_head("CTCTACAGTTTGAAAACCACTATTT");
+    //csa_rlmn.count_with_head("GCGTGGAGCAGCACCCACAGCCCAA");
+    //my_dt.count_with_head("GCGTGGAGCAGCACCCACAGCCCAA");
     //exit(1);
-
-    //TODO just to test
-    //pat_list.resize(20);
-    //
 
     size_t acc_count=0;
     size_t j=0;
@@ -358,9 +354,6 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
             exit(1);
         }
         acc_occ+=std::get<1>(rlmn_ans[i])-std::get<0>(rlmn_ans[i])+1;
-    }
-    if(n_errors>0){
-        std::cout<<"There are "<<n_errors<<"/"<<pat_list.size()<<" errors "<<std::endl;
     }
     assert(n_errors==0 && acc_count==acc_occ);
 }
@@ -579,7 +572,7 @@ int main(int argc, char** argv){
         //TESTED_DTS
     }
     //test_bwt(input_prefix, output_prefix);
-    test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
+    //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }
