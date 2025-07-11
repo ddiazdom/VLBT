@@ -1077,7 +1077,7 @@ static inline size_t first_run_sse42_16x8(const uint8_t **stream, const uint8_t 
     bool has_sym = !_mm_testz_si128(sym_mask, sym_mask);;
 
     size_t run_idx = 0;
-    while(has_sym) {
+    while(!has_sym) {
         run_idx+=8;
         block = decode_block_sse42<vbyte_compressed, 1, 2>(stream);
         sym_mask = _mm_cmpeq_epi16(_mm_and_si128(block, alpha_mask), sym_vec);
@@ -1101,7 +1101,7 @@ static inline size_t first_run_sse42_32x4(const uint8_t **stream, const uint8_t 
     bool has_sym = !_mm_testz_si128(sym_mask, sym_mask);;
 
     size_t run_idx = 0;
-    while(has_sym) {
+    while(!has_sym) {
         run_idx+=4;
         block = decode_block_sse42<vbyte_compressed, 2, bytes_per_run>(stream);
         sym_mask = _mm_cmpeq_epi32(_mm_and_si128(block, alpha_mask), sym_vec);
@@ -1213,7 +1213,7 @@ static inline std::pair<int64_t, uint64_t> succ_sse42_8x16(const uint8_t **strea
     sym_mask = _mm_and_si128(sym_mask, mask_suff);
     bool has_sym = !_mm_testz_si128(sym_mask, sym_mask);
     run_id+=16;
-    while (run_id<n_runs && has_sym) {
+    while (run_id<n_runs && !has_sym) {
         *stream+=16;
         block = _mm_loadu_si128((const __m128i*)*stream);
         sym_mask = _mm_cmpeq_epi8(_mm_and_si128(block, alpha_mask), sym_vec);
@@ -1291,8 +1291,8 @@ static inline std::pair<uint64_t, uint64_t> succ_sse42_16x8(const uint8_t **stre
     //print8x16(shuff);
 
     const __m128i run_vec = _mm_shuffle_epi8(block, shuff);
-    auto run = (uint16_t)_mm_cvtsi128_si32(run_vec);
-    uint8_t last_symbol = run & alpha_m;
+    const auto run = (uint16_t)_mm_cvtsi128_si32(run_vec);
+    const uint8_t last_symbol = run & alpha_m;
 
     if constexpr (!overflow8){
         const __m128i pf_sum_vec = _mm_shuffle_epi8(bk_lengths, shuff);
@@ -1327,7 +1327,7 @@ static inline std::pair<uint64_t, uint64_t> succ_sse42_16x8(const uint8_t **stre
     bool has_sym = !_mm_testz_si128(sym_mask, sym_mask);
     run_id+=8;
 
-    while(run_id<n_runs && has_sym) {
+    while(run_id<n_runs && !has_sym) {
         block = decode_block_sse42<vbyte_compressed,1,2>(stream);
         sym_mask = _mm_cmpeq_epi16(_mm_and_si128(block, alpha_mask), sym_vec);
         has_sym = !_mm_testz_si128(sym_mask, sym_mask);
@@ -1428,7 +1428,7 @@ static inline std::pair<uint64_t, uint64_t> succ_sse42_32x4(const uint8_t ** str
     bool has_sym = !_mm_testz_si128(sym_mask, sym_mask);
     run_id+=4;
 
-    while(run_id<n_runs && has_sym) {
+    while(run_id<n_runs && !has_sym) {
         block = decode_block_sse42<vbyte_compressed, 2, bytes_per_run>(stream);
         sym_mask = _mm_cmpeq_epi32(_mm_and_si128(block, alpha_mask), sym_vec);
         has_sym = !_mm_testz_si128(sym_mask, sym_mask);

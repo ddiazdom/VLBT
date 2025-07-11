@@ -317,8 +317,9 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         }
     }
 
-    //csa_rlmn.count_with_head(pat_list[9999]);
-    //my_dt.count_with_head(pat_list[9999]);
+    //std::cout<<"HOlaa"<<std::endl;
+    //csa_rlmn.count_with_head(pat_list[255]);
+    //my_dt.count_with_head(pat_list[255]);
     //exit(1);
 
     size_t acc_count=0;
@@ -326,7 +327,6 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     double rlmn_acc_time=0;
     std::vector<std::tuple<uint64_t, uint64_t, uint64_t>> rlmn_ans(n_pats);
     for(auto const& p : pat_list) {
-        std::cout<<j<<std::endl;
         MEASURE(csa_rlmn.count_with_head(p), rlmn_acc_time, rlmn_ans[j], std::chrono::nanoseconds)
         acc_count+=std::get<1>(rlmn_ans[j])-std::get<0>(rlmn_ans[j])+1;
         j++;
