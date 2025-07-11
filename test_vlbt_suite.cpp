@@ -317,8 +317,8 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         }
     }
 
-    //csa_rlmn.count_with_head("GCGTGGAGCAGCACCCACAGCCCAA");
-    //my_dt.count_with_head("GCGTGGAGCAGCACCCACAGCCCAA");
+    csa_rlmn.count_with_head(pat_list[9999]);
+    my_dt.count_with_head(pat_list[9999]);
     //exit(1);
 
     size_t acc_count=0;
@@ -326,6 +326,7 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     double rlmn_acc_time=0;
     std::vector<std::tuple<uint64_t, uint64_t, uint64_t>> rlmn_ans(n_pats);
     for(auto const& p : pat_list) {
+        std::cout<<j<<std::endl;
         MEASURE(csa_rlmn.count_with_head(p), rlmn_acc_time, rlmn_ans[j], std::chrono::nanoseconds)
         acc_count+=std::get<1>(rlmn_ans[j])-std::get<0>(rlmn_ans[j])+1;
         j++;
@@ -540,10 +541,11 @@ void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& 
     std::cout<<"Final sr-index uses "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps)"<<std::endl;
 
     test_locate(sr_index, input_prefix, "sr_index");
+
+    test_access(sr_index, input_prefix, "sr_index");
+    test_rank(sr_index, input_prefix, "sr_index");
     test_count(sr_index, input_prefix, "sr_index");
     test_inverse_select(sr_index, input_prefix, "sr_index");
-    test_rank(sr_index, input_prefix, "sr_index");
-    test_access(sr_index, input_prefix, "sr_index");
 }
 
 int main(int argc, char** argv){

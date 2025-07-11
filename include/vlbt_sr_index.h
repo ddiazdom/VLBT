@@ -34,6 +34,10 @@ struct vlbt_sr_index{
         return bwt.size();
     }
 
+    [[nodiscard]] inline uint64_t subsampling_value() const {
+        return bwt.subsampling_value();
+    }
+
     [[nodiscard]] inline uint64_t tot_runs() const {
         return bwt.orig_runs;
     }

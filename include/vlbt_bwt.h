@@ -624,7 +624,7 @@ public:
             return sa_samp;
         }
 
-        int64_t n_steps = 0;
+        size_t n_steps = 0;
 
         symbol = pck_sym;
         while(!has_sa_sample){
@@ -638,6 +638,10 @@ public:
         }
         assert(n_steps<=subsamp_step);
         return sa_samp+n_steps;
+    }
+
+    [[nodiscard]] size_t subsampling_value() const {
+        return subsamp_step;
     }
 
     [[nodiscard]] inline int64_t sa_samp_of_succ_head(size_t i, uint8_t symbol) const {
@@ -845,7 +849,7 @@ public:
                     return sa_samp;
                 }
 
-                int64_t n_steps = 0;
+                size_t n_steps = 0;
                 rank += ans.second;
                 symbol = pck_sym;
                 while(!has_sa_sample){
@@ -858,7 +862,7 @@ public:
                     n_steps++;
                 }
                 assert(n_steps<=subsamp_step);
-                return sa_samp+n_steps;
+                return sa_samp+(int64_t)n_steps;
             }
         }
 
