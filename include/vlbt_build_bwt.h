@@ -1612,12 +1612,13 @@ struct tree_dt{
         //
     }
 
-    void build(std::string& bwt_file, std::string& sa_subsamp_file){
+    void build(std::string& bwt_file, size_t subsamp_step, std::string& sa_subsamp_file){
 
         using sa_samp_type = typename run_t::sa_samp_t;
 
         bwt_buff_reader bwt_buff(bwt_file);
         std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
+        bwt_rep.subsamp_step = subsamp_step;
 
         preprocess_bwt(bwt_buff, trees_ofs);
 
@@ -1887,7 +1888,8 @@ void build_bwt(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std::st
 }
 
 template<class bwt_type, class sa_samp_type>
-void build_bwt_th(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std::string& subsamp_sa_file, std::string tmp_dir="./"){
+void build_bwt_th(bwt_type& bwt_rep, std::string& bwt_file, size_t subsamp_step, const BWT_FORMAT fmt,
+                  std::string& subsamp_sa_file, std::string tmp_dir="./"){
 
     static_assert(bwt_type::has_toeholds);
 
@@ -1899,7 +1901,7 @@ void build_bwt_th(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std:
         //TODO transform to grlbwt format
     }
 
-    tree.build(bwt_file, subsamp_sa_file);
+    tree.build(bwt_file, subsamp_step, subsamp_sa_file);
     tree.report_stats();
 }
 #endif //RLBWT_VLB_CONSTRUCT_RLBWT_VLB_H

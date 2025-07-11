@@ -5,8 +5,6 @@
 #ifndef VLBT_SR_INDEX_H
 #define VLBT_SR_INDEX_H
 
-#include "utils.h"
-
 template<class bwt_dt_type, class phi_type>
 struct vlbt_sr_index{
 
@@ -15,7 +13,6 @@ struct vlbt_sr_index{
 
     bwt_dt_type bwt;//bwt with toeholds
     phi_type phi;//phi function
-    uint32_t ssamp_val=0;//value of subsampling
 
     [[nodiscard]] inline std::pair<uint64_t, uint64_t> count(const std::string &pat) const {
         return bwt.count(pat);
@@ -37,10 +34,13 @@ struct vlbt_sr_index{
         return bwt.size();
     }
 
+    [[nodiscard]] inline uint64_t tot_runs() const {
+        return bwt.orig_runs;
+    }
+
     [[nodiscard]] inline std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {
         return bwt.inverse_select(i);
     }
-
 
     [[nodiscard]] inline int64_t rank(size_t i, uint8_t symbol) const {
         return bwt.rank(i, symbol);
@@ -60,14 +60,12 @@ struct vlbt_sr_index{
 
     size_t serialize(std::ostream & ofs) const {
         size_t written_bytes = 0;
-        written_bytes+= serialize_elm(ofs, ssamp_val);
         written_bytes+= bwt.serialize(ofs);
         written_bytes+= phi.serialize(ofs);
         return written_bytes;
     }
 
     void load(std::istream & ifs){
-        load_elm(ifs, ssamp_val);
         bwt.load(ifs);
         phi.load(ifs);
     }

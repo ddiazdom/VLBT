@@ -527,13 +527,13 @@ void test_phi(std::string& input_prefix, size_t ssamp_val, std::string& output_p
 }
 
 template<class size_type>
-void test_sr_index(std::string& input_prefix, size_t ssamp_val, std::string& output_prefix){
+void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& output_prefix){
 
     using bwt_th_type = vlbt_bwt<WITH_TOEHOLDS, 65536, 64, 4>;
     using phi_type = vlbt_phi<65536, 64, 4>;
     using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
     sr_index_type sr_index;
-    build_sr_index<sr_index_type , size_type>(sr_index, input_prefix, ssamp_val, output_prefix);
+    build_sr_index<sr_index_type , size_type>(sr_index, input_prefix, subsamp_step, output_prefix);
 
     std::string output_sr_index_file = output_prefix+".sr_index";
     size_t written_bytes = store_to_file(output_sr_index_file, sr_index);

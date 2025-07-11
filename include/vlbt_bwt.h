@@ -16,7 +16,9 @@ enum bwt_variant{
 };
 
 template<bwt_variant var, size_t b_size, size_t b_runs, size_t s_factor>
-struct vlbt_bwt {
+class vlbt_bwt  {
+
+public:
 
     static constexpr size_t block_size = b_size;
     static constexpr size_t scale_factor = s_factor;
@@ -32,7 +34,6 @@ struct vlbt_bwt {
     //the number of bits to encode the number of bytes the run sequence uses:
     // number of bits we use to encode the number of bytes that the runs use in a leaf
     static constexpr uint8_t run_byte_w = ((sizeof(unsigned long)*8) - __builtin_clzl((b_runs*8) + (b_runs/8)))+1;
-
     typedef bit_stream<size_t> stream_type;
 
     struct tree_path_type{
@@ -72,11 +73,22 @@ struct vlbt_bwt {
     std::vector<uint64_t> C;//F column in the FM index
     std::vector<uint8_t> packed_alpha;//map the symbols from byte to eff alphabet
     std::vector<uint8_t> unpacked_alpha;//map eff alphabet to the original alphabet
+    size_t subsamp_step=0;//subsampling parameter
 
     uint8_t levels=0;//maximum number of levels
     stream_type stream;//stream with the data
 
-    vlbt_bwt(): levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1){
+    //const std::vector<uint8_t>& packed_alpha;
+    //const std::vector<uint8_t>& unpacked_alpha;
+    //const std::vector<uint64_t>& C;
+
+    vlbt_bwt():
+        levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1){
+
+        //packed_alpha(pck_alpha),
+        //unpacked_alpha(unpck_alpha),
+        //C(m_C) {
+
         //TODO static asserts in block_size, scale_factor, and b_runs
         // logarithm function to calculate value
         float lg = log(b_size) / log(s_factor);
@@ -104,6 +116,9 @@ struct vlbt_bwt {
         written_bytes += serialize_elm(ofs, sigma);
         written_bytes += serialize_elm(ofs, ext_pt_width);
         written_bytes += serialize_elm(ofs, mtd_bits);
+        if constexpr (var==WITH_TOEHOLDS) {
+            written_bytes += serialize_elm(ofs, subsamp_step);
+        }
 
         written_bytes += serialize_plain_vector(ofs, C);
         written_bytes += serialize_plain_vector(ofs, packed_alpha);
@@ -123,6 +138,9 @@ struct vlbt_bwt {
         load_elm(ifs, sigma);
         load_elm(ifs, ext_pt_width);
         load_elm(ifs, mtd_bits);
+        if constexpr (var==WITH_TOEHOLDS) {
+            load_elm(ifs, subsamp_step);
+        }
 
         load_plain_vector(ifs, C);
         load_plain_vector(ifs, packed_alpha);
@@ -618,7 +636,7 @@ struct vlbt_bwt {
             has_sa_sample = sa_samp>=0;
             n_steps++;
         }
-        assert(n_steps<=4);
+        assert(n_steps<=subsamp_step);
         return sa_samp+n_steps;
     }
 
@@ -839,7 +857,7 @@ struct vlbt_bwt {
                     has_sa_sample = sa_samp>=0;
                     n_steps++;
                 }
-                assert(n_steps<=4);
+                assert(n_steps<=subsamp_step);
                 return sa_samp+n_steps;
             }
         }

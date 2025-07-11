@@ -89,8 +89,8 @@ struct block_range_t{
     uint64_t rb;
 };
 
-std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, std::vector<uint64_t>& sa_ranges,
-                                                  std::vector<uint8_t>& packed_alpha, size_t n_iterations){
+inline std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, const std::vector<uint64_t>& sa_ranges,
+                                                         const std::vector<uint8_t>& packed_alpha, const size_t n_iterations){
 
 
     std::vector<std::vector<st_node_t>> st_nodes_in_dfs(n_iterations+2);
