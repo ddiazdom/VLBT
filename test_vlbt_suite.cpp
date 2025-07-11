@@ -317,8 +317,8 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         }
     }
 
-    csa_rlmn.count_with_head(pat_list[9999]);
-    my_dt.count_with_head(pat_list[9999]);
+    //csa_rlmn.count_with_head(pat_list[9999]);
+    //my_dt.count_with_head(pat_list[9999]);
     //exit(1);
 
     size_t acc_count=0;
@@ -540,12 +540,12 @@ void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& 
     size_t written_bytes = store_to_file(output_sr_index_file, sr_index);
     std::cout<<"Final sr-index uses "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps)"<<std::endl;
 
-    test_locate(sr_index, input_prefix, "sr_index");
 
     test_access(sr_index, input_prefix, "sr_index");
     test_rank(sr_index, input_prefix, "sr_index");
     test_count(sr_index, input_prefix, "sr_index");
     test_inverse_select(sr_index, input_prefix, "sr_index");
+    test_locate(sr_index, input_prefix, "sr_index");
 }
 
 int main(int argc, char** argv){
