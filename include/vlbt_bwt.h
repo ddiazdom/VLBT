@@ -233,6 +233,92 @@ public:
         return find_next(child);
     }
 
+    [[nodiscard]] std::tuple<uint64_t, uint64_t, bool> double_rank(size_t i, size_t j, uint8_t symbol) const {
+
+        symbol = packed_alpha[symbol];
+        //initialize the block size
+        size_t bk_sz = block_size;
+
+        //get the block where index "i" lies
+        uint64_t child_i = i/bk_sz;
+        uint64_t child_j = j/bk_sz;
+        bool path_diverged = child_i!=child_j;
+
+        if (child_i!=child_j) {
+            //TODO doing it the normal way
+        }
+
+        //bit-position where "child" begins in the stream
+        size_t bit_pos = find_prev(child_i);
+        const size_t prev_bit_pos=bit_pos;
+        skip_ext_succ_info(bit_pos);
+        bool is_leaf = stream.read_bit(bit_pos++);
+        bool has_symbol = stream.read_bit(bit_pos+symbol);
+
+        int64_t rank = 0;
+        uint8_t node_sigma = sigma;
+        uint8_t rank_width = sym_width(max_freq);
+        size_t p_width;
+
+        while(!path_diverged && !is_leaf) {
+
+            const uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//this works only because bit_stream[bit_pos+symbol] is true
+            bit_pos+=node_sigma;
+            const size_t r_pos = bit_pos + symbol*rank_width;
+            rank+=stream.read(r_pos, r_pos+rank_width-1);
+            bit_pos+=new_sigma*rank_width;
+            node_sigma=new_sigma;
+            const size_t c_info = stream.read(bit_pos, bit_pos+scale_factor-1);//children info
+            bit_pos += scale_factor;
+            const size_t n_children = __builtin_popcount(c_info);//number of eff children
+            assert(n_children>0);
+            bk_sz/=scale_factor;
+
+            child_i = i/bk_sz;
+            child_j = j/bk_sz;
+            assert(child_i<scale_factor && child_j<scale_factor);
+
+            //read the effective child for i
+            size_t eff_c_info = c_info & (1<<(child_i+1))-1;//clean the bits marking the right siblings
+            child_i = __builtin_popcount(eff_c_info)-1;//eff child (zero-based)
+            size_t n_real_lsib = 63-__builtin_clzll(eff_c_info);//= select_1(child_info, (eff child)+1)-1
+            i-=n_real_lsib*bk_sz;//number of symbols before child i within the node
+
+            //read the effective child for j
+            eff_c_info = c_info & (1<<(child_j+1))-1;//clean the bits marking the right siblings
+            child_j = __builtin_popcount(eff_c_info)-1;//eff child (zero-based)
+            n_real_lsib = 63-__builtin_clzll(eff_c_info);//= select_1(child_info, (eff child)+1)-1
+            j=n_real_lsib*bk_sz;//number of symbols before child j within the node
+
+            path_diverged = child_i!=child_j;
+
+            //skip int succ/pred info
+            bit_pos+=new_sigma*n_children;
+            //
+
+            //read how many bits we use to encode the pointers to the children
+            p_width = stream.read(bit_pos, bit_pos+int_pt_width-1);
+            bit_pos+=int_pt_width;
+            //
+
+            //read the pointer to the child for i
+            size_t p_i = bit_pos+child_i*p_width;
+            p_i = stream.read(p_i, p_i+p_width-1);
+            //
+
+            //skip the pointer to the children and position the bit in the next byte-aligned position
+            bit_pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
+            bit_pos+= p_i*8;//add the bit offset. now bit_pos points to child
+            //
+
+            //start reading the header of child (there is no ext succ info)
+            is_leaf = stream.read_bit(bit_pos++);
+            rank_width = sym_width(bk_sz*scale_factor);
+            //
+        }
+    }
+
     template<bool check_head=false>
     [[nodiscard]] inline auto rank(size_t i, uint8_t symbol) const {
 
@@ -931,9 +1017,9 @@ public:
         path.bit_pos =  (header_bytes + p)*8;//bit-position where "child" begins in the stream
 
         //skip ext succ. information
-        size_t n_samps = stream.pop_count(path.bit_pos, path.bit_pos+sigma-1);
+        const size_t n_samps = stream.pop_count(path.bit_pos, path.bit_pos+sigma-1);
         path.bit_pos+=sigma;
-        uint8_t w = stream.read(path.bit_pos, path.bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for "child"
+        const uint8_t w = stream.read(path.bit_pos, path.bit_pos+mtd_bits-1);//number bits we use to encode the tree distances for "child"
         path.bit_pos+=mtd_bits;
         path.bit_pos+=n_samps*w;//skip the n_samp tree distances
         path.bit_pos= INT_CEIL(path.bit_pos, 8)*8;//next byte-aligned position
@@ -941,7 +1027,7 @@ public:
         path.node_sigma[path.lvl] = sigma;
 
         //read the node header
-        path.lvl++;
+        ++path.lvl;
         bool is_leaf = stream.read_bit(path.bit_pos++);
         path.node_sigma[path.lvl] = stream.pop_count(path.bit_pos, path.bit_pos+path.node_sigma[path.lvl-1]-1);
         path.sigma_pos[path.lvl]=path.bit_pos;

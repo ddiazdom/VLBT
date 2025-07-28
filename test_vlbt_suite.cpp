@@ -252,27 +252,23 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
     //std::cout<<"\tTotal number of occurrences "<<acc_count<<" avg:"<<double(acc_count)/double(n_pats)<<std::endl;
 
     double my_acc_time=0;
+    size_t my_acc_count=0;
     j=0;
     std::vector<std::pair<uint64_t, uint64_t>> my_ans(n_pats);
     for(auto const& p : pat_list) {
         MEASURE(my_dt.count(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
+        my_acc_count+=my_ans[j].second-my_ans[j].first+1;
         j++;
     }
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(acc_count)<<"), ";
-    std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<")"<<std::endl;
+    std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;
 
-    size_t n_errors=0, acc_occ=0;
     for(size_t i=0;i<pat_list.size();i++){
         if(my_ans[i].first!=rlmn_ans[i].first || my_ans[i].second!=rlmn_ans[i].second){
             std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<my_ans[i].first<<"!="<<rlmn_ans[i].first <<" or "<<my_ans[i].second<<"!="<<rlmn_ans[i].second<<std::endl;
-            n_errors++;
+            exit(1);
         }
-        acc_occ+=rlmn_ans[i].second-rlmn_ans[i].first+1;
     }
-    if(n_errors>0){
-        std::cout<<"There are "<<n_errors<<"/"<<pat_list.size()<<" errors "<<std::endl;
-    }
-    assert(n_errors==0 && acc_occ==acc_count);
 }
 
 template<class bwt_type>
@@ -334,16 +330,17 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     //std::cout<<"\tTotal number of occurrences "<<acc_count<<" avg:"<<double(acc_count)/double(n_pats)<<std::endl;
 
     double my_acc_time=0;
+    size_t my_acc_count=0;
     j=0;
     std::vector<std::tuple<uint64_t, uint64_t, uint64_t>> my_ans(n_pats);
     for(auto const& p : pat_list) {
         MEASURE(my_dt.count_with_head(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
+        my_acc_count+=std::get<1>(my_ans[j])-std::get<0>(my_ans[j])+1;
         j++;
     }
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(acc_count)<<"), ";
-    std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<")"<<std::endl;
+    std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;
 
-    size_t n_errors=0, acc_occ=0;
     for(size_t i=0;i<pat_list.size();i++){
         if(std::get<0>(my_ans[i])!=std::get<0>(rlmn_ans[i]) ||
            std::get<1>(my_ans[i])!=std::get<1>(rlmn_ans[i]) ||
@@ -351,12 +348,9 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
             std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<std::get<0>(my_ans[i])<<"!="<<std::get<0>(rlmn_ans[i])<<" or "
                                                                         <<std::get<1>(my_ans[i])<<"!="<<std::get<1>(rlmn_ans[i])<<" or "
                                                                         <<std::get<2>(my_ans[i])<<"!="<<std::get<2>(rlmn_ans[i])<<std::endl;
-            n_errors++;
             exit(1);
         }
-        acc_occ+=std::get<1>(rlmn_ans[i])-std::get<0>(rlmn_ans[i])+1;
     }
-    assert(n_errors==0 && acc_count==acc_occ);
 }
 
 template<class bwt_type>
