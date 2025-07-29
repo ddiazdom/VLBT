@@ -149,6 +149,26 @@ public:
         stream.load(ifs);
     }
 
+    inline void find_prev_bit_pos(uint64_t& child_i, uint64_t& child_j, size_t& bit_pos_i, size_t& bit_pos_j) const {
+        //get the effective block where "i" lies and its byte offset within the stream
+        //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
+
+        const size_t loc_lfs_bits = lfs_bits;
+        const size_t loc_ext_pt_width = ext_pt_width;
+
+        size_t p = loc_lfs_bits + loc_ext_pt_width*child_i;
+        p = stream.read(p, p+loc_ext_pt_width-1);
+        child_i -= p >> (run_width+1) & -(p & 1);
+        p = loc_lfs_bits + loc_ext_pt_width*child_i;
+        bit_pos_i = (header_bytes + (stream.read(p, p+loc_ext_pt_width-1)>>1)) * 8;
+
+        p = loc_lfs_bits + loc_ext_pt_width*child_j;
+        p = stream.read(p, p+loc_ext_pt_width-1);
+        child_j -= p >> (run_width+1) & -(p & 1);
+        p = loc_lfs_bits + loc_ext_pt_width*child_j;
+        bit_pos_j = (header_bytes + (stream.read(p, p+loc_ext_pt_width-1)>>1)) * 8;
+    }
+
     inline size_t find_prev(uint64_t& child) const {
         //get the effective block where "i" lies and its byte offset within the stream
         //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
@@ -161,7 +181,7 @@ public:
         //size_t offset = (p >> (run_width+1)) * ((p & 1)>0);
         //child -= offset;//eff child in the representation where "i" lies
         child -= (p >> (run_width+1)) & -(p & 1);
-        p = loc_lfs_bits + (loc_ext_pt_width*child);
+        p = loc_lfs_bits + loc_ext_pt_width*child;
         return (header_bytes + (stream.read(p, p+loc_ext_pt_width-1)>>1)) * 8;//bit-position where "child" begins in the stream
     }
 
@@ -233,67 +253,102 @@ public:
         return find_next(child);
     }
 
-    [[nodiscard]] std::tuple<uint64_t, uint64_t, bool> double_rank(size_t i, size_t j, uint8_t symbol) const {
+    [[nodiscard]] std::tuple<uint64_t, uint64_t, bool> range_rank(size_t i, size_t j, uint8_t symbol) const {
 
         symbol = packed_alpha[symbol];
-        //initialize the block size
         size_t bk_sz = block_size;
 
-        //get the block where index "i" lies
-        uint64_t child_i = i/bk_sz;
-        uint64_t child_j = j/bk_sz;
-        bool path_diverged = child_i!=child_j;
+        uint64_t child_i = i/bk_sz, child_j = j/bk_sz;
+        size_t bit_pos_i, bit_pos_j;
 
-        if (child_i!=child_j) {
-            //TODO doing it the normal way
+        find_prev_bit_pos(child_i, child_j, bit_pos_i, bit_pos_j);
+
+        int64_t rank_i = 0, rank_j = 0;
+        bool i_is_head = false;
+
+        if(child_i != child_j) {
+            const size_t prev_bit_pos_i = bit_pos_i;
+            skip_ext_succ_info(bit_pos_i);
+            bool is_leaf = stream.read_bit(bit_pos_i++);
+            bool has_symbol = stream.read_bit(bit_pos_i+symbol);
+
+            if(!has_symbol){
+                rank_i = read_rank_from_succ(prev_bit_pos_i, i, child_i, symbol);
+                i_is_head = true;
+            }else {
+                std::tie(rank_i, i_is_head) = subtree_rank<true>(bit_pos_i, i, symbol, sigma, sym_width(max_freq), bk_sz, is_leaf);
+            }
+
+            const size_t prev_bit_pos_j = bit_pos_j;
+            skip_ext_succ_info(bit_pos_j);
+            is_leaf = stream.read_bit(bit_pos_j++);
+            has_symbol = stream.read_bit(bit_pos_i+symbol);
+
+            if (!has_symbol) {
+                rank_j = read_rank_from_succ(prev_bit_pos_j, j, child_j, symbol);
+            }else {
+                rank_j = subtree_rank<true>(bit_pos_j, j, symbol, sigma, sym_width(max_freq), bk_sz, is_leaf);
+            }
+            return std::make_tuple(rank_i, rank_j, i_is_head);
         }
 
-        //bit-position where "child" begins in the stream
-        size_t bit_pos = find_prev(child_i);
-        const size_t prev_bit_pos=bit_pos;
+        size_t bit_pos = bit_pos_i;
         skip_ext_succ_info(bit_pos);
-        bool is_leaf = stream.read_bit(bit_pos++);
-        bool has_symbol = stream.read_bit(bit_pos+symbol);
+        //position i and j fall in the same leaf
+        if(stream.read_bit(bit_pos++)){
+            if(stream.read_bit(bit_pos+symbol)) {
+                std::tie(rank_i, i_is_head) = subtree_rank<true>(bit_pos, i, symbol, sigma, sym_width(max_freq), bk_sz, true);
+                rank_j = subtree_rank(bit_pos, j, symbol, sigma, sym_width(max_freq), bk_sz, true);
+            }
+            return std::make_tuple(rank_i, rank_j, false);
+        }
+        //
 
+        //positions i and j fall within the same internal node
         int64_t rank = 0;
         uint8_t node_sigma = sigma;
         uint8_t rank_width = sym_width(max_freq);
-        size_t p_width;
 
-        while(!path_diverged && !is_leaf) {
+        bool traverse_common_path = false;
+        size_t child_info, succ_pred_info, pos, p_width, parent_ptr_area;
 
+        do {
             const uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
             symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//this works only because bit_stream[bit_pos+symbol] is true
             bit_pos+=node_sigma;
             const size_t r_pos = bit_pos + symbol*rank_width;
             rank+=stream.read(r_pos, r_pos+rank_width-1);
             bit_pos+=new_sigma*rank_width;
+
             node_sigma=new_sigma;
-            const size_t c_info = stream.read(bit_pos, bit_pos+scale_factor-1);//children info
+
+            child_info = stream.read(bit_pos, bit_pos+scale_factor-1);//children info
             bit_pos += scale_factor;
-            const size_t n_children = __builtin_popcount(c_info);//number of eff children
+
+            const size_t n_children = __builtin_popcount(child_info);//number of eff children
             assert(n_children>0);
             bk_sz/=scale_factor;
+            rank_width = sym_width(bk_sz*scale_factor);
 
             child_i = i/bk_sz;
             child_j = j/bk_sz;
             assert(child_i<scale_factor && child_j<scale_factor);
 
             //read the effective child for i
-            size_t eff_c_info = c_info & (1<<(child_i+1))-1;//clean the bits marking the right siblings
+            size_t eff_c_info = child_info & (1<<(child_i+1))-1;//clean the bits marking the right siblings
             child_i = __builtin_popcount(eff_c_info)-1;//eff child (zero-based)
             size_t n_real_lsib = 63-__builtin_clzll(eff_c_info);//= select_1(child_info, (eff child)+1)-1
             i-=n_real_lsib*bk_sz;//number of symbols before child i within the node
 
             //read the effective child for j
-            eff_c_info = c_info & (1<<(child_j+1))-1;//clean the bits marking the right siblings
+            eff_c_info = child_info & (1<<(child_j+1))-1;//clean the bits marking the right siblings
             child_j = __builtin_popcount(eff_c_info)-1;//eff child (zero-based)
             n_real_lsib = 63-__builtin_clzll(eff_c_info);//= select_1(child_info, (eff child)+1)-1
-            j=n_real_lsib*bk_sz;//number of symbols before child j within the node
+            j-=n_real_lsib*bk_sz;//number of symbols before child j within the node
 
-            path_diverged = child_i!=child_j;
-
-            //skip int succ/pred info
+            //read which child_i has the symbol
+            succ_pred_info = bit_pos + symbol*n_children;
+            succ_pred_info = stream.read(succ_pred_info, succ_pred_info+n_children-1);
             bit_pos+=new_sigma*n_children;
             //
 
@@ -302,21 +357,288 @@ public:
             bit_pos+=int_pt_width;
             //
 
+            parent_ptr_area = bit_pos;
+            pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
+
             //read the pointer to the child for i
-            size_t p_i = bit_pos+child_i*p_width;
-            p_i = stream.read(p_i, p_i+p_width-1);
+            const size_t p = parent_ptr_area+child_i*p_width;
+            bit_pos = pos + stream.read(p, p+p_width-1)*8;//add the bit offset. now bit_pos points to child
+            //
+
+            //start reading the header of child (there is no ext succ info)
+            traverse_common_path = child_i==child_j && (succ_pred_info >> child_i & 1) && !stream.read_bit(bit_pos++);
+            //
+        } while(traverse_common_path);
+
+        //corner case
+        //the range BWT[i,j] does not have the symbol, safe to return (0, 0, false)
+        if(child_i==child_j && !has_symbol_i) {
+            return std::make_tuple(0, 0, false);
+        }
+        //
+
+        //read pred info
+        child_info |= 1<<scale_factor; //avoid corner cases
+
+        const size_t sp_info_i = succ_pred_info & (1<<(child_i+1))-1;//remove right siblings
+        const size_t rank_complete_i = sp_info_i==0;
+        size_t pred = 64-__builtin_clzll(sp_info_i)-!rank_complete_i;
+        size_t start = stream_type::select64(child_info, child_i+1);
+        size_t n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
+        bool f_pred = pred<child_i;
+        i = f_pred*i + f_pred*(bk_sz*n_real_lsib-1);
+        child_i = pred;
+
+        const size_t sp_info_j = succ_pred_info & (1<<(child_j+1))-1;//remove right siblings
+        const size_t rank_complete_j = sp_info_j==0;
+        pred = 64-__builtin_clzll(sp_info_j)-!rank_complete_j;
+        start = stream_type::select64(child_info, child_j+1);
+        n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
+        f_pred = pred<child_j;
+        j = f_pred*j + f_pred*(bk_sz*n_real_lsib-1);
+        child_j = pred;
+
+        rank_i = rank;
+        rank_j = rank;
+        i_is_head = rank_complete_i;
+
+        if(!rank_complete_i) {
+            const size_t p = parent_ptr_area+child_i*p_width;
+            bit_pos_i = pos + stream.read(p, p+p_width-1)*8;//add the bit offset. now bit_pos points to child
+
+            const bool is_leaf = stream.read_bit(bit_pos_i++);
+            auto res_i = subtree_rank<true>(bit_pos_i, i, symbol, node_sigma, rank_width, bk_sz, is_leaf);
+            rank_i += res_i.first;
+            i_is_head = res_i.second;
+        }
+
+        if(!rank_complete_j) {
+            const size_t p = parent_ptr_area+child_j*p_width;
+            bit_pos_j = pos + stream.read(p, p+p_width-1)*8;//add the bit offset. now bit_pos points to child
+
+            const bool is_leaf = stream.read_bit(bit_pos_j++);
+            rank_j += subtree_rank(bit_pos_j, j, symbol, node_sigma, rank_width, bk_sz, is_leaf);
+        }
+
+        return std::make_tuple(rank_i, rank_j, i_is_head);
+    }
+
+    template<bool check_head=false>
+    auto subtree_rank(size_t bit_pos, size_t i, uint8_t symbol, size_t node_sigma, size_t rank_width, size_t bk_sz, bool is_leaf) const {
+
+        //descend over i
+        bool rank_complete=false;
+        bool following_pred=false;
+        size_t i_branches[2]={i, 0};
+        int64_t rank=0;
+
+        while(!is_leaf && !rank_complete) {
+
+            const uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//this works only because bit_stream[bit_pos+symbol] is true
+            bit_pos+=node_sigma;
+            const size_t r_pos = bit_pos + symbol*rank_width;
+            rank+=stream.read(r_pos, r_pos+rank_width-1);
+            bit_pos+=new_sigma*rank_width;
+
+            node_sigma=new_sigma;
+
+            bk_sz/=scale_factor;
+            size_t child = i_branches[following_pred]/bk_sz;
+            assert(child<scale_factor);
+
+            size_t child_info = stream.read(bit_pos, bit_pos+scale_factor-1);
+            bit_pos += scale_factor;
+
+            const size_t n_children = __builtin_popcount(child_info);//number of eff children
+            assert(n_children>0);
+
+            child_info &= (1<<(child+1))-1;//clean the bits marking the right siblings
+            child = __builtin_popcount(child_info)-1;//eff child (zero-based)
+            size_t n_real_lsib = 63-__builtin_clzll(child_info);//= select_1(child_info, (eff child)+1)-1
+            i_branches[0]-=n_real_lsib*bk_sz;//number of symbols before child within the node
+
+            //read pred info
+            size_t pred_info = bit_pos + symbol*n_children;
+            pred_info = stream.read(pred_info, pred_info+n_children-1);
+            pred_info &=(1<<(child+1))-1;//remove right siblings
+            rank_complete = pred_info==0;
+            const size_t pred = 64-__builtin_clzll(pred_info)-!rank_complete;
+            const size_t start = stream_type::select64(child_info, pred+1);
+            child_info |= 1<<scale_factor; //avoid corner cases
+            n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
+            i_branches[1] = bk_sz*n_real_lsib-1;
+            following_pred |= pred<child;
+            child = pred;
+            bit_pos+=new_sigma*n_children;//skip int succ/pred info
+            //
+
+            //read how many bits we use to encode the pointers to the children
+            const size_t p_width = stream.read(bit_pos, bit_pos+int_pt_width-1);
+            bit_pos+=int_pt_width;
+            //
+
+            //read the pointer to the child
+            size_t p = bit_pos+child*p_width;
+            p = stream.read(p, p+p_width-1);
             //
 
             //skip the pointer to the children and position the bit in the next byte-aligned position
             bit_pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
-            bit_pos+= p_i*8;//add the bit offset. now bit_pos points to child
-            //
-
-            //start reading the header of child (there is no ext succ info)
-            is_leaf = stream.read_bit(bit_pos++);
             rank_width = sym_width(bk_sz*scale_factor);
-            //
+
+            //add the bit offset. now bit_pos points to child
+            bit_pos+= p*8;
+
+            //start reading the header of child (there is no ext succ/pred info)
+            is_leaf = stream.read_bit(bit_pos++);
         }
+
+        if(!rank_complete) {
+
+            assert(is_leaf);
+            i = i_branches[following_pred] + following_pred;//small hack due to the encoding of the leaves
+
+            const uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//only works because bit_stream[bit_pos+symbol] is true
+            bit_pos+=node_sigma;
+            const size_t r_pos = bit_pos + symbol*rank_width;
+            rank+=stream.read(r_pos, r_pos+rank_width-1);
+            bit_pos+=new_sigma*rank_width;
+
+            const uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
+            bit_pos+= leaf_enc_width;
+
+            bool false_break;
+            if constexpr (var==WITH_TOEHOLDS){
+                if constexpr (check_head){
+                    bit_pos+= run_byte_w + run_width;//skip the number of bytes we use to encode the runs
+                    false_break = stream.read_bit(bit_pos++);//read if the leftmost run in this head is artificial
+                }else{
+                    bit_pos+= run_byte_w + run_width + 1;//skip the metadata of the runs
+                }
+            }
+
+            const uint8_t *leaf_addr = reinterpret_cast<uint8_t *>(stream.stream)+(INT_CEIL(bit_pos, 8));
+            int64_t ans;
+
+            //scan the runs in the leaf according to the leaf encoding
+            switch(leaf_enc) {
+                case 0:
+                    ans = RANK_8<false, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                    break;
+                case 1:
+                    ans = RANK_8<true, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                    break;
+                case 2:
+                    ans = RANK_8<true, true, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 2 bytes (no vbyte)
+                    break;
+
+                case 3://template param: vbyte?, overflow8?, overflow16?
+                    ans = RANK_16<false, false, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 3 bytes (no vbyte)
+                    break;
+                case 4:
+                    ans = RANK_16<false, true, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (no vbyte)
+                    break;
+                case 5:
+                    ans = RANK_16<false, true, true, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (no vbyte)
+                    break;
+                case 6:
+                    ans = RANK_16<true, false, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 2 bytes (vbyte)
+                    break;
+                case 7:
+                    ans = RANK_16<true, true, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 3 bytes (vbyte)
+                    break;
+                case 8:
+                    ans = RANK_16<true, true, true, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    break;
+
+                case 9://template param: vbyte?, bpr
+                    ans = RANK_32<false,3, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    break;
+                case 10:
+                    ans = RANK_32<true,3, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    break;
+                case 11:
+                    ans = RANK_32<false,4, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    break;
+                case 12:
+                    ans = RANK_32<true,4, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                    break;
+
+                case 13://template param: bpr
+                    ans = RANK_64<5, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    break;
+                case 14:
+                    ans = RANK_64<6, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    break;
+                case 15:
+                    ans = RANK_64<7, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                    break;
+                default:
+                    std::cout<<"Undefined encoding"<<std::endl;
+                    exit(1);
+            }
+
+            if constexpr (check_head){
+                //complete information
+                const bool is_same_sym = ans & 1UL;//the query symbol is the same as the symbol of the run where "i" falls
+                ans>>=1;
+                const bool is_head = ans & 1UL;//the query symbol is the same as the symbol of the run where "i" falls and "i" is the head of that run
+                ans>>=1;
+                //
+                return std::make_pair(rank + ans, (!is_same_sym || (is_head && i>0) || (is_head && !false_break)));
+            } else {
+                return rank + ans;
+            }
+        }
+
+        if constexpr (check_head){
+            return std::make_pair(rank, true);
+        } else {
+            return rank;
+        }
+    }
+
+    [[nodiscard]] int64_t read_rank_from_succ(size_t succ_bit_pos, const size_t i, const size_t child, uint8_t symbol) const {
+
+        //find successor containing sym
+        bool succ_found = stream.read_bit(succ_bit_pos+symbol);
+
+        if(!succ_found) {
+
+            uint64_t succ_child = child;
+            size_t steps = 0;
+
+            while(!succ_found && steps < 5) {
+                succ_bit_pos = find_next(++succ_child);
+                skip_ext_succ_info(succ_bit_pos);
+                succ_found = stream.read_bit(succ_bit_pos+1+symbol);//does the tree have the symbol?
+                steps++;
+            }
+
+            if(!succ_found && stream.read_bit(symbol)) {//last opportunity: check if the node is low freq
+                succ_bit_pos = find_low_freq_succ(i, symbol);
+                skip_ext_succ_info(succ_bit_pos);
+                //assert(stream.read_bit(succ_bit_pos+1+symbol));
+                succ_found = true;
+            }
+        } else {
+            decode_ext_succ_info(succ_bit_pos, child, symbol);
+            skip_ext_succ_info(succ_bit_pos);
+            //assert(stream.read_bit(succ_bit_pos+1+symbol));
+        }
+
+        if(!succ_found) return -1;
+
+        ++succ_bit_pos;//the +1 is to skip the bit indicating if this node is a leaf
+        symbol = stream.pop_count(succ_bit_pos, succ_bit_pos+symbol-1);
+        succ_bit_pos+=sigma;
+        const uint8_t r_width = sym_width(max_freq);
+        const size_t r_pos = succ_bit_pos + symbol*r_width;
+        const int64_t rank = stream.read(r_pos, r_pos+r_width-1);
+
+        return rank;
     }
 
     template<bool check_head=false>
@@ -344,7 +666,6 @@ public:
             size_t succ_bit_pos = prev_bit_pos;
             bool succ_found = stream.read_bit(succ_bit_pos+symbol);
             if(!succ_found) {
-
                 uint64_t succ_child = child;
                 size_t steps = 0;
 

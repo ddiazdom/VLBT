@@ -102,10 +102,9 @@ struct fm_index{
 
     [[nodiscard]] inline std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
         size_t l=0, r=bwt.size()-1, j=pat.size();
-        uint8_t cc;
         std::pair<uint64_t, uint64_t> head[2]={{0,0}, {j-1, l}};
         while(j-->0 && l<=r){
-            cc = byte2comp[static_cast<uint8_t>(pat[j])];
+            uint8_t cc = byte2comp[static_cast<uint8_t>(pat[j])];
             auto res = bwt.template rank<true>(l, pat[j]);
             head[res.second] = {j, l};
             //std::cout<<head[1].first<<" "<<head[1].second<<std::endl;
