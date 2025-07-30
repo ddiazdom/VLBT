@@ -253,19 +253,18 @@ public:
         return find_next(child);
     }
 
-    [[nodiscard]] std::tuple<uint64_t, uint64_t, bool> range_rank(size_t i, size_t j, uint8_t symbol) const {
+    [[nodiscard]] std::pair<uint64_t, uint64_t> range_rank_no_sa_head(size_t i, size_t j, uint8_t symbol) const {
 
         symbol = packed_alpha[symbol];
-        size_t bk_sz = block_size;
 
-        uint64_t child_i = i/bk_sz, child_j = j/bk_sz;
         size_t bit_pos_i, bit_pos_j;
-
+        uint64_t child_i = i/block_size, child_j = j/block_size;
         find_prev_bit_pos(child_i, child_j, bit_pos_i, bit_pos_j);
 
-        int64_t rank_i = 0, rank_j = 0;
-        bool i_is_head = false;
+        uint64_t rank_i = 0, rank_j = 0;
+        uint8_t rank_width = sym_width(max_freq);
 
+        //i and j are on different trees, meaning there is no advantage, and we proceed as usual
         if(child_i != child_j) {
             const size_t prev_bit_pos_i = bit_pos_i;
             skip_ext_succ_info(bit_pos_i);
@@ -274,43 +273,50 @@ public:
 
             if(!has_symbol){
                 rank_i = read_rank_from_succ(prev_bit_pos_i, i, child_i, symbol);
-                i_is_head = true;
             }else {
-                std::tie(rank_i, i_is_head) = subtree_rank<true>(bit_pos_i, i, symbol, sigma, sym_width(max_freq), bk_sz, is_leaf);
+                rank_i = subtree_rank(bit_pos_i, i-child_i*block_size, symbol, sigma, rank_width, block_size, is_leaf);
             }
 
             const size_t prev_bit_pos_j = bit_pos_j;
             skip_ext_succ_info(bit_pos_j);
             is_leaf = stream.read_bit(bit_pos_j++);
-            has_symbol = stream.read_bit(bit_pos_i+symbol);
+            has_symbol = stream.read_bit(bit_pos_j+symbol);
 
             if (!has_symbol) {
                 rank_j = read_rank_from_succ(prev_bit_pos_j, j, child_j, symbol);
             }else {
-                rank_j = subtree_rank<true>(bit_pos_j, j, symbol, sigma, sym_width(max_freq), bk_sz, is_leaf);
+                rank_j = subtree_rank(bit_pos_j, j-child_j*block_size, symbol, sigma, rank_width, block_size, is_leaf);
             }
-            return std::make_tuple(rank_i, rank_j, i_is_head);
+            return std::make_pair(rank_i, rank_j);
+
         }
 
         size_t bit_pos = bit_pos_i;
         skip_ext_succ_info(bit_pos);
-        //position i and j fall in the same leaf
+
+        //positions i and j fall in the same block, but the block does not contain the symbol
+        if(!stream.read_bit(bit_pos+1+symbol)){
+            return std::make_pair(0, 0);
+        }
+
+        //positions i and j fall in the same block and block has the symbol, but the block is a leaf
+        size_t offset = child_i*block_size;
         if(stream.read_bit(bit_pos++)){
-            if(stream.read_bit(bit_pos+symbol)) {
-                std::tie(rank_i, i_is_head) = subtree_rank<true>(bit_pos, i, symbol, sigma, sym_width(max_freq), bk_sz, true);
-                rank_j = subtree_rank(bit_pos, j, symbol, sigma, sym_width(max_freq), bk_sz, true);
-            }
-            return std::make_tuple(rank_i, rank_j, false);
+            rank_i = subtree_rank(bit_pos, i-offset, symbol, sigma, rank_width, block_size, true);
+            rank_j = subtree_rank(bit_pos, j-offset, symbol, sigma, rank_width, block_size, true);
+            return std::make_pair(rank_i, rank_j);
         }
         //
 
         //positions i and j fall within the same internal node
         int64_t rank = 0;
         uint8_t node_sigma = sigma;
-        uint8_t rank_width = sym_width(max_freq);
+        size_t bk_sz = block_size;
 
         bool traverse_common_path = false;
         size_t child_info, succ_pred_info, pos, p_width, parent_ptr_area;
+        i-=offset;
+        j-=offset;
 
         do {
             const uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
@@ -366,53 +372,51 @@ public:
             //
 
             //start reading the header of child (there is no ext succ info)
-            traverse_common_path = child_i==child_j && (succ_pred_info >> child_i & 1) && !stream.read_bit(bit_pos++);
+            traverse_common_path = child_i==child_j && ((succ_pred_info >> child_i) & 1) && !stream.read_bit(bit_pos++);
             //
         } while(traverse_common_path);
 
-        //corner case
-        //the range BWT[i,j] does not have the symbol, safe to return (0, 0, false)
-        if(child_i==child_j && !has_symbol_i) {
-            return std::make_tuple(0, 0, false);
+        //entering this if means the range of siblings i,i+1,...,j does not contain the symbol
+        if((succ_pred_info>>child_i & (1<<(child_j-child_i+1))-1)==0) {
+            return std::make_pair(rank_i, rank_j);
         }
         //
 
-        //read pred info
-        child_info |= 1<<scale_factor; //avoid corner cases
-
-        const size_t sp_info_i = succ_pred_info & (1<<(child_i+1))-1;//remove right siblings
-        const size_t rank_complete_i = sp_info_i==0;
-        size_t pred = 64-__builtin_clzll(sp_info_i)-!rank_complete_i;
-        size_t start = stream_type::select64(child_info, child_i+1);
-        size_t n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
-        bool f_pred = pred<child_i;
-        i = f_pred*i + f_pred*(bk_sz*n_real_lsib-1);
-        child_i = pred;
-
-        const size_t sp_info_j = succ_pred_info & (1<<(child_j+1))-1;//remove right siblings
-        const size_t rank_complete_j = sp_info_j==0;
-        pred = 64-__builtin_clzll(sp_info_j)-!rank_complete_j;
-        start = stream_type::select64(child_info, child_j+1);
-        n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
-        f_pred = pred<child_j;
-        j = f_pred*j + f_pred*(bk_sz*n_real_lsib-1);
-        child_j = pred;
-
         rank_i = rank;
         rank_j = rank;
-        i_is_head = rank_complete_i;
 
-        if(!rank_complete_i) {
+        //read pred info
+        child_info |= 1<<scale_factor; //avoid corner cases for bitwise operations
+        const size_t sp_info_i = succ_pred_info & (1<<(child_i+1))-1;//remove right siblings of i
+        if(sp_info_i!=0) {//rank for i still incomplete
+            bool same_child = child_i==child_j;
+
+            size_t pred = 63-__builtin_clzll(sp_info_i);
+            size_t start = stream_type::select64(child_info, pred+1);
+            size_t n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
+            i = (pred==child_i)*i + (pred<child_i)*(bk_sz*n_real_lsib-1);
+            child_i = pred;
+
             const size_t p = parent_ptr_area+child_i*p_width;
             bit_pos_i = pos + stream.read(p, p+p_width-1)*8;//add the bit offset. now bit_pos points to child
 
             const bool is_leaf = stream.read_bit(bit_pos_i++);
-            auto res_i = subtree_rank<true>(bit_pos_i, i, symbol, node_sigma, rank_width, bk_sz, is_leaf);
-            rank_i += res_i.first;
-            i_is_head = res_i.second;
+            rank_i += subtree_rank(bit_pos_i, i, symbol, node_sigma, rank_width, bk_sz, is_leaf);
+
+            if(same_child){
+                rank_j += subtree_rank(bit_pos_i, j, symbol, node_sigma, rank_width, bk_sz, is_leaf);
+                return std::make_pair(rank_i, rank_j);
+            }
         }
 
-        if(!rank_complete_j) {
+        const size_t sp_info_j = succ_pred_info & (1<<(child_j+1))-1;//remove right siblings of j
+        if(sp_info_j!=0) {//rank for j still incomplete
+            size_t pred = 63-__builtin_clzll(sp_info_j);
+            size_t start = stream_type::select64(child_info, pred+1);
+            size_t n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
+            j = (pred==child_j)*j + (pred<child_j)*(bk_sz*n_real_lsib-1);
+            child_j = pred;
+
             const size_t p = parent_ptr_area+child_j*p_width;
             bit_pos_j = pos + stream.read(p, p+p_width-1)*8;//add the bit offset. now bit_pos points to child
 
@@ -420,6 +424,187 @@ public:
             rank_j += subtree_rank(bit_pos_j, j, symbol, node_sigma, rank_width, bk_sz, is_leaf);
         }
 
+        return std::make_pair(rank_i, rank_j);
+    }
+
+    [[nodiscard]] std::tuple<uint64_t, uint64_t, bool> range_rank(size_t i, size_t j, uint8_t symbol) const {
+
+        symbol = packed_alpha[symbol];
+
+        size_t bit_pos_i, bit_pos_j;
+        uint64_t child_i = i/block_size, child_j = j/block_size;
+        find_prev_bit_pos(child_i, child_j, bit_pos_i, bit_pos_j);
+
+        int64_t rank_i = 0, rank_j = 0;
+        bool i_is_head = false;
+
+        uint8_t rank_width = sym_width(max_freq);
+
+        //i and j are on different trees, meaning there is no advantage, and we proceed as usual
+        if(child_i != child_j) {
+            const size_t prev_bit_pos_i = bit_pos_i;
+            skip_ext_succ_info(bit_pos_i);
+            bool is_leaf = stream.read_bit(bit_pos_i++);
+            bool has_symbol = stream.read_bit(bit_pos_i+symbol);
+
+            if(!has_symbol){
+                rank_i = read_rank_from_succ(prev_bit_pos_i, i, child_i, symbol);
+                i_is_head = true;
+            }else {
+                std::tie(rank_i, i_is_head) = subtree_rank<true>(bit_pos_i, i-child_i*block_size, symbol, sigma, rank_width, block_size, is_leaf);
+            }
+
+            const size_t prev_bit_pos_j = bit_pos_j;
+            skip_ext_succ_info(bit_pos_j);
+            is_leaf = stream.read_bit(bit_pos_j++);
+            has_symbol = stream.read_bit(bit_pos_j+symbol);
+
+            if (!has_symbol) {
+                rank_j = read_rank_from_succ(prev_bit_pos_j, j, child_j, symbol);
+            }else {
+                rank_j = subtree_rank(bit_pos_j, j-child_j*block_size, symbol, sigma, rank_width, block_size, is_leaf);
+            }
+            return std::make_tuple(rank_i, rank_j, i_is_head);
+
+        }
+
+        size_t bit_pos = bit_pos_i;
+        skip_ext_succ_info(bit_pos);
+
+        //positions i and j fall in the same block, but the block does not contain the symbol
+        if(!stream.read_bit(bit_pos+1+symbol)){
+            return std::make_tuple(0, 0, false);
+        }
+
+        //positions i and j fall in the same block and block has the symbol, but the block is a leaf
+        size_t offset = child_i*block_size;
+        if(stream.read_bit(bit_pos++)){
+            std::tie(rank_i, i_is_head) = subtree_rank<true>(bit_pos, i-offset, symbol, sigma, rank_width, block_size, true);
+            rank_j = subtree_rank(bit_pos, j-offset, symbol, sigma, rank_width, block_size, true);
+            return std::make_tuple(rank_i, rank_j, i_is_head);
+        }
+        //
+
+        //positions i and j fall within the same internal node
+        int64_t rank = 0;
+        uint8_t node_sigma = sigma;
+        size_t bk_sz = block_size;
+
+        bool traverse_common_path = false;
+        size_t child_info, succ_pred_info, pos, p_width, parent_ptr_area;
+        i-=offset;
+        j-=offset;
+
+        do {
+            const uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
+            symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//this works only because bit_stream[bit_pos+symbol] is true
+            bit_pos+=node_sigma;
+            const size_t r_pos = bit_pos + symbol*rank_width;
+            rank+=stream.read(r_pos, r_pos+rank_width-1);
+            bit_pos+=new_sigma*rank_width;
+
+            node_sigma=new_sigma;
+
+            child_info = stream.read(bit_pos, bit_pos+scale_factor-1);//children info
+            bit_pos += scale_factor;
+
+            const size_t n_children = __builtin_popcount(child_info);//number of eff children
+            assert(n_children>0);
+            bk_sz/=scale_factor;
+            rank_width = sym_width(bk_sz*scale_factor);
+
+            child_i = i/bk_sz;
+            child_j = j/bk_sz;
+            assert(child_i<scale_factor && child_j<scale_factor);
+
+            //read the effective child for i
+            size_t eff_c_info = child_info & (1<<(child_i+1))-1;//clean the bits marking the right siblings
+            child_i = __builtin_popcount(eff_c_info)-1;//eff child (zero-based)
+            size_t n_real_lsib = 63-__builtin_clzll(eff_c_info);//= select_1(child_info, (eff child)+1)-1
+            i-=n_real_lsib*bk_sz;//number of symbols before child i within the node
+
+            //read the effective child for j
+            eff_c_info = child_info & (1<<(child_j+1))-1;//clean the bits marking the right siblings
+            child_j = __builtin_popcount(eff_c_info)-1;//eff child (zero-based)
+            n_real_lsib = 63-__builtin_clzll(eff_c_info);//= select_1(child_info, (eff child)+1)-1
+            j-=n_real_lsib*bk_sz;//number of symbols before child j within the node
+
+            //read which child_i has the symbol
+            succ_pred_info = bit_pos + symbol*n_children;
+            succ_pred_info = stream.read(succ_pred_info, succ_pred_info+n_children-1);
+            bit_pos+=new_sigma*n_children;
+            //
+
+            //read how many bits we use to encode the pointers to the children
+            p_width = stream.read(bit_pos, bit_pos+int_pt_width-1);
+            bit_pos+=int_pt_width;
+            //
+
+            parent_ptr_area = bit_pos;
+            pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
+
+            //read the pointer to the child for i
+            const size_t p = parent_ptr_area+child_i*p_width;
+            bit_pos = pos + stream.read(p, p+p_width-1)*8;//add the bit offset. now bit_pos points to child
+            //
+
+            //start reading the header of child (there is no ext succ info)
+            traverse_common_path = child_i==child_j && ((succ_pred_info >> child_i) & 1) && !stream.read_bit(bit_pos++);
+            //
+        } while(traverse_common_path);
+
+        //entering this if means the range of siblings i,i+1,...,j does not contain the symbol
+        if((succ_pred_info>>child_i & (1<<(child_j-child_i+1))-1)==0) {
+            return std::make_tuple(rank_i, rank_j, i_is_head);
+        }
+        //
+
+        //read pred info
+        child_info |= 1<<scale_factor; //avoid corner cases
+        const size_t sp_info_i = succ_pred_info & (1<<(child_i+1))-1;//remove right siblings of i
+        const size_t rank_complete_i = sp_info_i==0;
+        rank_i = rank;
+        rank_j = rank;
+        i_is_head = rank_complete_i;
+
+        if(!rank_complete_i) {
+            bool same_child = child_i==child_j;
+
+            size_t pred = 63-__builtin_clzll(sp_info_i);
+            size_t start = stream_type::select64(child_info, pred+1);
+            size_t n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
+            i = (pred==child_i)*i + (pred<child_i)*(bk_sz*n_real_lsib-1);
+            child_i = pred;
+
+            const size_t p = parent_ptr_area+child_i*p_width;
+            bit_pos_i = pos + stream.read(p, p+p_width-1)*8;//add the bit offset. now bit_pos points to child
+
+            const bool is_leaf = stream.read_bit(bit_pos_i++);
+            auto res_i = subtree_rank<true>(bit_pos_i, i, symbol, node_sigma, rank_width, bk_sz, is_leaf);
+            rank_i += res_i.first;
+            i_is_head = res_i.second;
+
+            if(same_child){
+                rank_j += subtree_rank(bit_pos_i, j, symbol, node_sigma, rank_width, bk_sz, is_leaf);
+                return std::make_tuple(rank_i, rank_j, i_is_head);
+            }
+        }
+
+        const size_t sp_info_j = succ_pred_info & (1<<(child_j+1))-1;//remove right siblings of j
+        const size_t rank_complete_j = sp_info_j==0;
+        if(!rank_complete_j) {
+            size_t pred = 63-__builtin_clzll(sp_info_j);
+            size_t start = stream_type::select64(child_info, pred+1);
+            size_t n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
+            j = (pred==child_j)*j + (pred<child_j)*(bk_sz*n_real_lsib-1);
+            child_j = pred;
+
+            const size_t p = parent_ptr_area+child_j*p_width;
+            bit_pos_j = pos + stream.read(p, p+p_width-1)*8;//add the bit offset. now bit_pos points to child
+
+            const bool is_leaf = stream.read_bit(bit_pos_j++);
+            rank_j += subtree_rank(bit_pos_j, j, symbol, node_sigma, rank_width, bk_sz, is_leaf);
+        }
         return std::make_tuple(rank_i, rank_j, i_is_head);
     }
 
@@ -1497,13 +1682,13 @@ public:
         p.bit_pos = p.rank_pos[p.lvl]+(rank_answer.second*p.rank_width[p.lvl]);
         rank_answer.first += stream.read(p.bit_pos, p.bit_pos+p.rank_width[p.lvl]-1);//add rank information
         rank_answer.second = stream.select(p.sigma_pos[p.lvl], p.sigma_pos[p.lvl]+p.node_sigma[p.lvl-1]-1, rank_answer.second+1);//update the symbol
-        p.lvl--;
+        --p.lvl;
 
         while(p.lvl>0){
             p.bit_pos = p.rank_pos[p.lvl]+(rank_answer.second*p.rank_width[p.lvl]);
             rank_answer.first += stream.read(p.bit_pos, p.bit_pos+p.rank_width[p.lvl]-1);
             rank_answer.second = stream.select(p.sigma_pos[p.lvl], p.sigma_pos[p.lvl]+p.node_sigma[p.lvl-1]-1, rank_answer.second+1);
-            p.lvl--;
+            --p.lvl;
         }
 
         return rank_answer;
@@ -1738,12 +1923,12 @@ public:
         //go back in the path to compute the rank information and the original symbol
         p.bit_pos = p.rank_pos[p.lvl]+(symbol*p.rank_width[p.lvl]);
         symbol = stream.select(p.sigma_pos[p.lvl], p.sigma_pos[p.lvl]+p.node_sigma[p.lvl-1]-1, symbol+1);//update the symbol
-        p.lvl--;
+        --p.lvl;
 
         while(p.lvl>0){
             p.bit_pos = p.rank_pos[p.lvl]+(symbol*p.rank_width[p.lvl]);
             symbol = stream.select(p.sigma_pos[p.lvl], p.sigma_pos[p.lvl]+p.node_sigma[p.lvl-1]-1, symbol+1);
-            p.lvl--;
+            --p.lvl;
         }
 
         return unpacked_alpha[symbol];
@@ -1751,12 +1936,14 @@ public:
 
     [[nodiscard]] inline std::pair<uint64_t, uint64_t> count(const std::string &pat) const {
         size_t l=0, r=size()-1, j=pat.size();
-        uint8_t cc;
         while(j-->0 && l<=r){
-            cc = packed_alpha[static_cast<uint8_t>(pat[j])];
-            l = C[cc] + rank(l, pat[j]); // count c in bwt[0..l-1]
-            r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
+            const uint8_t cc = packed_alpha[static_cast<uint8_t>(pat[j])];
+            //l = C[cc] + rank(l, pat[j]); // count c in bwt[0..l-1]
+            //r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
             //std::cout<<"MIO: "<<l<<" "<<r<<std::endl;
+            auto [fst, snd] = range_rank_no_sa_head(l, r+1, pat[j]);
+            l = C[cc] + fst;
+            r = C[cc] + snd-1;
         }
         return {l, r};
     }
@@ -1764,17 +1951,29 @@ public:
     [[nodiscard]] inline std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
 
         size_t l=0, r=size()-1, j=pat.size();
-        uint8_t cc;
         std::pair<uint64_t, uint64_t> head[2]={{0,0}, {j-1, l}};
 
         while(j-->0 && l<=r){
-            cc = packed_alpha[static_cast<uint8_t>(pat[j])];
+
+            const uint8_t cc = packed_alpha[static_cast<uint8_t>(pat[j])];
+
+            //auto tmp = range_rank(l, r+1, pat[j]);
+            //head[std::get<2>(tmp)] = {j, l};
+            //l = C[cc] + std::get<0>(tmp); // count c in bwt[0..l-1]
+            //r = C[cc] + std::get<1>(tmp) - 1; // count c in bwt[0..r]
+
             auto res = rank<true>(l, pat[j]);
             head[res.second] = {j, l};
-            //std::cout<<head[1].first<<" "<<head[1].second<<std::endl;
             l = C[cc] + res.first;// count c in bwt[0..l-1]
             r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
+
+            //assert(std::get<0>(tmp)==res.first);
+            //assert(std::get<1>(tmp)==(r-C[cc]+1));
+            //assert(std::get<2>(tmp)==res.second);
+            //std::cout<<std::get<0>(tmp)<<" "<<std::get<1>(tmp)<<" "<<std::get<2>(tmp)<<" "<<j<<" "<<pat<<std::endl;
+            //std::cout<<res.first<<" "<<(r-C[cc]+1)<<" "<<res.second<<" "<<j<<std::endl;
         }
+
         //std::cout<<"mio:"<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
         int64_t sa_samp = sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
         //std::cout<<"mio: \""<<pat<<"\" -> "<<l<<" "<<r<<" "<<sa_samp<<std::endl;
