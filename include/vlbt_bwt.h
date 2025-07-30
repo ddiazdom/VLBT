@@ -288,7 +288,6 @@ public:
                 rank_j = subtree_rank(bit_pos_j, j-child_j*block_size, symbol, sigma, rank_width, block_size, is_leaf);
             }
             return std::make_pair(rank_i, rank_j);
-
         }
 
         size_t bit_pos = bit_pos_i;
@@ -341,13 +340,13 @@ public:
             assert(child_i<scale_factor && child_j<scale_factor);
 
             //read the effective child for i
-            size_t eff_c_info = child_info & (1<<(child_i+1))-1;//clean the bits marking the right siblings
+            size_t eff_c_info = child_info & ((1<<(child_i+1))-1);//clean the bits marking the right siblings
             child_i = __builtin_popcount(eff_c_info)-1;//eff child (zero-based)
             size_t n_real_lsib = 63-__builtin_clzll(eff_c_info);//= select_1(child_info, (eff child)+1)-1
             i-=n_real_lsib*bk_sz;//number of symbols before child i within the node
 
             //read the effective child for j
-            eff_c_info = child_info & (1<<(child_j+1))-1;//clean the bits marking the right siblings
+            eff_c_info = child_info & ((1<<(child_j+1))-1);//clean the bits marking the right siblings
             child_j = __builtin_popcount(eff_c_info)-1;//eff child (zero-based)
             n_real_lsib = 63-__builtin_clzll(eff_c_info);//= select_1(child_info, (eff child)+1)-1
             j-=n_real_lsib*bk_sz;//number of symbols before child j within the node
@@ -377,7 +376,7 @@ public:
         } while(traverse_common_path);
 
         //entering this if means the range of siblings i,i+1,...,j does not contain the symbol
-        if((succ_pred_info>>child_i & (1<<(child_j-child_i+1))-1)==0) {
+        if((succ_pred_info>>child_i & ((1<<(child_j-child_i+1))-1))==0) {
             return std::make_pair(rank_i, rank_j);
         }
         //
@@ -387,7 +386,7 @@ public:
 
         //read pred info
         child_info |= 1<<scale_factor; //avoid corner cases for bitwise operations
-        const size_t sp_info_i = succ_pred_info & (1<<(child_i+1))-1;//remove right siblings of i
+        const size_t sp_info_i = succ_pred_info & ((1<<(child_i+1))-1);//remove right siblings of i
         if(sp_info_i!=0) {//rank for i still incomplete
             bool same_child = child_i==child_j;
 
@@ -409,7 +408,7 @@ public:
             }
         }
 
-        const size_t sp_info_j = succ_pred_info & (1<<(child_j+1))-1;//remove right siblings of j
+        const size_t sp_info_j = succ_pred_info & ((1<<(child_j+1))-1);//remove right siblings of j
         if(sp_info_j!=0) {//rank for j still incomplete
             size_t pred = 63-__builtin_clzll(sp_info_j);
             size_t start = stream_type::select64(child_info, pred+1);
@@ -1575,7 +1574,7 @@ public:
             path.bit_pos+= p*8;
 
             //start reading the header of child (there is no ext succ/pred info)
-            path.lvl++;
+            ++path.lvl;
             is_leaf = stream.read_bit(path.bit_pos++);
             path.node_sigma[path.lvl] = stream.pop_count(path.bit_pos, path.bit_pos+path.node_sigma[path.lvl-1]-1);
             path.sigma_pos[path.lvl]=path.bit_pos;

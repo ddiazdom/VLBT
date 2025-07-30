@@ -59,15 +59,17 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/Modules"
 
 find_package(LibSDSL REQUIRED)
 
+message("Compiling with ${SIMD_FLAGS}")
+
 #Build the BWT data structures
 add_executable(test_vlbt test_vlbt_suite.cpp)
 target_compile_options(test_vlbt
         PUBLIC
-        #-O3 -funroll-loops -fomit-frame-pointer -ffast-math
         -Wall -pedantic
-        -O3
+        #-O3
         ${SIMD_FLAGS}
 )
+
 target_link_libraries(test_vlbt LINK_PUBLIC ${LIBSDSL_LIBRARIES})
 target_include_directories(test_vlbt PUBLIC ${LIBSDSL_INCLUDE_DIRS})
 

@@ -61,7 +61,7 @@ static inline void print64x4(__m256i vec) {
     std::cout<<""<<std::endl;
 }
 
-static inline __m256i _m256_shift_right_epi8(__m256i input, uint8_t shift) {
+static inline __m256i _m256_shift_right_epi8(__m256i input, const uint8_t shift) {
     //from https://wunkolo.github.io/post/2020/11/gf2p8affineqb-int8-shifting/
     switch (shift) {
         case 0: return input;
@@ -76,7 +76,7 @@ static inline __m256i _m256_shift_right_epi8(__m256i input, uint8_t shift) {
     }
 }
 
-static inline __m256i _m256_shift_right_epi16(__m256i input, int shift) {
+static inline __m256i _m256_shift_right_epi16(__m256i input, const uint8_t shift) {
     switch (shift) {
         case 0: return input;
         case 1: return _mm256_srli_epi16(input, 1);
@@ -90,7 +90,7 @@ static inline __m256i _m256_shift_right_epi16(__m256i input, int shift) {
     }
 }
 
-static inline __m256i _m256_shift_right_epi32(__m256i input, int shift) {
+static inline __m256i _m256_shift_right_epi32(__m256i input, const uint8_t shift) {
     switch (shift) {
         case 0: return input;
         case 1: return _mm256_srli_epi32(input, 1);
@@ -104,7 +104,7 @@ static inline __m256i _m256_shift_right_epi32(__m256i input, int shift) {
     }
 }
 
-static inline __m256i m256_shift_right_epi64(__m256i input, int shift) {
+static inline __m256i m256_shift_right_epi64(__m256i input, const uint8_t shift) {
     switch (shift) {
         case 0: return input;
         case 1: return _mm256_srli_epi64(input, 1);
@@ -118,14 +118,15 @@ static inline __m256i m256_shift_right_epi64(__m256i input, int shift) {
     }
 }
 
-static inline void m256_psum_epi8_ovf(__m256i input, uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
+
+static inline void _m256_psum_epi8_ovf(__m256i input, const uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
 
     __m256i halves[2];
 
     uint16_t tmp[16];
     const __m256i idx_vec = _mm256_set1_epi16(idx);
-    __m128i low_bytes  = _mm256_extracti128_si256(input, 0);
-    __m128i high_bytes = _mm256_extracti128_si256(input, 1);
+    const __m128i low_bytes  = _mm256_extracti128_si256(input, 0);
+    const __m128i high_bytes = _mm256_extracti128_si256(input, 1);
 
     halves[0] = _mm256_cvtepu8_epi16(low_bytes);
     halves[1] = _mm256_cvtepu8_epi16(high_bytes);
@@ -139,10 +140,10 @@ static inline void m256_psum_epi8_ovf(__m256i input, uint32_t idx, uint32_t& pf_
     //print16x16(halves[0]);
 
     __m256i idx_mask = _mm256_cmple_epu16(halves[0], idx_vec);//mask for <=idx
-    uint64_t lt_low = (uint32_t) _mm256_movemask_epi8(idx_mask);
+    const uint64_t lt_low = _mm256_movemask_epi8(idx_mask);
     //print16x8(idx_mask);
 
-    halves[1] = _mm256_add_epi16(halves[1], _mm256_set_epi16(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,(tmp[7]+tmp[15])));
+    halves[1] = _mm256_add_epi16(halves[1], _mm256_set_epi16(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,tmp[7]+tmp[15]));
     halves[1] = _mm256_add_epi16(halves[1], _mm256_slli_si256(halves[1], 2));
     halves[1] = _mm256_add_epi16(halves[1], _mm256_slli_si256(halves[1], 4));
     halves[1] = _mm256_add_epi16(halves[1], _mm256_slli_si256(halves[1], 8));
@@ -154,20 +155,20 @@ static inline void m256_psum_epi8_ovf(__m256i input, uint32_t idx, uint32_t& pf_
     idx_mask = _mm256_cmple_epu16(halves[1], idx_vec);//mask for <=idx
     //print16x16(idx_mask);
 
-    uint64_t lt_high = (uint32_t) _mm256_movemask_epi8(idx_mask);
-    uint64_t lt = lt_low | (lt_high<<16);//two bits per element
+    const uint64_t lt_high = _mm256_movemask_epi8(idx_mask);
+    const uint64_t lt = lt_low | (lt_high<<16);//two bits per element
     idx_run = __builtin_ctzll(~lt)>>1;
 
     _mm256_storeu_si256((__m256i*)tmp, halves[idx_run>>3]);
     pf_sum = tmp[idx_run & 7];
 }
 
-static inline uint32_t m256_hsum_epi8_ovf(__m256i input) {
+static inline uint32_t _m256_hsum_epi8_ovf(__m256i input) {
 
-    __m128i low_bytes  = _mm256_extracti128_si256(input, 0);
-    __m128i high_bytes = _mm256_extracti128_si256(input, 1);
-    __m256i low = _mm256_cvtepu8_epi16(low_bytes);
-    __m256i high = _mm256_cvtepu8_epi16(high_bytes);
+    const __m128i low_bytes  = _mm256_extracti128_si256(input, 0);
+    const __m128i high_bytes = _mm256_extracti128_si256(input, 1);
+    const __m256i low = _mm256_cvtepu8_epi16(low_bytes);
+    const __m256i high = _mm256_cvtepu8_epi16(high_bytes);
 
     const __m256i sum1 = _mm256_add_epi16(low, high);
     //print16x16(sum1);
@@ -183,7 +184,7 @@ static inline uint32_t m256_hsum_epi8_ovf(__m256i input) {
     return tmp[0]+tmp[8];
 }
 
-static inline uint32_t m256_hsum_epi8(__m256i input) {
+static inline uint32_t _m256_hsum_epi8(__m256i input) {
     __m256i sad = _mm256_sad_epu8(input, _mm256_setzero_si256());
     sad = _mm256_add_epi64(sad, _mm256_srli_si256(sad, 8));
 
@@ -193,7 +194,8 @@ static inline uint32_t m256_hsum_epi8(__m256i input) {
     return _mm256_cvtsi256_si32(sad);
 }
 
-static inline void m256_psum_epi16_ovf(__m256i input, uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
+
+static inline void _m256_psum_epi16_ovf(__m256i input, uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
 
     __m256i halves[2];
 
@@ -238,90 +240,116 @@ static inline void m256_psum_epi16_ovf(__m256i input, uint32_t idx, uint32_t& pf
     pf_sum = pf_sum_vec[idx_run & 3];
 }
 
-static inline uint32_t m256_hsum_epi16_ovf(__m256i input) {
+static inline uint32_t _m256_hsum_epi16_ovf(__m256i input) {
 
     const __m256i sum = _mm256_add_epi32(_mm256_shuffle_epi8(input, _mm256_set_epi8(-1,-1,7,6, -1,-1,5,4, -1,-1,3,2, -1,-1,1,0,
                                                                                     -1,-1,7,6, -1,-1,5,4, -1,-1,3,2, -1,-1,1,0)),
                                          _mm256_shuffle_epi8(input, _mm256_set_epi8(-1,-1,15,14, -1,-1,13,12, -1,-1,11,10, -1,-1,9,8,
                                                                                     -1,-1,15,14, -1,-1,13,12, -1,-1,11,10, -1,-1,9,8)));
 
-    const __m256i sum2 = _mm256_hadd_epi32(sum, sum);
-
-    __m128i sum_high = _mm256_extractf128_si256(sum2, 1);
-    __m128i result = _mm_add_epi64(sum_high, _mm256_castsi256_si128(sum));
-    return _mm_cvtsi128_si32(result);
+    const __m256i sum1 = _mm256_add_epi32(sum, _mm256_srli_si256(input, 4));
+    const __m256i sum2 = _mm256_add_epi32(sum1, _mm256_srli_si256(sum1, 8));
+    uint32_t tmp[8];
+    _mm256_storeu_si256((__m256i *)&tmp, sum2);
+    return tmp[0]+tmp[4];
 }
 
-static inline uint32_t hsum_epi16(__m128i input) {
-    const __m128i sum1 = _mm_add_epi16(input, _mm_srli_si128(input, 2));
-    const __m128i sum2 = _mm_add_epi16(sum1, _mm_srli_si128(sum1, 4));
-    const __m128i sum3 = _mm_add_epi16(sum2, _mm_srli_si128(sum2, 8));
-    return _mm_cvtsi128_si32(sum3);
+static inline uint32_t _m256_hsum_epi16(const __m256i input) {
+    const __m256i sum1 = _mm256_add_epi16(input, _mm256_srli_si256(input, 2));
+    const __m256i sum2 = _mm256_add_epi16(sum1, _mm256_srli_si256(sum1, 4));
+    const __m256i sum3 = _mm256_add_epi16(sum2, _mm256_srli_si256(sum2, 8));
+    uint16_t tmp[16];
+    _mm256_storeu_si256((__m256i *)&tmp, sum3);
+    return tmp[0]+tmp[8];
 }
 
-static inline uint32_t hsum_epi32(__m128i input) {
-    const __m128i sum1 = _mm_add_epi32(input, _mm_srli_si128(input, 4));
-    const __m128i sum2 = _mm_add_epi32(sum1, _mm_srli_si128(sum1, 8));
-    return _mm_cvtsi128_si32(sum2);
+static inline uint32_t _m256_hsum_epi32(const __m256i input) {
+    const __m256i sum1 = _mm256_add_epi32(input, _mm256_srli_si256(input, 4));
+    const __m256i sum2 = _mm256_add_epi32(sum1, _mm256_srli_si256(sum1, 8));
+    uint32_t tmp[8];
+    _mm256_storeu_si256((__m256i *)&tmp, sum2);
+    return tmp[0]+tmp[4];
 }
 
-static inline uint64_t hsum_sum_epi64(__m128i input) {
-    const __m128i sum = _mm_add_epi32(input, _mm_srli_si128(input, 8));
-    return _mm_cvtsi128_si64(sum);
+static inline uint64_t _m256_hsum_sum_epi64(__m256i input) {
+    const __m256i sum = _mm256_add_epi32(input, _mm256_srli_si256(input, 8));
+    uint64_t tmp[4];
+    _mm256_storeu_si256((__m256i *)&tmp, sum);
+    return tmp[0]+tmp[2];
 }
 
 template<bool vbyte_compressed, uint8_t ctr_width, uint8_t bytes_per_run>
-static inline __m128i decode_block_sse42(const uint8_t **stream) {
+static inline __m256i decode_block_avx2(const uint8_t **stream) {
 
     if constexpr (vbyte_compressed) {
-        uint8_t *pshuf, ctrl_bits = **stream;
-        uint8_t len;
+
+        uint8_t *pshuf1, *pshuf2;
+        uint8_t ctrl_bits = **stream;
+        uint8_t len1, len2;
         if constexpr (ctr_width == 1) {
-            pshuf = (uint8_t *) &dec_table_16x8[ctrl_bits];
-            len = pshuf[14 + (ctrl_bits >> 7)] + 1;
+            pshuf1 = (uint8_t *) &dec_table_16x8[ctrl_bits];
+            len1 = pshuf1[14 + (ctrl_bits >> 7)] + 1;
+            ctrl_bits+=len1;
+            pshuf2 = (uint8_t *) &dec_table_16x8[ctrl_bits];
+            len2 = pshuf2[14 + (ctrl_bits >> 7)] + 1;
         } else if constexpr (ctr_width == 2) {
-            pshuf = (uint8_t *) &dec_table_32x4[ctrl_bits];
-            len = pshuf[12 + (ctrl_bits >> 6)] + 1;
+            pshuf1 = (uint8_t *) &dec_table_32x4[ctrl_bits];
+            len1 = pshuf1[12 + (ctrl_bits >> 6)] + 1;
+            ctrl_bits+=len1;
+            pshuf2 = (uint8_t *) &dec_table_32x4[ctrl_bits];
+            len2 = pshuf2[12 + (ctrl_bits >> 6)] + 1;
         } else if constexpr (ctr_width == 3) {
-            pshuf = (uint8_t *) &dec_table_64x2[ctrl_bits];
-            len = pshuf[8 + ((ctrl_bits >> 3) & 7)] + 1;
+            pshuf1 = (uint8_t *) &dec_table_64x2[ctrl_bits];
+            len1 = pshuf1[8 + ((ctrl_bits >> 3) & 7)] + 1;
+            ctrl_bits+=len1;
+            pshuf2 = (uint8_t *) &dec_table_64x2[ctrl_bits];
+            len2 = pshuf2[8 + ((ctrl_bits >> 3) & 7)] + 1;
         } else {
             exit(1);
         }
-        __m128i compressed =  _mm_loadu_si128((const __m128i*)(*stream+1));
-        __m128i dec_shuffle = _mm_loadu_si128((const __m128i*)pshuf);
-        __m128i data = _mm_shuffle_epi8(compressed, dec_shuffle);
-        *stream += len + 1;
+        const __m128i comp_low =  _mm_loadu_si128((const __m128i*)(*stream+1));
+        const __m128i comp_high =  _mm_loadu_si128((const __m128i*)(*stream+1+len1+1));
+        const __m256i compressed = _mm256_set_m128i(comp_high, comp_low);
 
+        const __m128i dec_shuffle_low = _mm_loadu_si128((const __m128i*)pshuf1);
+        const __m128i dec_shuffle_high = _mm_loadu_si128((const __m128i*)pshuf2);
+        const __m256i dec_shuffle = _mm256_set_m128i(dec_shuffle_high, dec_shuffle_low);
+
+        __m256i data = _mm256_shuffle_epi8(compressed, dec_shuffle);
+        *stream += len1 + len2 + 2;
         return data;
-
     } else {
-        __m128i data = _mm_loadu_si128((const __m128i*)(*stream));
+        __m256i data = _mm256_loadu_si256((const __m256i*)(*stream));
 
         //align the bytes
         if constexpr (bytes_per_run==3){
-            const __m128i dec_shuff = _mm_set_epi8(-1,11,10,9, -1,8,7,6, -1,5,4,3, -1,2,1,0);
-            data = _mm_shuffle_epi8(data, dec_shuff);
-            *stream+=12;
+            const __m256i dec_shuff = _mm256_set_epi8(-1,11,10,9, -1,8,7,6, -1,5,4,3, -1,2,1,0,
+                                                      -1,11,10,9, -1,8,7,6, -1,5,4,3, -1,2,1,0);
+            data = _mm256_shuffle_epi8(data, dec_shuff);
+            *stream+=24;
         } else if constexpr (bytes_per_run==5){
-            const __m128i dec_shuff = _mm_set_epi8(-1,-1,-1,9,8,7,6,5, -1,-1,-1,4,3,2,1,0);
-            data = _mm_shuffle_epi8(data, dec_shuff);
-            *stream+=10;
+            const __m256i dec_shuff = _mm256_set_epi8(-1,-1,-1,9,8,7,6,5, -1,-1,-1,4,3,2,1,0,
+                                                      -1,-1,-1,9,8,7,6,5, -1,-1,-1,4,3,2,1,0);
+            data = _mm256_shuffle_epi8(data, dec_shuff);
+            *stream+=20;
         } else if constexpr (bytes_per_run==6){
-            const __m128i dec_shuff = _mm_set_epi8(-1,-1,11,10,9,8,7,6, -1,-1,5,4,3,2,1,0);
-            data = _mm_shuffle_epi8(data, dec_shuff);
-            *stream+=12;
+            const __m256i dec_shuff = _mm256_set_epi8(-1,-1,11,10,9,8,7,6, -1,-1,5,4,3,2,1,0,
+                                                      -1,-1,11,10,9,8,7,6, -1,-1,5,4,3,2,1,0);
+            data = _mm256_shuffle_epi8(data, dec_shuff);
+            *stream+=24;
         } else if constexpr (bytes_per_run==7){
-            const __m128i dec_shuff = _mm_set_epi8(-1,13,12,11,10,9,8,7, -1,6,5,4,3,2,1,0);
-            data = _mm_shuffle_epi8(data, dec_shuff);
-            *stream+=14;
+            const __m256i dec_shuff = _mm256_set_epi8(-1,13,12,11,10,9,8,7, -1,6,5,4,3,2,1,0,
+                                                      -1,13,12,11,10,9,8,7, -1,6,5,4,3,2,1,0);
+            data = _mm256_shuffle_epi8(data, dec_shuff);
+            *stream+=28;
         } else {
-            *stream+=16;
+            *stream+=32;
         }
         return data;
     }
 }
 
+/*
 template<bool overflow16, bool overflow32=false>
 static inline std::pair<uint64_t, uint8_t> inv_select_sse42_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx) {
 
@@ -596,30 +624,292 @@ static inline std::pair<uint64_t, uint8_t> inv_select_sse42_32x4(const uint8_t *
 
     return {rank, sym};
 }
+*/
 
-//byte compressed by default
-template<uint8_t bytes_per_run>
-static inline std::pair<uint64_t, uint8_t> inv_select_sse42_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
-    return {0,0};
+template<bool overflow16, bool overflow32=false, bool check_head>
+static inline int64_t rank_avx2_8x32(const uint8_t **stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
+
+    //NOTE here I do not need to vbyte compress the block
+    const uint8_t sigma_bits = sym_width(sigma);
+    const uint8_t alpha_m = (1UL << sigma_bits)-1;
+    const __m256i alpha_mask = _mm256_set1_epi8(alpha_m);
+    const __m256i sym_vec = _mm256_set1_epi8(symbol);
+
+    __m256i block = _mm256_loadu_si256((const __m256i*)*stream);
+    *stream+=32;
+    __m256i bk_lengths =  _m256_shift_right_epi8(block, sigma_bits);
+
+    uint32_t prev_acc = 0;
+
+    //print8x32(bk_lengths);
+
+    //the back of the block *might* contain garbage, so I have to assume overflow
+    uint32_t acc = _m256_hsum_epi8_ovf(bk_lengths);
+
+    uint32_t rank=0;
+    size_t l=0;
+    while(acc<=idx){
+        //compute acc rank in the previous block
+        bk_lengths = _mm256_and_si256(bk_lengths, _mm256_cmpeq_epi8(_mm256_and_si256(block, alpha_mask), sym_vec));
+        if constexpr (overflow16 || overflow32){
+            rank += _m256_hsum_epi8_ovf(bk_lengths);
+        } else {
+            rank += _m256_hsum_epi8(bk_lengths);
+        }
+
+        block = _mm256_loadu_si256((const __m256i*)*stream);
+        *stream+=32;
+        bk_lengths = _m256_shift_right_epi8(block, sigma_bits);
+        //print8x16(bk_lengths);
+        prev_acc = acc;
+        acc += _m256_hsum_epi8_ovf(bk_lengths);
+        l++;
+    }
+
+    idx-=prev_acc;
+    uint32_t idx_run, pf_sum;
+
+    if constexpr(overflow16 || overflow32){
+        _m256_psum_epi8_ovf(bk_lengths, idx, pf_sum, idx_run);
+    } else{
+        //prefix sum without overflow
+        uint8_t tmp[32];
+        bk_lengths = _mm256_add_epi8(bk_lengths, _mm256_slli_si256(bk_lengths, 1));
+        bk_lengths = _mm256_add_epi8(bk_lengths, _mm256_slli_si256(bk_lengths, 2));
+        bk_lengths = _mm256_add_epi8(bk_lengths, _mm256_slli_si256(bk_lengths, 4));
+        bk_lengths = _mm256_add_epi8(bk_lengths, _mm256_slli_si256(bk_lengths, 8));
+        _mm256_storeu_si256((__m256i *)&tmp, bk_lengths);//this is due to limitations in the shift in 256-bit lanes
+        bk_lengths = _mm256_add_epi16(bk_lengths, _mm256_set_m128i(_mm_set1_epi8(tmp[15]), _mm_set1_epi8(0)));
+        //
+
+        //print8x32(bk_lengths);
+        const __m256i idx_mask = _mm256_cmple_epu8(bk_lengths, _mm256_set1_epi8(idx));//mask for >idx
+        const uint32_t less_than = _mm256_movemask_epi8(idx_mask);
+        idx_run = __builtin_ctzll(~less_than);
+
+        //print8x16(idx_mask);
+        const __m256i shuff = _mm256_set1_epi8(idx_run);
+        const __m256i pf_sum_vec = _mm256_shuffle_epi8(bk_lengths, shuff);
+        pf_sum = ((uint8_t*)&pf_sum_vec)[0];
+    }
+
+    *stream -= 32;
+    const uint8_t run = (*stream)[idx_run];
+    const uint8_t last_symbol = run & alpha_m;
+
+    block = _mm256_loadu_si256((const __m256i*)*stream);
+    bk_lengths =  _m256_shift_right_epi8(block, sigma_bits);
+    bk_lengths = _mm256_and_si256(bk_lengths, _mm256_loadu_si256((const __m256i*)mask8x32[idx_run+1]));
+    bk_lengths = _mm256_and_si256(bk_lengths, _mm256_cmpeq_epi8(_mm256_and_si256(block, alpha_mask), sym_vec));
+
+    if constexpr (overflow16 || overflow32){
+        rank += _m256_hsum_epi8_ovf(bk_lengths);
+    }else{
+        rank += _m256_hsum_epi8(bk_lengths);
+    }
+
+    if constexpr (check_head) {
+        const uint8_t len = run >> sigma_bits;//get the length of the run where idx falls
+        const bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        const bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        rank -=(pf_sum-idx) * is_same_sym;
+        rank = (rank<<1) | is_head;
+        rank = (rank<<1) | is_same_sym;
+    } else {
+        rank -=(pf_sum-idx) * (last_symbol==symbol);
+    }
+    return rank;
 }
 
-template<bool overflow16, bool overflow32=false>
-static inline uint8_t access_sse42_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx){
-    return 0;
+template<bool vbyte_compressed, bool overflow8, bool overflow16=false, bool check_head>
+static inline int64_t rank_avx2_16x16(const uint8_t **stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
+
+    const uint8_t sigma_bits = sym_width(sigma);
+    const uint8_t alpha_m = (1UL << sigma_bits)-1;
+    const __m256i alpha_mask = _mm256_set1_epi16(alpha_m);
+    const __m256i sym_vec = _mm256_set1_epi16(symbol);
+
+    const uint8_t *prev_state = *stream;
+    __m256i block = decode_block_avx2<vbyte_compressed, 1, 2>(stream);
+    //print16x8(block);
+    __m256i bk_lengths =  _m256_shift_right_epi16(block, sigma_bits);
+    //print16x8(bk_lengths);
+
+    //the last block might have some garbage, so we have to assume overflow at the end
+    uint32_t prev_acc = 0;
+    uint32_t acc = _m256_hsum_epi16_ovf(bk_lengths);
+    uint64_t rank = 0;
+
+    while(acc<=idx){
+        bk_lengths = _mm256_and_si256(bk_lengths, _mm256_cmpeq_epi16(_mm256_and_si256(block, alpha_mask), sym_vec));
+        if constexpr (overflow16){
+            rank += _m256_hsum_epi16_ovf(bk_lengths);
+        }else{
+            rank += _m256_hsum_epi16(bk_lengths);
+        }
+
+        prev_state = *stream;
+        block = decode_block_avx2<vbyte_compressed,1,2>(stream);
+        //print16x8(block);
+        bk_lengths =  _m256_shift_right_epi16(block, sigma_bits);
+        //print16x8(bk_lengths);
+
+        prev_acc = acc;
+        acc += _m256_hsum_epi16_ovf(bk_lengths);
+    }
+
+    idx-=prev_acc;
+    uint32_t idx_run, pf_sum;
+
+    if constexpr (overflow8){
+        _m256_psum_epi16_ovf(bk_lengths, idx, pf_sum, idx_run);
+    }else{
+        //prefix sum without overflow
+        bk_lengths = _mm256_add_epi16(bk_lengths, _mm256_slli_si256(bk_lengths, 2));
+        bk_lengths = _mm256_add_epi16(bk_lengths, _mm256_slli_si256(bk_lengths, 4));
+        bk_lengths = _mm256_add_epi16(bk_lengths, _mm256_slli_si256(bk_lengths, 8));
+        //print16x8(bk_lengths);
+
+        const __m256i idx_mask = _mm256_cmple_epu16(bk_lengths, _mm256_set1_epi16(idx));//mask for <=idx
+        const uint32_t less_than = _mm256_movemask_epi8(_mm256_packs_epi16(idx_mask, _mm256_setzero_si256()));
+        idx_run = __builtin_ctzll(~less_than);
+        //print16x8(idx_mask);
+    }
+
+    const __m256i shuff = _mm256_add_epi8(_mm256_set_epi8(1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+                                                             1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0),
+                                                             _mm256_set1_epi8(idx_run<<1));
+    //print8x16(shuff);
+
+    const __m256i run_vec = _mm256_shuffle_epi8(block, shuff);
+    const auto run = static_cast<uint16_t>(_mm256_cvtsi256_si32(run_vec));
+    const uint8_t last_symbol = run & alpha_m;
+
+    if constexpr (!overflow8){
+        const __m256i pf_sum_vec = _mm256_shuffle_epi8(bk_lengths, shuff);
+        pf_sum = _mm256_cvtsi256_si32(pf_sum_vec);
+    }
+
+    *stream = prev_state;
+    block = decode_block_avx2<vbyte_compressed,1,2>(stream);
+
+    //print16x8(block);
+    bk_lengths =  m256_shift_right_epi64(block, sigma_bits);
+    //print16x8(bk_lengths);
+    bk_lengths = _mm256_and_si256(bk_lengths, _mm256_loadu_si256((const __m256i*)mask16x16[idx_run+1]));
+    //print16x8(bk_lengths);
+    bk_lengths = _mm256_and_si256(bk_lengths, _mm256_cmpeq_epi16(_mm256_and_si256(block, alpha_mask), sym_vec));
+    //print16x8(bk_lengths);
+
+    if constexpr (overflow8){
+        rank += _m256_hsum_epi16_ovf(bk_lengths);
+    }else{
+        rank += _m256_hsum_epi16(bk_lengths);
+    }
+
+    if constexpr (check_head) {
+        const uint16_t len = run >> sigma_bits;//get the length of the run where idx falls
+        const bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        const bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        rank -= (pf_sum-idx) * is_same_sym;
+        rank = (rank<<1) | is_head;
+        rank = (rank<<1) | is_same_sym;
+    } else {
+        rank -= (pf_sum-idx) * (last_symbol==symbol);
+    }
+
+    return (int64_t)rank;
 }
 
-template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
-static inline uint8_t access_sse42_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx){
-    return 0;
+template<bool vbyte_compressed, uint8_t bytes_per_run, bool check_head>
+static inline int64_t rank_avx2_32x8(const uint8_t ** stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
+
+    std::cout<<"holaa"<<std::endl;
+
+    const uint8_t sigma_bits = sym_width(sigma);
+    uint8_t alpha_m = (1UL << sigma_bits)-1;
+    const __m128i alpha_mask = _mm_set1_epi32(alpha_m);
+    const __m128i sym_vec = _mm_set1_epi32(symbol);
+
+    const uint8_t *prev_state = *stream;
+    __m128i block = decode_block_sse42<vbyte_compressed, 2, bytes_per_run>(stream);
+    //print32x4(block);
+    __m128i bk_lengths =  shift_right_epi32(block, sigma_bits);
+    //print32x4(bk_lengths);
+
+    uint32_t prev_acc=0;
+    uint64_t acc=hsum_epi32(bk_lengths);
+    uint64_t rank=0;
+
+    while(acc<=idx){
+        bk_lengths = _mm_and_si128(bk_lengths, _mm_cmpeq_epi32(_mm_and_si128(block, alpha_mask), sym_vec));
+        //print32x4(bk_lengths);
+        rank += hsum_epi32(bk_lengths);
+
+        prev_state = *stream;
+        block = decode_block_sse42<vbyte_compressed, 2, bytes_per_run>(stream);
+        //print32x4(block);
+        bk_lengths =  shift_right_epi32(block, sigma_bits);
+        //print32x4(bk_lengths);
+
+        prev_acc = acc;
+        acc += hsum_epi32(bk_lengths);
+    }
+
+    idx-=prev_acc;
+
+    bk_lengths = _mm_add_epi32(bk_lengths, _mm_slli_si128(bk_lengths, 4));
+    bk_lengths = _mm_add_epi32(bk_lengths, _mm_slli_si128(bk_lengths, 8));
+
+    //print32x4(bk_lengths);
+
+    __m128i idx_mask = _mm_cmple_epu32(bk_lengths, _mm_set1_epi32(idx));//mask for >idx
+
+    //print32x4(idx_mask);
+
+    uint64_t less_than = _mm_cvtsi128_si64(_mm_packs_epi32(idx_mask, _mm_setzero_si128()));
+    uint8_t idx_run = __builtin_ctzll(~less_than)>>4;
+
+    const __m128i shuff_idxs = _mm_set_epi8(3, 2, 1, 0, 3, 2, 1, 0, 3, 2, 1, 0, 3, 2, 1, 0);
+    const __m128i shuff = _mm_add_epi8(shuff_idxs, _mm_set1_epi8(idx_run<<2));
+
+    //print8x16(shuff);
+
+    const __m128i run_vec = _mm_shuffle_epi8(block, shuff);
+    uint32_t run = _mm_cvtsi128_si32(run_vec);
+    uint8_t last_symbol = run & alpha_m;
+
+    const __m128i pf_sum_vec = _mm_shuffle_epi8(bk_lengths, shuff);
+    uint32_t pf_sum = _mm_cvtsi128_si32(pf_sum_vec);
+
+    *stream = prev_state;
+    block = decode_block_sse42<vbyte_compressed, 2, bytes_per_run>(stream);
+    //print32x4(block);
+    bk_lengths =  shift_right_epi32(block, sigma_bits);
+    //print32x4(bk_lengths);
+    bk_lengths = _mm_and_si128(bk_lengths, _mm_loadu_si128((const __m128i*)mask32x4[idx_run+1]));
+    //print32x4(bk_lengths);
+    bk_lengths = _mm_and_si128(bk_lengths, _mm_cmpeq_epi32(_mm_and_si128(block, alpha_mask), sym_vec));
+    //print32x4(bk_lengths);
+
+    rank += hsum_epi32(bk_lengths);
+
+    if constexpr (check_head) {
+        const uint32_t len = run >> sigma_bits;//get the length of the run where idx falls
+        const bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
+        const bool is_head = is_same_sym && (pf_sum-len)==idx;//check if idx is the head of the run
+        rank -= (pf_sum-idx) * is_same_sym;
+        rank = (rank<<1) | is_head;
+        rank = (rank<<1) | is_same_sym;
+    } else {
+        rank -= (pf_sum-idx)*(last_symbol==symbol);
+    }
+
+    return (int64_t)rank;
 }
 
-template<bool vbyte_compressed, uint8_t bytes_per_run>
-static inline uint8_t access_sse42_32x4(const uint8_t **stream, uint8_t sigma, uint64_t idx){
-    return 0;
-}
-
-template<uint8_t bytes_per_run>
-static inline uint8_t access_sse42_64x2(const uint8_t **stream, uint8_t sigma, uint64_t idx){
+template<uint8_t bytes_per_run, bool check_head>
+static inline int64_t rank_avx2_64x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
     return 0;
 }
 #endif //VLBT_SCAN_AVX2_H
