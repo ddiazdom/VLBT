@@ -191,14 +191,13 @@ static inline uint32_t _m256_hsum_epi8_ovf(__m256i input) {
     return tmp[0]+tmp[8];
 }
 
-static inline uint32_t _m256_hsum_epi8(__m256i input) {
+static inline uint32_t _m256_hsum_epi8(const __m256i input) {
     __m256i sad = _mm256_sad_epu8(input, _mm256_setzero_si256());
     sad = _mm256_add_epi64(sad, _mm256_srli_si256(sad, 8));
 
-    __m256i v_shifted = _mm256_permute4x64_epi64(sad, _MM_SHUFFLE(0, 0, 0, 2));
+    const auto v_shifted = _mm256_permute4x64_epi64(sad, _MM_SHUFFLE(0, 0, 0, 2));
     sad = _mm256_add_epi64(sad, v_shifted);
-
-    return _mm256_cvtsi256_si32(sad);
+    return _mm_cvtsi128_si32(_mm256_castsi256_si128(sad));
 }
 
 static inline void _m256_psum_epi16_ovf(__m256i input, uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
@@ -1006,9 +1005,9 @@ static inline int64_t rank_avx2_64x4(const uint8_t ** stream, uint8_t sigma, uin
         __m256i sym_mask = _mm256_cmpeq_epi16(_mm256_and_si256(block, alpha_mask), sym_vec);
 
         _mm256_storeu_si256((__m256i *)&acc, bk_lengths);
-        /*for(size_t j=0;j<16;j++){
-            std::cout<<i<<" = "<<idx<<" -> "<<j<<" / "<<acc[j]<<std::endl;
-        }* /
+        //for(size_t j=0;j<16;j++){
+        //    std::cout<<i<<" = "<<idx<<" -> "<<j<<" / "<<acc[j]<<std::endl;
+        //}
 
         __m256i pf_sum = _mm256_add_epi16(bk_lengths, _mm256_slli_si256(bk_lengths, 2));
         pf_sum = _mm256_add_epi16(pf_sum, _mm256_slli_si256(pf_sum, 4));
