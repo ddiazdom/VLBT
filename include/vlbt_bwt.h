@@ -1935,14 +1935,19 @@ public:
 
     [[nodiscard]] inline std::pair<uint64_t, uint64_t> count(const std::string &pat) const {
         size_t l=0, r=size()-1, j=pat.size();
+        //std::cout<<l<<" "<<r<<std::endl;
         while(j-->0 && l<=r){
             const uint8_t cc = packed_alpha[static_cast<uint8_t>(pat[j])];
             //l = C[cc] + rank(l, pat[j]); // count c in bwt[0..l-1]
             //r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
             //std::cout<<"MIO: "<<l<<" "<<r<<std::endl;
+            //if (l==318293608) {
+            //    std::cout<<"holaa"<<std::endl;
+            //}
             auto [fst, snd] = range_rank_no_sa_head(l, r+1, pat[j]);
             l = C[cc] + fst;
             r = C[cc] + snd-1;
+            //std::cout<<l<<" "<<r<<" "<<j<<" "<<int(pat[j])<<std::endl;
         }
         return {l, r};
     }

@@ -207,9 +207,10 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
 
     fm_index<sdsl::custom_wt_rlmn<>> csa_rlmn(wt_rlmn, C, "", my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
     //TODO checking for errors
-    //std::string pattern = "wart ";
-    //my_dt.count(pattern);
-    //csa_rlmn.backward_search(pattern);
+    std::string pattern = "nstein]]\n[[ko:???? ?????]";
+    csa_rlmn.backward_search(pattern);
+    my_dt.count(pattern);
+
     //std::cout<<my_dt.sa_head_for_next(151244695, 'w')<<std::endl;
     //std::cout<<my_dt.sa_head_for_next(151208662, 'w')<<std::endl;
     //std::cout<<my_dt.rank(228000000, 'T')<<std::endl;
@@ -389,9 +390,15 @@ void test_access(bwt_type& my_dt, std::string& input_file, std::string my_dt_nam
 template<class bwt_type>
 void test_rank(bwt_type& my_dt, std::string& input_file, std::string my_dt_name){
 
+
     std::cout<<"Testing rank (avg_time in nanoseconds)"<<std::endl;
     sdsl::custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
+
+    //auto res1 = my_dt.rank(318304566, 111);
+    //auto res2 = wt_rlmn.rank(318304566, 111);
+    //std::cout<<res1<<" "<<res2<<std::endl;
+    //assert(res1==res2);
 
     size_t samp_size = 1000000;
     std::vector<std::pair<uint64_t, uint8_t>> tests = compute_random_rank_queries(wt_rlmn.size(), wt_rlmn.sigma, samp_size);

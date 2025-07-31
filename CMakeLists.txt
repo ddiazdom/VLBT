@@ -66,7 +66,7 @@ add_executable(test_vlbt test_vlbt_suite.cpp)
 target_compile_options(test_vlbt
         PUBLIC
         -Wall -pedantic
-        #-O3
+        -O3
         ${SIMD_FLAGS}
 )
 
