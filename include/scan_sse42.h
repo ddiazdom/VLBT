@@ -401,7 +401,7 @@ static inline auto inv_select_sse42_8x16(const uint8_t **stream, uint8_t sigma, 
         const auto run_id= l*16 + idx_run;
         int64_t options[2] = {-1, static_cast<int64_t>(run_id)};
         return std::make_tuple(rank, sym, options[idx==pf_sum]);
-    }else{
+    } else {
         return std::make_pair(rank, sym);
     }
 }

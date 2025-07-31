@@ -784,7 +784,7 @@ struct rl_node {//state of the compression
         stats.lfs_offset+=bwt_rep.lfs_bits;
     }
 
-    void inline get_max_psum(uint64_t* tmp_psum, uint64_t* max_psum) const {
+    static void inline get_max_psum(uint64_t* tmp_psum, uint64_t* max_psum) {
         //max prefix sum within 4 blocks with 8 runs each
         uint64_t tmp_max = std::max(std::max(tmp_psum[0], tmp_psum[1]),
                                     std::max(tmp_psum[2], tmp_psum[3]));
@@ -800,14 +800,14 @@ struct rl_node {//state of the compression
             max_psum[1] = tmp_max;
         }
 
-        //max prefix sum within one blocks withn 32 runs
-        tmp_psum[0]+=tmp_psum[2];
+        //max prefix sum within one block with 32 runs each
+        tmp_max = tmp_psum[0]+tmp_psum[2];
         if(tmp_max>max_psum[2]){
-            max_psum[2] = tmp_psum[0];
+            max_psum[2] = tmp_max;
         }
     }
 
-    inline uint8_t compute_leaf_enc_code(uint8_t max_bytes, bool vbyte_enc, const uint64_t *max_psum) const {
+    static inline uint8_t compute_leaf_enc_code(uint8_t max_bytes, bool vbyte_enc, const uint64_t *max_psum) {
 
         uint8_t code = 0;
 
@@ -916,7 +916,7 @@ struct rl_node {//state of the compression
             node_sigma+=s;
         }
 
-        size_t bfr_dist[9]={0}, bytes;
+        size_t bfr_dist[9]={0};
         uint64_t tmp_psum[4]={0};//8,16,24,32
         uint64_t max_psum[3]={0};//8,16,32
         uint64_t bk = 0;
@@ -925,9 +925,10 @@ struct rl_node {//state of the compression
             for(auto & run : blocks[i]){
                 run.sym = packed_alphabet[run.sym];
                 //I need to use a fixed number of bits for the symbols (i.e., sym_width(node_sigma) bits)
-                bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.len)), 8);
-                bfr_dist[bytes]++;
+                size_t bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.len)), 8);
+                ++bfr_dist[bytes];
                 tmp_psum[bk>>3] += run.len;
+
                 bk++;
 
                 if(bk==32){
@@ -937,6 +938,16 @@ struct rl_node {//state of the compression
                 }
             }
         }
+        //TODO testing
+        /*if (blocks[0][0].len==53 &&
+            blocks[0][1].len==1 &&
+            blocks[0][2].len==16 &&
+            blocks[0][3].len==13 &&
+            blocks[0][4].len==1 &&
+            blocks[0][5].len==1 &&
+            blocks[0][6].len==3) {
+            std::cout<<"holaa "<<blocks[0][0].len<<std::endl;
+        }*/
         get_max_psum(tmp_psum, max_psum);
         assert(bfr_dist[0]==0);
 
@@ -976,7 +987,7 @@ struct rl_node {//state of the compression
             //rank information: previous trees
             r_width = sym_width(bwt_rep.max_freq);
         } else {
-            //the leaf is the child of an internal node
+            //the leaf is the child of internal node
             //rank information: previous siblings
             r_width = sym_width(b_size*s_factor*s_factor);
         }
@@ -988,7 +999,7 @@ struct rl_node {//state of the compression
         //allocate bytes for the information of this leaf
         buffer.reserve_in_bits(header_bits + run_bits);
 
-        //start writing the in the buffer
+        //start writing in the buffer
         size_t bit_pos = 0;
         //1 bit (true) to indicate this node is a leaf
         buffer.write(bit_pos, bit_pos, 1);
@@ -1032,9 +1043,9 @@ struct rl_node {//state of the compression
         if(n_blocks>stats.max_n_blocks) stats.max_n_blocks = n_blocks;
         stats.header_overhead+=header_bits;
         stats.rank_overhead+=rank_bits;
-        stats.rpl_freq[n_runs]++;
-        stats.leaf_depth_freq[lvl-1]++;//lvl=0 is the tree, so it doesn't count. lvl=1 is a root of a block
-        stats.leaf_enc_freq[leaf_enc]++;//the encoding type for a leaf
+        ++stats.rpl_freq[n_runs];
+        ++stats.leaf_depth_freq[lvl-1];//lvl=0 is the tree, so it doesn't count. lvl=1 is a root of a block
+        ++stats.leaf_enc_freq[leaf_enc];//the encoding type for a leaf
     }
 
     void runs_with_sa_samples_leaf(std::vector<block_type>& blocks,
@@ -1119,7 +1130,7 @@ struct rl_node {//state of the compression
             node_sigma+=s;
         }
 
-        size_t bfr_dist[9]={0}, bytes;
+        size_t bfr_dist[9]={0};
         uint64_t tmp_psum[4]={0};//8,16,24,32
         uint64_t max_psum[3]={0};//8,16,32
         uint64_t bk = 0;
@@ -1131,8 +1142,8 @@ struct rl_node {//state of the compression
             for(auto & run : blocks[i]){
                 run.sym = packed_alphabet[run.sym];
                 //We need to use a fixed number of bits for the symbols (i.e., sym_width(node_sigma) bits)
-                bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.len)), 8);
-                bfr_dist[bytes]++;
+                size_t bytes = INT_CEIL((sym_width(node_sigma)+sym_width(run.len)), 8);
+                ++bfr_dist[bytes];
                 tmp_psum[bk>>3] += run.len;
                 bk++;
 
@@ -1190,7 +1201,7 @@ struct rl_node {//state of the compression
             //rank information: previous trees
             r_width = sym_width(bwt_rep.max_freq);
         } else {
-            //the leaf is the child of an internal node
+            //the leaf is the child of internal node
             //rank information: previous siblings
             r_width = sym_width(b_size*s_factor*s_factor);
         }
@@ -1259,11 +1270,6 @@ struct rl_node {//state of the compression
         size_t samp_pos = bit_pos+n_runs;
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
-                //TODO remove later
-                if (run.sa_samp==215412989) {
-                    std::cout<<"holaa"<<std::endl;
-                }
-                //
                 bool is_samp = run.has_valid_sa_samp();
                 if(is_samp){
                     buffer.write(samp_pos, samp_pos+w-1, run.sa_samp);
@@ -1286,9 +1292,9 @@ struct rl_node {//state of the compression
         stats.runs_overhead += run_bits;
         stats.header_overhead+=header_bits;
         stats.rank_overhead+=rank_bits;
-        stats.rpl_freq[n_runs]++;
-        stats.leaf_depth_freq[lvl-1]++;//lvl=0 is the tree, so it doesn't count. lvl=1 is a root of a block
-        stats.leaf_enc_freq[leaf_enc]++;//the encoding type for a leaf
+        ++stats.rpl_freq[n_runs];
+        ++stats.leaf_depth_freq[lvl-1];//lvl=0 is the tree, so it doesn't count. lvl=1 is a root of a block
+        ++stats.leaf_enc_freq[leaf_enc];//the encoding type for a leaf
     }
 
     inline void create_leaf(std::vector<block_type>& blocks,

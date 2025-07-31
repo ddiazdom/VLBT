@@ -395,8 +395,8 @@ void test_rank(bwt_type& my_dt, std::string& input_file, std::string my_dt_name)
     sdsl::custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
 
-    //auto res1 = my_dt.rank(318304566, 111);
-    //auto res2 = wt_rlmn.rank(318304566, 111);
+    //auto res1 = my_dt.rank(9568701887, 10);
+    //auto res2 = wt_rlmn.rank(9568701887, 10);
     //std::cout<<res1<<" "<<res2<<std::endl;
     //assert(res1==res2);
 

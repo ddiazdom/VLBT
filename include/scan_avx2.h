@@ -128,46 +128,49 @@ static inline __m256i m256_shift_right_epi64(__m256i input, const uint8_t shift)
 
 static inline void _m256_psum_epi8_ovf(__m256i input, const uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
 
-    __m256i halves[2];
-
-    uint16_t tmp[16];
     const __m256i idx_vec = _mm256_set1_epi16(idx);
     const __m128i low_bytes  = _mm256_extracti128_si256(input, 0);
     const __m128i high_bytes = _mm256_extracti128_si256(input, 1);
 
+    __m256i halves[2];
     halves[0] = _mm256_cvtepu8_epi16(low_bytes);
     halves[1] = _mm256_cvtepu8_epi16(high_bytes);
 
+    //print16x16(halves[0]);
+    //print16x16(halves[1]);
+
+    uint16_t tmp[16];
     halves[0] = _mm256_add_epi16(halves[0], _mm256_slli_si256(halves[0], 2));
     halves[0] = _mm256_add_epi16(halves[0], _mm256_slli_si256(halves[0], 4));
     halves[0] = _mm256_add_epi16(halves[0], _mm256_slli_si256(halves[0], 8));
     _mm256_storeu_si256((__m256i *)&tmp, halves[0]);
     halves[0] = _mm256_add_epi16(halves[0], _mm256_set_m128i(_mm_set1_epi16(tmp[7]), _mm_set1_epi16(0)));
 
-    //print16x16(halves[0]);
 
     __m256i idx_mask = _mm256_cmple_epu16(halves[0], idx_vec);//mask for <=idx
-    const uint64_t lt_low = _mm256_movemask_epi8(idx_mask);
+    const uint64_t lt_low = static_cast<uint32_t>(_mm256_movemask_epi8(idx_mask));//the cast is necessary to avoid incorrect casting
     //print16x8(idx_mask);
 
     halves[1] = _mm256_add_epi16(halves[1], _mm256_set_epi16(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,tmp[7]+tmp[15]));
+
     halves[1] = _mm256_add_epi16(halves[1], _mm256_slli_si256(halves[1], 2));
     halves[1] = _mm256_add_epi16(halves[1], _mm256_slli_si256(halves[1], 4));
     halves[1] = _mm256_add_epi16(halves[1], _mm256_slli_si256(halves[1], 8));
     _mm256_storeu_si256((__m256i *)&tmp, halves[1]);
     halves[1] = _mm256_add_epi16(halves[1], _mm256_set_m128i(_mm_set1_epi16(tmp[7]), _mm_set1_epi16(0)));
 
+    //print16x16(halves[0]);
     //print16x16(halves[1]);
 
     idx_mask = _mm256_cmple_epu16(halves[1], idx_vec);//mask for <=idx
     //print16x16(idx_mask);
 
-    const uint64_t lt_high = _mm256_movemask_epi8(idx_mask);
-    const uint64_t lt = lt_low | (lt_high<<16);//two bits per element
+    const uint64_t lt_high = static_cast<uint32_t>(_mm256_movemask_epi8(idx_mask));//the cast is necessary to avoid incorrect casting
+    const uint64_t lt = lt_low | (lt_high<<32);//two bits per element
     idx_run = __builtin_ctzll(~lt)>>1;
 
-    _mm256_storeu_si256((__m256i*)tmp, halves[idx_run>>3]);
-    pf_sum = tmp[idx_run & 7];
+    _mm256_storeu_si256((__m256i*)tmp, halves[idx_run>15]);
+    pf_sum = tmp[idx_run & 15];
 }
 
 static inline uint32_t _m256_hsum_epi8_ovf(__m256i input) {
@@ -192,12 +195,19 @@ static inline uint32_t _m256_hsum_epi8_ovf(__m256i input) {
 }
 
 static inline uint32_t _m256_hsum_epi8(const __m256i input) {
-    __m256i sad = _mm256_sad_epu8(input, _mm256_setzero_si256());
-    sad = _mm256_add_epi64(sad, _mm256_srli_si256(sad, 8));
+    //__m256i sad = _mm256_sad_epu8(input, _mm256_setzero_si256());
+    //sad = _mm256_add_epi64(sad, _mm256_srli_si256(sad, 8));
+    //const auto v_shifted = _mm256_permute4x64_epi64(sad, _MM_SHUFFLE(0, 0, 0, 2));
+    //sad = _mm256_add_epi64(sad, v_shifted);
+    //return _mm_cvtsi128_si32(_mm256_castsi256_si128(sad));
+    const __m256i sum1 = _mm256_add_epi8(input, _mm256_srli_si256(input, 1));
+    const __m256i sum2 = _mm256_add_epi8(sum1, _mm256_srli_si256(sum1, 2));
+    const __m256i sum3 = _mm256_add_epi8(sum2, _mm256_srli_si256(sum2, 4));
+    const __m256i sum4 = _mm256_add_epi8(sum3, _mm256_srli_si256(sum3, 8));
 
-    const auto v_shifted = _mm256_permute4x64_epi64(sad, _MM_SHUFFLE(0, 0, 0, 2));
-    sad = _mm256_add_epi64(sad, v_shifted);
-    return _mm_cvtsi128_si32(_mm256_castsi256_si128(sad));
+    uint8_t tmp[32];
+    _mm256_storeu_si256((__m256i *)&tmp, sum4);
+    return tmp[0]+tmp[16];
 }
 
 static inline void _m256_psum_epi16_ovf(__m256i input, uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
@@ -222,7 +232,7 @@ static inline void _m256_psum_epi16_ovf(__m256i input, uint32_t idx, uint32_t& p
     halves[0] = _mm256_add_epi32(halves[0], _mm256_set_m128i(_mm_set1_epi32(tmp[3]), _mm_set1_epi32(0)));
 
     __m256i idx_mask = _mm256_cmple_epu32(halves[0], idx_vec);//mask for >idx
-    uint64_t lt_low = (uint32_t)_mm256_movemask_epi8(idx_mask);//4 bits represent one element
+    uint64_t lt_low = static_cast<uint32_t>(_mm256_movemask_epi8(idx_mask));//4 bits represent one element
 
     halves[1] = _mm256_add_epi32(halves[1], _mm256_set_epi32(0,0,0,0,0,0,0,(tmp[3]+tmp[7])));
 
@@ -236,7 +246,7 @@ static inline void _m256_psum_epi16_ovf(__m256i input, uint32_t idx, uint32_t& p
     //print32x8(idx_vec);
 
     idx_mask = _mm256_cmple_epu32(halves[1], idx_vec);//4 bits represent one element
-    const uint64_t lt_high = (uint32_t)_mm256_movemask_epi8(idx_mask);//4 bits represent one element
+    const uint64_t lt_high = static_cast<uint32_t>(_mm256_movemask_epi8(idx_mask));//4 bits represent one element
 
     lt_low |= lt_high<<32;
     //print32x8(idx_mask);
@@ -679,6 +689,8 @@ static inline int64_t rank_avx2_8x32(const uint8_t **stream, const uint8_t sigma
 
     uint32_t prev_acc = 0;
 
+    //print8x32(block);
+    //print8x32(_mm256_and_si256(block, alpha_mask));
     //print8x32(bk_lengths);
 
     //the back of the block *might* contain garbage, so I have to assume overflow
@@ -702,14 +714,17 @@ static inline int64_t rank_avx2_8x32(const uint8_t **stream, const uint8_t sigma
         prev_acc = acc;
         acc += _m256_hsum_epi8_ovf(bk_lengths);
         l++;
+
+        //print8x32(_mm256_and_si256(block, alpha_mask));
+        //print8x32(bk_lengths);
     }
 
     idx-=prev_acc;
     uint32_t idx_run, pf_sum;
 
-    if constexpr(overflow16 || overflow32){
+    if constexpr(overflow16 || overflow32) {
         _m256_psum_epi8_ovf(bk_lengths, idx, pf_sum, idx_run);
-    } else{
+    } else {
         //prefix sum without overflow
         uint8_t tmp[32];
         bk_lengths = _mm256_add_epi8(bk_lengths, _mm256_slli_si256(bk_lengths, 1));
@@ -720,15 +735,10 @@ static inline int64_t rank_avx2_8x32(const uint8_t **stream, const uint8_t sigma
         bk_lengths = _mm256_add_epi16(bk_lengths, _mm256_set_m128i(_mm_set1_epi8(tmp[15]), _mm_set1_epi8(0)));
         //
 
-        //print8x32(bk_lengths);
         const __m256i idx_mask = _mm256_cmple_epu8(bk_lengths, _mm256_set1_epi8(idx));//mask for >idx
         const uint32_t less_than = _mm256_movemask_epi8(idx_mask);
         idx_run = __builtin_ctzll(~less_than);
-
-        //print8x16(idx_mask);
-        const __m256i shuff = _mm256_set1_epi8(idx_run);
-        const __m256i pf_sum_vec = _mm256_shuffle_epi8(bk_lengths, shuff);
-        pf_sum = ((uint8_t*)&pf_sum_vec)[0];
+        pf_sum = tmp[idx_run] + tmp[15]*(idx_run>15);
     }
 
     *stream -= 32;
@@ -1021,14 +1031,14 @@ static inline int64_t rank_avx2_64x4(const uint8_t ** stream, uint8_t sigma, uin
         rank_acc = _mm256_add_epi16(rank_acc, _mm256_and_si256(bk_lengths, sym_mask));
 
         //TODO
-        /* _mm256_storeu_si256((__m256i *)&acc, pf_sum);
-        for(size_t j=0;j<16;j++){
-            std::cout<<idx<<" -> "<<j<<" / "<<acc[j]<<std::endl;
-        }
-        _mm256_storeu_si256((__m256i *)&acc, counter);
-        for(size_t j=0;j<16;j++){
-            std::cout<<j<<" | "<<acc[j]<<std::endl;
-        }* /
+        // _mm256_storeu_si256((__m256i *)&acc, pf_sum);
+        //for(size_t j=0;j<16;j++){
+        //    std::cout<<idx<<" -> "<<j<<" / "<<acc[j]<<std::endl;
+        //}
+        //_mm256_storeu_si256((__m256i *)&acc, counter);
+        //for(size_t j=0;j<16;j++){
+        //    std::cout<<j<<" | "<<acc[j]<<std::endl;
+        //}
         //
 
         if(idx<=last_pf){
