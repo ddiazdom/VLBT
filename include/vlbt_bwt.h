@@ -253,6 +253,105 @@ public:
         return find_next(child);
     }
 
+    template<bool check_head>
+    [[nodiscard]] inline auto scan_leaf(uint64_t bit_pos, size_t i, size_t j, uint8_t symbol,
+                                        const size_t node_sigma, const size_t rank_width) const {
+
+        const uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
+        symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//only works because bit_stream[bit_pos+symbol] is true
+        bit_pos+=node_sigma;
+        const size_t r_pos = bit_pos + symbol*rank_width;
+        const int64_t rank=stream.read(r_pos, r_pos+rank_width-1);
+        bit_pos+=new_sigma*rank_width;
+
+        const uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
+        bit_pos+= leaf_enc_width;
+
+        bool false_break;
+        if constexpr (var==WITH_TOEHOLDS){
+            if constexpr (check_head){
+                bit_pos+= run_byte_w + run_width;//skip the number of bytes we use to encode the runs
+                false_break = stream.read_bit(bit_pos++);//read if the leftmost run in this head is artificial
+            }else{
+                bit_pos+= run_byte_w + run_width + 1;//skip the metadata of the runs
+            }
+        }
+
+        const uint8_t *leaf_addr = reinterpret_cast<uint8_t *>(stream.stream)+(INT_CEIL(bit_pos, 8));
+        std::pair<int64_t, int64_t> ans;
+
+        //scan the runs in the leaf according to the leaf encoding
+        switch(leaf_enc) {
+            case 0:
+                ans = RANGE_RANK_8<false, false, check_head>(&leaf_addr, new_sigma, i, j, symbol);//runs use 1 byte (no vbyte)
+                break;
+            case 1:
+                ans = RANGE_RANK_8<true, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 1 byte (no vbyte)
+                break;
+            case 2:
+                ans = RANGE_RANK_8<true, true, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 2 bytes (no vbyte)
+                break;
+
+            case 3://template param: vbyte?, overflow8?, overflow16?
+                ans = RANGE_RANK_16<false, false, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 3 bytes (no vbyte)
+                break;
+            case 4:
+                ans = RANGE_RANK_16<false, true, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (no vbyte)
+                break;
+            case 5:
+                ans = RANGE_RANK_16<false, true, true, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (no vbyte)
+                break;
+            case 6:
+                ans = RANGE_RANK_16<true, false, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 2 bytes (vbyte)
+                break;
+            case 7:
+                ans = RANGE_RANK_16<true, true, false, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 3 bytes (vbyte)
+                break;
+            case 8:
+                ans = RANGE_RANK_16<true, true, true, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                break;
+
+            case 9://template param: vbyte?, bpr
+                ans = RANGE_RANK_32<false,3, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                break;
+            case 10:
+                ans = RANGE_RANK_32<true,3, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                break;
+            case 11:
+                ans = RANGE_RANK_32<false,4, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                break;
+            case 12:
+                ans = RANGE_RANK_32<true,4, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 4 bytes (vbyte)
+                break;
+
+            case 13://template param: bpr
+                ans = RANGE_RANK_64<5, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                break;
+            case 14:
+                ans = RANGE_RANK_64<6, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                break;
+            case 15:
+                ans = RANGE_RANK_64<7, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
+                break;
+            default:
+                std::cout<<"Undefined encoding"<<std::endl;
+                exit(1);
+        }
+
+        if constexpr (check_head){
+            //complete information
+            int64_t i_rank = ans.first;
+            const bool is_same_sym = i_rank & 1UL;//the query symbol is the same as the symbol of the run where "i" falls
+            i_rank>>=1;
+            const bool is_head = i_rank & 1UL;//the query symbol is the same as the symbol of the run where "i" falls and "i" is the head of that run
+            i_rank>>=1;
+            //
+            return std::make_tuple(rank + i_rank, rank + ans.second,  (!is_same_sym || (is_head && i>0) || (is_head && !false_break)));
+        } else {
+            return ans;
+        }
+    }
+
     [[nodiscard]] std::pair<uint64_t, uint64_t> range_rank_no_sa_head(size_t i, size_t j, uint8_t symbol) const {
 
         symbol = packed_alpha[symbol];
