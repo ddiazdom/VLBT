@@ -395,8 +395,8 @@ void test_rank(bwt_type& my_dt, std::string& input_file, std::string my_dt_name)
     sdsl::custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
 
-    //auto res1 = my_dt.rank(9568701887, 10);
-    //auto res2 = wt_rlmn.rank(9568701887, 10);
+    //auto res1 = my_dt.rank(126885946, 82);
+    //auto res2 = wt_rlmn.rank(126885946, 82);
     //std::cout<<res1<<" "<<res2<<std::endl;
     //assert(res1==res2);
 
@@ -574,8 +574,8 @@ int main(int argc, char** argv){
         //rl2plain(bwt_file, plain_input_file);
         //TESTED_DTS
     }
-    //test_bwt(input_prefix, output_prefix);
+    test_bwt(input_prefix, output_prefix);
     //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }
