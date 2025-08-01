@@ -811,8 +811,8 @@ static inline int64_t rank_neon_64x2(const uint8_t ** stream, const uint8_t sigm
 }
 
 template<bool overflow16, bool overflow32, bool check_head>
-static inline std::pair<int64_t, int64_t> range_rank_neon_8x16(const uint8_t **stream, const uint8_t sigma,
-                                                               uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
+static inline std::pair<uint64_t, uint64_t> range_rank_neon_8x16(const uint8_t **stream, const uint8_t sigma,
+                                                                 uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
@@ -943,8 +943,8 @@ static inline std::pair<int64_t, int64_t> range_rank_neon_8x16(const uint8_t **s
 }
 
 template<bool vbyte_compressed, bool overflow8, bool overflow16, bool check_head>
-static inline std::pair<int64_t, int64_t> range_rank_neon_16x8(const uint8_t **stream, const uint8_t sigma,
-                                                               uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
+static inline std::pair<uint64_t, uint64_t> range_rank_neon_16x8(const uint8_t **stream, const uint8_t sigma,
+                                                                 uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const int16x8_t alpha_shift = vdupq_n_u16(-sigma_bits);
@@ -1075,8 +1075,8 @@ static inline std::pair<int64_t, int64_t> range_rank_neon_16x8(const uint8_t **s
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run, bool check_head>
-static inline std::pair<int64_t, int64_t> range_rank_neon_32x4(const uint8_t ** stream, const uint8_t sigma,
-                                                               uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
+static inline std::pair<uint64_t, uint64_t> range_rank_neon_32x4(const uint8_t ** stream, const uint8_t sigma,
+                                                                uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const int32x4_t alpha_shift = vdupq_n_u32(-sigma_bits);

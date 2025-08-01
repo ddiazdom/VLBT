@@ -125,10 +125,10 @@ static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64
 //#define RANK_32 rank_avx2_32x8
 //#define RANK_64 rank_avx2_64x4
 
-#define RANGE_RANK_8 range_rank_avx2_8x32
-#define RANGE_RANK_16 range_rank_avx2_16x16
-#define RANGE_RANK_32 range_rank_avx2_32x8
-#define RANGE_RANK_64 range_rank_avx2_64x4
+#define RANGE_RANK_8 range_rank_sse42_8x16
+#define RANGE_RANK_16 range_rank_sse42_16x8
+#define RANGE_RANK_32 range_rank_sse42_32x4
+#define RANGE_RANK_64 range_rank_sse42_64x2
 
 #define FIRST_RUN_8 first_run_sse42_8x16
 #define FIRST_RUN_16 first_run_sse42_16x8
