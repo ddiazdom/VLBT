@@ -115,15 +115,15 @@ static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64
 #define ACCESS_32 access_sse42_32x4
 #define ACCESS_64 access_sse42_64x2
 
-#define RANK_8 rank_sse42_8x16
-#define RANK_16 rank_sse42_16x8
-#define RANK_32 rank_sse42_32x4
-#define RANK_64 rank_sse42_64x2
+//#define RANK_8 rank_sse42_8x16
+//#define RANK_16 rank_sse42_16x8
+//#define RANK_32 rank_sse42_32x4
+//#define RANK_64 rank_sse42_64x2
 
-//#define RANK_8 rank_avx2_8x32
-//#define RANK_16 rank_avx2_16x16
-//#define RANK_32 rank_avx2_32x8
-//#define RANK_64 rank_avx2_64x4
+#define RANK_8 rank_avx2_8x32
+#define RANK_16 rank_avx2_16x16
+#define RANK_32 rank_avx2_32x8
+#define RANK_64 rank_avx2_64x4
 
 #define RANGE_RANK_8 range_rank_sse42_8x16
 #define RANGE_RANK_16 range_rank_sse42_16x8
