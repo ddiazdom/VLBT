@@ -125,8 +125,7 @@ static inline __m256i m256_shift_right_epi64(__m256i input, const uint8_t shift)
     }
 }
 
-
-static inline void _m256_psum_epi8_ovf(__m256i input, const uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
+static inline void _m256_psum_epi8_ovf(const __m256i& input, const uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
 
     const __m256i idx_vec = _mm256_set1_epi16(idx);
     const __m128i low_bytes  = _mm256_extracti128_si256(input, 0);
@@ -135,9 +134,6 @@ static inline void _m256_psum_epi8_ovf(__m256i input, const uint32_t idx, uint32
     __m256i halves[2];
     halves[0] = _mm256_cvtepu8_epi16(low_bytes);
     halves[1] = _mm256_cvtepu8_epi16(high_bytes);
-
-    //print16x16(halves[0]);
-    //print16x16(halves[1]);
 
     uint16_t tmp[16];
     halves[0] = _mm256_add_epi16(halves[0], _mm256_slli_si256(halves[0], 2));
@@ -194,7 +190,7 @@ static inline uint32_t _m256_hsum_epi8_ovf(__m256i input) {
     return tmp[0]+tmp[8];
 }
 
-static inline uint32_t _m256_hsum_epi8(const __m256i input) {
+static inline uint32_t _m256_hsum_epi8(const __m256i& input) {
     //__m256i sad = _mm256_sad_epu8(input, _mm256_setzero_si256());
     //sad = _mm256_add_epi64(sad, _mm256_srli_si256(sad, 8));
     //const auto v_shifted = _mm256_permute4x64_epi64(sad, _MM_SHUFFLE(0, 0, 0, 2));
@@ -210,7 +206,7 @@ static inline uint32_t _m256_hsum_epi8(const __m256i input) {
     return tmp[0]+tmp[16];
 }
 
-static inline void _m256_psum_epi16_ovf(__m256i input, uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
+static inline void _m256_psum_epi16_ovf(const __m256i& input, const uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
 
     __m256i halves[2];
 
@@ -258,7 +254,7 @@ static inline void _m256_psum_epi16_ovf(__m256i input, uint32_t idx, uint32_t& p
     pf_sum = pf_sum_vec[idx_run & 7];
 }
 
-static inline uint32_t _m256_hsum_epi16_ovf(__m256i input) {
+static inline uint32_t _m256_hsum_epi16_ovf(const __m256i& input) {
 
     const __m256i sum = _mm256_add_epi32(_mm256_shuffle_epi8(input, _mm256_set_epi8(-1,-1,7,6, -1,-1,5,4, -1,-1,3,2, -1,-1,1,0,
                                                                                              -1,-1,7,6, -1,-1,5,4, -1,-1,3,2, -1,-1,1,0)),
@@ -273,7 +269,7 @@ static inline uint32_t _m256_hsum_epi16_ovf(__m256i input) {
     return tmp[0]+tmp[4];
 }
 
-static inline uint16_t _m256_hsum_epi16(const __m256i input) {
+static inline uint16_t _m256_hsum_epi16(const __m256i& input) {
     const __m256i sum1 = _mm256_add_epi16(input, _mm256_srli_si256(input, 2));
     const __m256i sum2 = _mm256_add_epi16(sum1, _mm256_srli_si256(sum1, 4));
     const __m256i sum3 = _mm256_add_epi16(sum2, _mm256_srli_si256(sum2, 8));
@@ -282,7 +278,7 @@ static inline uint16_t _m256_hsum_epi16(const __m256i input) {
     return tmp[0]+tmp[8];
 }
 
-static inline uint32_t _m256_hsum_epi32(const __m256i input) {
+static inline uint32_t _m256_hsum_epi32(const __m256i& input) {
     const __m256i sum1 = _mm256_add_epi32(input, _mm256_srli_si256(input, 4));
     const __m256i sum2 = _mm256_add_epi32(sum1, _mm256_srli_si256(sum1, 8));
     uint32_t tmp[8];
@@ -290,7 +286,7 @@ static inline uint32_t _m256_hsum_epi32(const __m256i input) {
     return tmp[0]+tmp[4];
 }
 
-static inline uint64_t _m256_hsum_epi64(__m256i input) {
+static inline uint64_t _m256_hsum_epi64(const __m256i& input) {
     const __m256i sum = _mm256_add_epi32(input, _mm256_srli_si256(input, 8));
     uint64_t tmp[4];
     _mm256_storeu_si256((__m256i *)&tmp, sum);
@@ -735,7 +731,7 @@ static inline int64_t rank_avx2_8x32(const uint8_t **stream, const uint8_t sigma
     const uint8_t last_symbol = run & alpha_m;
 
     //create a mask for the index position
-    //ef: idx_run = 3 is equal of {0:0xFF, 1:0xFF, 2:0xFF, 3:0xFF, 4:0, 5:0, ...}
+    //eg: idx_run = 3 yields {0:0xFF, 1:0xFF, 2:0xFF, 3:0xFF, 4:0, 5:0, ...}
     static const __m256i indices = _mm256_set_epi8(31,30,29,28,27,26,25,24,
                                                    23,22,21,20,19,18,17,16,
                                                    15,14,13,12,11,10,9,8,

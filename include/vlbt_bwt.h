@@ -1066,14 +1066,12 @@ public:
 
             //skip the pointer to the children and position the bit in the next byte-aligned position
             bit_pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
-            rank_width = sym_width(bk_sz*scale_factor);
-
             //add the bit offset. now bit_pos points to child
             bit_pos+= p*8;
 
+            rank_width = sym_width(bk_sz*scale_factor);
             //start reading the header of child (there is no ext succ/pred info)
             is_leaf = stream.read_bit(bit_pos++);
-            //has_symbol = stream.read_bit(bit_pos+symbol);
         }
 
         if(!rank_complete){
