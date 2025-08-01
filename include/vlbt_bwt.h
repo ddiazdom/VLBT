@@ -571,7 +571,6 @@ public:
                 rank_j = subtree_rank(bit_pos_j, j-child_j*block_size, symbol, sigma, rank_width, block_size, is_leaf);
             }
             return std::make_tuple(rank_i, rank_j, i_is_head);
-
         }
 
         size_t bit_pos = bit_pos_i;
@@ -585,9 +584,10 @@ public:
         //positions i and j fall in the same block and block has the symbol, but the block is a leaf
         size_t offset = child_i*block_size;
         if(stream.read_bit(bit_pos++)){
-            std::tie(rank_i, i_is_head) = subtree_rank<true>(bit_pos, i-offset, symbol, sigma, rank_width, block_size, true);
-            rank_j = subtree_rank(bit_pos, j-offset, symbol, sigma, rank_width, block_size, true);
-            return std::make_tuple(rank_i, rank_j, i_is_head);
+            //std::tie(rank_i, i_is_head) = subtree_rank<true>(bit_pos, i-offset, symbol, sigma, rank_width, block_size, true);
+            //rank_j = subtree_rank(bit_pos, j-offset, symbol, sigma, rank_width, block_size, true);
+            //return std::make_tuple(rank_i, rank_j, i_is_head);
+            return scan_leaf<true>(bit_pos, i-offset, j-offset, symbol, sigma, rank_width);
         }
         //
 
@@ -624,13 +624,13 @@ public:
             assert(child_i<scale_factor && child_j<scale_factor);
 
             //read the effective child for i
-            size_t eff_c_info = child_info & (1<<(child_i+1))-1;//clean the bits marking the right siblings
+            size_t eff_c_info = child_info & ((1<<(child_i+1))-1);//clean the bits marking the right siblings
             child_i = __builtin_popcount(eff_c_info)-1;//eff child (zero-based)
             size_t n_real_lsib = 63-__builtin_clzll(eff_c_info);//= select_1(child_info, (eff child)+1)-1
             i-=n_real_lsib*bk_sz;//number of symbols before child i within the node
 
             //read the effective child for j
-            eff_c_info = child_info & (1<<(child_j+1))-1;//clean the bits marking the right siblings
+            eff_c_info = child_info & ((1<<(child_j+1))-1);//clean the bits marking the right siblings
             child_j = __builtin_popcount(eff_c_info)-1;//eff child (zero-based)
             n_real_lsib = 63-__builtin_clzll(eff_c_info);//= select_1(child_info, (eff child)+1)-1
             j-=n_real_lsib*bk_sz;//number of symbols before child j within the node
@@ -660,20 +660,22 @@ public:
         } while(traverse_common_path);
 
         //entering this if means the range of siblings i,i+1,...,j does not contain the symbol
-        if((succ_pred_info>>child_i & (1<<(child_j-child_i+1))-1)==0) {
+        if((succ_pred_info>>child_i & ((1<<(child_j-child_i+1))-1))==0) {
             return std::make_tuple(rank_i, rank_j, i_is_head);
         }
         //
 
-        //read pred info
-        child_info |= 1<<scale_factor; //avoid corner cases
-        const size_t sp_info_i = succ_pred_info & (1<<(child_i+1))-1;//remove right siblings of i
-        const size_t rank_complete_i = sp_info_i==0;
         rank_i = rank;
         rank_j = rank;
+
+        //read pred info
+        child_info |= 1<<scale_factor; //avoid corner cases
+        const size_t sp_info_i = succ_pred_info & ((1<<(child_i+1))-1);//remove right siblings of i
+        const size_t rank_complete_i = sp_info_i==0;
         i_is_head = rank_complete_i;
 
         if(!rank_complete_i) {
+
             bool same_child = child_i==child_j;
 
             size_t pred = 63-__builtin_clzll(sp_info_i);
@@ -685,18 +687,20 @@ public:
             const size_t p = parent_ptr_area+child_i*p_width;
             bit_pos_i = pos + stream.read(p, p+p_width-1)*8;//add the bit offset. now bit_pos points to child
 
+            if(same_child){
+                //rank_j += subtree_rank(bit_pos_i, j, symbol, node_sigma, rank_width, bk_sz, is_leaf);
+                //return std::make_tuple(rank_i, rank_j, i_is_head);
+                auto res = scan_leaf<true>(bit_pos_i+1, i, j, symbol, node_sigma, rank_width);
+                return std::make_tuple(rank_i+std::get<0>(res), rank_j+std::get<1>(res), std::get<2>(res));
+            }
+
             const bool is_leaf = stream.read_bit(bit_pos_i++);
             auto res_i = subtree_rank<true>(bit_pos_i, i, symbol, node_sigma, rank_width, bk_sz, is_leaf);
             rank_i += res_i.first;
             i_is_head = res_i.second;
-
-            if(same_child){
-                rank_j += subtree_rank(bit_pos_i, j, symbol, node_sigma, rank_width, bk_sz, is_leaf);
-                return std::make_tuple(rank_i, rank_j, i_is_head);
-            }
         }
 
-        const size_t sp_info_j = succ_pred_info & (1<<(child_j+1))-1;//remove right siblings of j
+        const size_t sp_info_j = succ_pred_info & ((1<<(child_j+1))-1);//remove right siblings of j
         const size_t rank_complete_j = sp_info_j==0;
         if(!rank_complete_j) {
             size_t pred = 63-__builtin_clzll(sp_info_j);
@@ -2066,15 +2070,15 @@ public:
 
             const uint8_t cc = packed_alpha[static_cast<uint8_t>(pat[j])];
 
-            //auto tmp = range_rank(l, r+1, pat[j]);
-            //head[std::get<2>(tmp)] = {j, l};
-            //l = C[cc] + std::get<0>(tmp); // count c in bwt[0..l-1]
-            //r = C[cc] + std::get<1>(tmp) - 1; // count c in bwt[0..r]
+            auto tmp = range_rank(l, r+1, pat[j]);
+            head[std::get<2>(tmp)] = {j, l};
+            l = C[cc] + std::get<0>(tmp); // count c in bwt[0..l-1]
+            r = C[cc] + std::get<1>(tmp) - 1; // count c in bwt[0..r]
 
-            auto res = rank<true>(l, pat[j]);
-            head[res.second] = {j, l};
-            l = C[cc] + res.first;// count c in bwt[0..l-1]
-            r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
+            //auto res = rank<true>(l, pat[j]);
+            //head[res.second] = {j, l};
+            //l = C[cc] + res.first;// count c in bwt[0..l-1]
+            //r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
 
             //assert(std::get<0>(tmp)==res.first);
             //assert(std::get<1>(tmp)==(r-C[cc]+1));
