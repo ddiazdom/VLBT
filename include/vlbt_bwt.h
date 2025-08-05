@@ -721,6 +721,8 @@ public:
     template<bool check_head=false>
     auto subtree_rank(size_t bit_pos, size_t i, uint8_t symbol, size_t node_sigma, size_t rank_width, size_t bk_sz, bool is_leaf) const {
 
+        stream.prefetch(bit_pos);
+
         //descend over i
         bool rank_complete=false;
         bool following_pred=false;
@@ -739,7 +741,7 @@ public:
             node_sigma=new_sigma;
 
             bk_sz/=scale_factor;
-            size_t child = i_branches[following_pred]/bk_sz;
+            size_t child = (following_pred == 0 ? i_branches[0] : i_branches[1])/bk_sz;
             assert(child<scale_factor);
 
             size_t child_info = stream.read(bit_pos, bit_pos+scale_factor-1);
@@ -747,6 +749,8 @@ public:
 
             const size_t n_children = __builtin_popcount(child_info);//number of eff children
             assert(n_children>0);
+            size_t pred_info = bit_pos + symbol*n_children;
+            stream.prefetch(pred_info);
 
             child_info &= (1<<(child+1))-1;//clean the bits marking the right siblings
             child = __builtin_popcount(child_info)-1;//eff child (zero-based)
@@ -754,11 +758,11 @@ public:
             i_branches[0]-=n_real_lsib*bk_sz;//number of symbols before child within the node
 
             //read pred info
-            size_t pred_info = bit_pos + symbol*n_children;
             pred_info = stream.read(pred_info, pred_info+n_children-1);
             pred_info &=(1<<(child+1))-1;//remove right siblings
             rank_complete = pred_info==0;
-            const size_t pred = 64-__builtin_clzll(pred_info)-!rank_complete;
+
+            const size_t pred = 63-__builtin_clzll(pred_info|1);//the |1 is to avoid corner cases with 0
             const size_t start = stream_type::select64(child_info, pred+1);
             child_info |= 1<<scale_factor; //avoid corner cases
             n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
@@ -780,10 +784,10 @@ public:
 
             //skip the pointer to the children and position the bit in the next byte-aligned position
             bit_pos = INT_CEIL((bit_pos+(n_children*p_width)), 8)*8;
-            rank_width = sym_width(bk_sz*scale_factor);
-
             //add the bit offset. now bit_pos points to child
             bit_pos+= p*8;
+
+            rank_width = sym_width(bk_sz*scale_factor);
 
             //start reading the header of child (there is no ext succ/pred info)
             is_leaf = stream.read_bit(bit_pos++);
@@ -1804,10 +1808,10 @@ public:
 
     [[nodiscard]] inline uint64_t decode_sa_value(size_t bit_pos, size_t run_id, size_t n_runs) const {
         //NOTE: this function does ont check if run_id is valid
-        size_t sa_width = stream.read(bit_pos, bit_pos + int_pt_width - 1);//read the width
+        const size_t sa_width = stream.read(bit_pos, bit_pos + int_pt_width - 1);//read the width
         bit_pos += int_pt_width;
         //NOTE: this operation assumes stream[bit_pos+run_id] is true
-        size_t pos = stream.pop_count(bit_pos, bit_pos + run_id-1);//position of the sample in the encoding
+        const size_t pos = stream.pop_count(bit_pos, bit_pos + run_id-1);//position of the sample in the encoding
         bit_pos += n_runs;//move to the area where the SA values lie
         bit_pos += sa_width*pos;//move to the area where the SA for run_id lies
         return stream.read(bit_pos, bit_pos + sa_width - 1);

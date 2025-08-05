@@ -395,17 +395,19 @@ struct bit_stream{
     [[nodiscard]] inline size_t read(size_t i, size_t j) const{
         if constexpr (max_dist==1){
             return (stream[i>>word_shift] >> (i & (word_bits - 1UL))) & 1UL;
-        }else{
-            size_t cell_i = i >> word_shift;
-            size_t i_pos = (i & (word_bits - 1UL));
-            size_t cell_j = j >> word_shift;
-            if(cell_i == cell_j){
-                return (stream[cell_i] >> i_pos) & masks[(j - i + 1UL)];
-            }else{
-                size_t right = word_bits-i_pos;
-                size_t left = 1+(j & (word_bits - 1UL));
-                return ((stream[cell_j] & masks[left]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
-            }
+        } else {
+
+            const __uint128_t combined = (static_cast<__uint128_t>(stream[j>>word_shift]) << word_bits) | stream[i>>word_shift];
+            return combined >> (i & (word_bits-1UL)) & ((1ULL << (j-i+1)) - 1);
+
+            //size_t cell_i = i >> word_shift;
+            //size_t i_pos = i & (word_bits - 1UL);
+            //size_t cell_j = j >> word_shift;
+            //if(cell_i == cell_j){
+            //    return (stream[cell_i] >> i_pos) & masks[(j - i + 1UL)];
+            //}
+            //size_t right = word_bits-i_pos;
+            //return ((stream[cell_j] & masks[1+(j & (word_bits - 1UL))]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
 
             /*size_t cell_i = i >> word_shift;
             size_t i_pos = (i & (word_bits - 1UL));
@@ -419,26 +421,29 @@ struct bit_stream{
         }
     }
 
+    inline void prefetch(size_t i) const {
+        __builtin_prefetch(&stream[i>>word_shift], 0, 0);
+    }
+
     [[nodiscard]] inline bool read_bit(size_t i) const{
         return (stream[i>>word_shift] >> (i & (word_bits - 1UL))) & 1UL;
     }
 
 
-    [[nodiscard]] inline size_t pop_count(size_t i, size_t j) const{
+    [[nodiscard]] inline size_t pop_count(size_t i, size_t j) const {
         size_t cell_i = i >> word_shift;
         size_t i_pos = (i & (word_bits - 1UL));
         size_t cell_j = j >> word_shift;
-        if(cell_i == cell_j){
-            size_t val = (stream[cell_i] >> i_pos) & masks[(j - i + 1UL)];
-            return __builtin_popcountll(val);
-        }else{
+
+        if(cell_i != cell_j){
             size_t count=0;
-            for(size_t c=cell_i+1;c<cell_j;c++){
+            for(size_t c=cell_i+1;c<cell_j;++c){
                 count+=__builtin_popcountll(stream[c]);
             }
-            size_t left = 1+(j & (word_bits - 1UL));
-            return count + __builtin_popcountll(stream[cell_i] >> i_pos) + __builtin_popcountll(stream[cell_j] & masks[left]);
+            return count + __builtin_popcountll(stream[cell_i] >> i_pos) + __builtin_popcountll(stream[cell_j] & masks[1+(j & (word_bits - 1UL))]);
         }
+
+        return __builtin_popcountll((stream[cell_i] >> i_pos) & masks[(j - i + 1UL)]);
     }
 
     //from the SDSL

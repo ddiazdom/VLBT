@@ -1136,7 +1136,6 @@ struct rl_node {//state of the compression
         uint64_t bk = 0;
         size_t n_sa_samples=0;
         uint64_t max_samp=0;
-        bool discarded;
 
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
@@ -1154,7 +1153,7 @@ struct rl_node {//state of the compression
                 }
 
                 //discarded = run.sa_samp==run_type::unsamp_mark;
-                discarded = !run.has_valid_sa_samp();
+                bool discarded = !run.has_valid_sa_samp();
                 n_sa_samples+=!discarded;
                 if(!discarded && run.sa_samp>max_samp){
                     max_samp = run.sa_samp;

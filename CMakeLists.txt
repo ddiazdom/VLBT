@@ -66,12 +66,13 @@ add_executable(test_vlbt test_vlbt_suite.cpp)
 target_compile_options(test_vlbt
         PUBLIC
         -Wall -pedantic
-        -O3
+        #-O3
+        -g
         ${SIMD_FLAGS}
 )
 
 target_link_libraries(test_vlbt LINK_PUBLIC ${LIBSDSL_LIBRARIES})
-target_include_directories(test_vlbt PUBLIC ${LIBSDSL_INCLUDE_DIRS})
+target_include_directories(test_vlbt PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/r-index/internal)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     message(STATUS "Adding -march=native compiler flag due to ${CMAKE_CXX_COMPILER_ID}")
@@ -86,10 +87,9 @@ endif()
 add_executable(get_r_sa_samp scripts/get_r_sa_samples.cpp)
 target_link_libraries(get_r_sa_samp LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
 target_include_directories(get_r_sa_samp PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
-target_compile_options(get_r_sa_samp PUBLIC
-        -O3
-        ${SIMD_FLAGS})
+target_compile_options(get_r_sa_samp PUBLIC -O3 ${SIMD_FLAGS})
 
 add_executable(gen_patterns scripts/genpatterns.cpp)
-target_compile_options(gen_patterns PUBLIC -O3
-)
+target_compile_options(gen_patterns PUBLIC -O3)
+
+add_subdirectory(scripts/r-index)

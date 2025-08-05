@@ -60,7 +60,7 @@ static inline uint8x16_t decode_block_neon(const uint8_t **stream){
     }
 }
 
-static inline void psum_epi8_ovf(uint8x16_t input, uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
+static inline void psum_epi8_ovf(uint8x16_t input, const uint32_t idx, uint32_t& pf_sum, uint32_t& idx_run) {
     uint16x8_t halves[2];
     uint16x8_t idx_vec = vdupq_n_u16(idx);
 
@@ -575,6 +575,144 @@ static inline uint8_t access_neon_64x2(const uint8_t ** stream, uint8_t sigma, u
     return 0;
 }
 
+template<bool overflow16, bool overflow32=false>
+static inline std::pair<uint64_t, uint64_t> get_phi_run_neon_8x16(const uint8_t **stream, uint64_t idx){
+
+    //NOTE here I do not need to vbyte compress the block
+    uint8x16_t block =  vld1q_u8(*stream);
+    *stream+=16;
+    uint64_t prev_acc=0;
+    uint32_t idx_run=0;
+
+    uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(block)));
+    uint64_t acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+
+    while(acc<=idx){
+        block =  vld1q_u8(*stream);
+        *stream+=16;
+        idx_run+=16;
+        prev_acc = acc;
+        tmp = vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(block)));
+        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    }
+
+    idx-=prev_acc;
+
+    uint32_t pf_sum, tmp_idx_run;
+    if constexpr (overflow16){
+        psum_epi8_ovf(block, idx, pf_sum, tmp_idx_run);
+    }else {
+        //prefix sum
+        block = vaddq_u8(vextq_u8(vdupq_n_u8(0), block, 15), block);
+        block = vaddq_u8(vextq_u8(vdupq_n_u8(0), block, 14), block);
+        block = vaddq_u8(vextq_u8(vdupq_n_u8(0), block, 12), block);
+        block = vaddq_u8(vextq_u8(vdupq_n_u8(0), block, 8), block);
+        //
+        const uint8x16_t idx_mask = vcgtq_u8(block, vdupq_n_u8(idx));//mask for >idx
+        const uint8x8_t res = vshrn_n_u16(vreinterpretq_u16_u8(idx_mask), 4);
+        const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
+        tmp_idx_run = __builtin_ctzll(less_than)>>2;
+
+        const uint8x16_t shuff = vdupq_n_u8(tmp_idx_run);
+        pf_sum = vgetq_lane_u8(vqtbl1q_u8(block, shuff), 0);
+    }
+    const uint32_t offset = static_cast<uint32_t>((*stream - 16)[tmp_idx_run]) - (pf_sum-idx);
+    return std::make_pair(idx_run+tmp_idx_run, offset);
+}
+
+template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
+static inline std::pair<uint64_t, uint64_t> get_phi_run_neon_16x8(const uint8_t **stream, uint64_t idx){
+
+    uint16x8_t block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
+    uint64x2_t tmp  = vpaddlq_u32(vpaddlq_u16(block));
+    uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    uint32_t idx_run=0;
+
+    while(acc<=idx){
+        block = vreinterpretq_u16_u8(decode_block_neon<vbyte_compressed, 1, 2>(stream));
+        idx_run+=8;
+        prev_acc = acc;
+        tmp = vpaddlq_u32(vpaddlq_u16(block));
+        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    }
+
+    idx-=prev_acc;
+    uint32_t pf_sum, tmp_idx_run, len;
+
+    static const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
+    if constexpr (overflow8){
+        psum_epi16_ovf(block, idx, pf_sum, tmp_idx_run);
+        const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(tmp_idx_run<<1));
+        const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
+        len = vgetq_lane_u16(run_vec, 0);
+    } else {
+        //prefix sum
+        uint16x8_t pf_sum_vec = vaddq_u16(vextq_u16(vdupq_n_u16(0), block, 7), block);
+        pf_sum_vec = vaddq_u16(vextq_u16(vdupq_n_u16(0), pf_sum_vec, 6), pf_sum_vec);
+        pf_sum_vec = vaddq_u16(vextq_u16(vdupq_n_u16(0), pf_sum_vec, 4), pf_sum_vec);
+        //
+
+        const uint16x8_t idx_mask = vcgtq_u16(pf_sum_vec, vdupq_n_u16(idx));//mask for >idx
+        const uint8x8_t res = vshrn_n_u16(idx_mask, 4);
+        const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
+        tmp_idx_run = __builtin_ctzll(less_than) >> 3;
+
+        const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(tmp_idx_run<<1));
+
+        pf_sum = vgetq_lane_u16(vreinterpretq_u16_u8(vqtbl1q_u8(pf_sum_vec, shuff)), 0);
+
+        const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
+        len = vgetq_lane_u16(run_vec, 0);
+    }
+
+    uint64_t offset = len - (pf_sum-idx);
+    return std::make_pair(idx_run+tmp_idx_run, offset);
+}
+
+template<bool vbyte_compressed, uint8_t bytes_per_run>
+static inline std::pair<uint64_t, uint64_t> get_phi_run_neon_32x4(const uint8_t ** stream, uint64_t idx){
+
+    uint32x4_t block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
+    uint64x2_t tmp = vpaddlq_u32(block);
+    uint64_t prev_acc=0, acc = vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    uint32_t idx_run=0;
+
+    while(acc<=idx){
+        block = vreinterpretq_u32_u8(decode_block_neon<vbyte_compressed, 2, bytes_per_run>(stream));
+        prev_acc = acc;
+        idx_run+=4;
+        tmp = vpaddlq_u32(block);
+        acc += vadd_u64(vget_high_u64(tmp), vget_low_u64(tmp))[0];
+    }
+
+    idx-=prev_acc;
+
+    //prefix sum
+    uint32x4_t pf_sum_vec = vaddq_u32(vextq_u32(vdupq_n_u32(0), block, 3), block);
+    pf_sum_vec = vaddq_u32(vextq_u32(vdupq_n_u32(0), pf_sum_vec, 2), pf_sum_vec);
+    //
+
+    const uint32x4_t idx_mask = vcgtq_u32(pf_sum_vec, vdupq_n_u32(idx));// mask for >idx
+    const uint16x4_t res = vshrn_n_u32(idx_mask, 16);
+    const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u16(res), 0);
+    const uint8_t tmp_idx_run = __builtin_ctzll(less_than)>>4;
+
+    const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
+    const uint8x16_t shuff = vaddq_u32(shuff_idxs, vdupq_n_u8(tmp_idx_run<<2));
+
+    const uint32_t pf_sum = vgetq_lane_u32(vreinterpretq_u32_u8(vqtbl1q_u8(pf_sum_vec, shuff)), 0);
+
+    const uint32x4_t run_vec = vreinterpretq_u32_u8(vqtbl1q_u8(block, shuff));
+
+    const uint32_t offset = vgetq_lane_u32(run_vec, 0) - static_cast<uint32_t>(pf_sum - idx);
+    return std::make_pair(idx_run+tmp_idx_run, offset);
+}
+
+template<uint8_t bytes_per_run>
+static inline std::pair<uint64_t, uint64_t> get_phi_run_neon_64x2(const uint8_t ** stream, uint64_t idx){
+    return std::make_pair(0, 0);
+}
+
 template<bool overflow16, bool overflow32, bool check_head>
 static inline int64_t rank_neon_8x16(const uint8_t **stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
 
@@ -630,8 +768,7 @@ static inline int64_t rank_neon_8x16(const uint8_t **stream, const uint8_t sigma
         pf_sum = vgetq_lane_u8(vqtbl1q_u8(bk_lengths, shuff), 0);
     }
 
-    *stream -=16;
-    const uint8_t run = (*stream)[idx_run];
+    const uint8_t run = (*stream-16)[idx_run];
     const uint8_t last_symbol = run & alpha_m;
 
     //block = vld1q_u8(*stream);

@@ -18,27 +18,26 @@
 #include "include/vlbt_build_bwt.h"
 #include "include/vlbt_build_phi.h"
 #include "include/vlbt_build_sr_index.h"
-
 #include "include/vlbt_bwt.h"
 #include "include/vlbt_phi.h"
-//#include "include/vlbt_sr_index.h"
+#include "include/vlbt_sr_index.h"
 //=====
 
 #include "scripts/fm_index.h"
 #include "scripts/custom_wt_rlmn.hpp"
+#include "scripts/r-index/internal/r_index.hpp"
 #include <unordered_set>
 #include <vector>
 #include <random>
 
+/*
 using ulint = uint64_t;
 void header_error(){
     std::cout << "Error: malformed header in patterns file" << std::endl;
     std::cout << "Take a look here for more info on the file format: http://pizzachili.dcc.uchile.cl/experiments.html" << std::endl;
     exit(0);
 }
-
 ulint get_number_of_patterns(std::string header){
-
     ulint start_pos = header.find("number=");
     if (start_pos == std::string::npos or start_pos+7>=header.size())
         header_error();
@@ -68,7 +67,7 @@ ulint get_patterns_length(std::string header){
     ulint n = std::atoi(header.substr(start_pos).substr(0,end_pos).c_str());
 
     return n;
-}
+}*/
 
 std::vector<uint64_t> sample_unique(uint64_t n, uint64_t x) {
     if (x > n) throw std::invalid_argument("x cannot be larger than n");
@@ -276,26 +275,6 @@ template<class bwt_type>
 void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_name){
 
     std::cout<<"Testing locate (nanosecs/pat and nanosecs/occ)"<<std::endl;
-    std::string samp_sa_file = input_prefix+".sa_samples";
-
-    sdsl::custom_wt_rlmn<> wt_rlmn;
-    sdsl::load_from_file(wt_rlmn, input_prefix+".wt_rlmn");
-
-    std::vector<uint64_t> C(wt_rlmn.sigma+1, 0);
-    for(size_t sym=0;sym<wt_rlmn.sigma;sym++){
-        C[sym] = wt_rlmn.rank(wt_rlmn.size(), my_dt.eff2byte(sym));
-    }
-
-    size_t acc=0, tmp;
-    for(size_t i=0;i<wt_rlmn.sigma;i++){
-        tmp = C[i];
-        C[i] = acc;
-        acc+=tmp;
-    }
-    C[wt_rlmn.sigma] = acc;
-
-    fm_index<sdsl::custom_wt_rlmn<>, true> csa_rlmn(wt_rlmn, C, samp_sa_file, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
-
 
     std::string pat_file = input_prefix+".pats";
     std::ifstream ifs(pat_file);
@@ -314,11 +293,25 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         }
     }
 
-    //std::cout<<"HOlaa"<<std::endl;
-    //csa_rlmn.count_with_head(pat_list[255]);
-    //my_dt.count_with_head(pat_list[255]);
-    //exit(1);
+    std::string rindex_file = input_prefix+".ri";
+    std::ifstream rindex_ifs(rindex_file);
+    ri::r_index<> rindex;
+    rindex.load(rindex_ifs);
 
+    /*sdsl::custom_wt_rlmn<> wt_rlmn;
+    sdsl::load_from_file(wt_rlmn, input_prefix+".wt_rlmn");
+    std::vector<uint64_t> C(wt_rlmn.sigma+1, 0);
+    for(size_t sym=0;sym<wt_rlmn.sigma;sym++){
+        C[sym] = wt_rlmn.rank(wt_rlmn.size(), my_dt.eff2byte(sym));
+    }
+    size_t acc=0, tmp;
+    for(size_t i=0;i<wt_rlmn.sigma;i++){
+        tmp = C[i];
+        C[i] = acc;
+        acc+=tmp;
+    }
+    C[wt_rlmn.sigma] = acc;
+    fm_index<sdsl::custom_wt_rlmn<>, true> csa_rlmn(wt_rlmn, C, samp_sa_file, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
     size_t acc_count=0;
     size_t j=0;
     double rlmn_acc_time=0;
@@ -327,31 +320,30 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         MEASURE(csa_rlmn.count_with_head(p), rlmn_acc_time, rlmn_ans[j], std::chrono::nanoseconds)
         acc_count+=std::get<1>(rlmn_ans[j])-std::get<0>(rlmn_ans[j])+1;
         j++;
-    }
-    //std::cout<<"\tTotal number of occurrences "<<acc_count<<" avg:"<<double(acc_count)/double(n_pats)<<std::endl;
+    }*/
 
     double my_acc_time=0;
-    size_t my_acc_count=0;
-    j=0;
+    size_t acc_count=0;
+    size_t j=0;
     std::vector<std::tuple<uint64_t, uint64_t, uint64_t>> my_ans(n_pats);
     for(auto const& p : pat_list) {
-        MEASURE(my_dt.count_with_head(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
-        my_acc_count+=std::get<1>(my_ans[j])-std::get<0>(my_ans[j])+1;
+        MEASURE(my_dt.locate(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
+        acc_count+=std::get<1>(my_ans[j])-std::get<0>(my_ans[j])+1;
         j++;
     }
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(acc_count)<<"), ";
-    std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;
+    //std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;
 
-    for(size_t i=0;i<pat_list.size();i++){
-        if(std::get<0>(my_ans[i])!=std::get<0>(rlmn_ans[i]) ||
-           std::get<1>(my_ans[i])!=std::get<1>(rlmn_ans[i]) ||
-           std::get<2>(my_ans[i])!=std::get<2>(rlmn_ans[i])){
-            std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<std::get<0>(my_ans[i])<<"!="<<std::get<0>(rlmn_ans[i])<<" or "
-                                                                        <<std::get<1>(my_ans[i])<<"!="<<std::get<1>(rlmn_ans[i])<<" or "
-                                                                        <<std::get<2>(my_ans[i])<<"!="<<std::get<2>(rlmn_ans[i])<<std::endl;
+    /*for(size_t i=0;i<pat_list.size();i++){
+        if(std::get<0>(my_ans[i])!=std::get<0>(rindex_ans[i]) ||
+           std::get<1>(my_ans[i])!=std::get<1>(rindex_ans[i]) ||
+           std::get<2>(my_ans[i])!=std::get<2>(rindex_ans[i])){
+            std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<std::get<0>(my_ans[i])<<"!="<<std::get<0>(rindex_ans[i])<<" or "
+                                                                        <<std::get<1>(my_ans[i])<<"!="<<std::get<1>(rindex_ans[i])<<" or "
+                                                                        <<std::get<2>(my_ans[i])<<"!="<<std::get<2>(rindex_ans[i])<<std::endl;
             exit(1);
         }
-    }
+    }*/
 }
 
 template<class bwt_type>
@@ -479,8 +471,8 @@ void test_bwt(std::string& input_prefix, std::string& output_prefix){
 
     test_rank(bwt_dt, input_prefix, "vlbt_bwt");
     test_count(bwt_dt, input_prefix, "vlbt_bwt");
-    test_inverse_select(bwt_dt, input_prefix, "vlbt_bwt");
-    test_access(bwt_dt, input_prefix, "vlbt_bwt");
+    //test_inverse_select(bwt_dt, input_prefix, "vlbt_bwt");
+    //test_access(bwt_dt, input_prefix, "vlbt_bwt");
 }
 
 template<class sa_samp_type>
@@ -510,21 +502,23 @@ void test_bwt_th(std::string& input_prefix, size_t subsamp_val, std::string& out
 }
 
 template<class size_type>
-void test_phi(std::string& input_prefix, size_t ssamp_val, std::string& output_prefix){
+void test_phi(std::string& input_prefix, size_t ssamp_step, std::string& output_prefix){
 
     std::string samp_sa_file = input_prefix+".sa_samples";
     std::string str_ranges_file = input_prefix+".str_ranges";
 
-    std::string ssamp_phi_file = output_prefix+".ssamps_phi";
-    std::string ssamp_th_file = output_prefix+".ssamps_th";
+    std::string ssamp_heads_file = output_prefix+".ssamps_heads";
+    std::string ssamp_tails_file = output_prefix+".ssamps_tails";
 
-    subsample_sa_samples<size_type>(samp_sa_file, str_ranges_file, ssamp_val, ssamp_phi_file, ssamp_th_file);
-    using phi_type = vlbt_phi<262144, 64, 4>;
-    phi_type phi_dt;
-    build_phi<phi_type, uint64_t>(phi_dt, ssamp_phi_file);
+    subsample_sa_samples<size_type>(samp_sa_file, str_ranges_file, ssamp_step, ssamp_heads_file, ssamp_tails_file);
+
+    using phi_type = vlbt_phi<NO_VALID_AREA, 65536, 64, 4>;
+    phi_type phi;
+    phi.subsamp_step = ssamp_step;
+    build_phi<phi_type, uint64_t>(phi, ssamp_tails_file);
 
     std::string output_file = output_prefix+".vlbt_phi";
-    size_t written_bytes = store_to_file(output_file, phi_dt);
+    size_t written_bytes = store_to_file(output_file, phi);
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
 }
 
@@ -532,7 +526,7 @@ template<class size_type>
 void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& output_prefix){
 
     using bwt_th_type = vlbt_bwt<WITH_TOEHOLDS, 65536, 64, 4>;
-    using phi_type = vlbt_phi<65536, 64, 4>;
+    using phi_type = vlbt_phi<WITH_VALID_AREA, 65536, 64, 4>;
     using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
     sr_index_type sr_index;
     build_sr_index<sr_index_type , size_type>(sr_index, input_prefix, subsamp_step, output_prefix);
@@ -549,7 +543,7 @@ void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& 
     test_locate(sr_index, input_prefix, "sr_index");
 }
 
-int main(int argc, char** argv){
+int main(int argc, char** argv) {
 
     if(argc!=4){
         std::cout<<"usage: ./test_vlbt input_prefix build_other_dts=0|1 output_prefix"<<std::endl;
@@ -576,6 +570,6 @@ int main(int argc, char** argv){
     }
     //test_bwt(input_prefix, output_prefix);
     //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
-    //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    test_phi<uint64_t>(input_prefix, 4, output_prefix);
+    //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }

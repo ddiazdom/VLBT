@@ -6,7 +6,6 @@
 #define VLBT_BUILD_PHI
 
 #include "vlbt_phi.h"
-#include "vlbt_build_bwt.h"
 
 #ifdef __linux__
 #include <malloc.h>
@@ -28,13 +27,30 @@ struct phi_stat_collector{
     uint64_t tree_pointers_overhead=0;
     uint64_t trees_overhead=0;
     uint64_t max_n_blocks=0;
+    uint64_t valid_area_overhead=0;
 };
 
-template<class phi_dt_type, class size_type>
+template<class size_type>
+struct phi_run_type {
+
+    size_type sym=0;
+    size_type len=0;
+    int16_t valid_area=0;
+
+    phi_run_type(size_type _sym, size_type _len, int16_t _valid_area):
+            sym(_sym),
+            len(_len),
+            valid_area(_valid_area){};
+
+    phi_run_type()=default;
+};
+
+template<class phi_type, class size_type>
 struct phi_node {//state of the compression
 
-    typedef std::pair<size_type, size_type> run_type;
+    typedef phi_run_type<size_type> run_type;
     typedef std::vector<run_type> block_type;
+    typedef bit_stream<size_t> stream_type;
 
     size_t bk_len=0;//length of the active block
     size_t bk_id=0;//id of the active block
@@ -57,16 +73,16 @@ struct phi_node {//state of the compression
 
     const size_t lvl;//level of the subtree
     const size_t b_size;//block size for the level
-    const size_t s_factor = phi_dt_type::scale_factor;//shrinking factor for further subdivision
-    const size_t b_runs = phi_dt_type::max_block_runs;//maximum number of runs in a sequence of blocks
-    const uint8_t run_width = phi_dt_type::run_width;//number of bits we require to encode symbols in the range [0..b_runs]
+    const size_t s_factor = phi_type::scale_factor;//shrinking factor for further subdivision
+    const size_t b_runs = phi_type::max_block_runs;//maximum number of runs in a sequence of blocks
+    const uint8_t run_width = phi_type::run_width;//number of bits we require to encode symbols in the range [0..b_runs]
 
     phi_node *tmp_node = nullptr;
 
     stream_type buffer;
     stream_type children_buffer;
 
-    phi_dt_type& phi_rep; //data structure encoding the representation
+    phi_type& phi_rep; //data structure encoding the representation
     std::vector<block_type> active_blocks; //run-length compressed blocks conforming a tree node
     std::vector<bool> child_marks;//int a block of size b_size, it is a bit vector B[1..s_factor] that marks the original blocks of size b_size/s_factor in the collapsed blocks
     std::vector<uint64_t> block_ptr;//pointers (byte offsets) to the node's children
@@ -77,9 +93,9 @@ struct phi_node {//state of the compression
     std::vector<uint64_t> tree_offset;//number of symbols in the text before each tree
 
     //a struct to collect statistics about the data structure
-    phi_stat_collector<phi_dt_type>& stats;
+    phi_stat_collector<phi_type>& stats;
 
-    explicit phi_node(size_t _lvl, size_t _b_size, phi_dt_type& _phi_rep, phi_stat_collector<phi_dt_type>& st):
+    explicit phi_node(const size_t _lvl, const size_t _b_size, phi_type& _phi_rep, phi_stat_collector<phi_type>& st):
             lvl(_lvl),
             b_size(_b_size),
             phi_rep(_phi_rep),
@@ -164,18 +180,22 @@ struct phi_node {//state of the compression
         assert(aligned<8>(node_n_bits));
     }
 
-    inline void process_run(const size_type& sym, size_type& len) {
-        while(len>0){
-            if((bk_len+len)<b_size){
+    inline void process_run(run_type& run) {
+
+        while(run.len>0){
+            if((bk_len+run.len)<b_size){
+
                 //the run fits the block size
-                assert(len<=b_size);
-                bk_len+=len;
-                active_blocks[bk_id].emplace_back(sym, len);
-                len=0;
+                assert(run.len<=b_size);
+                bk_len+=run.len;
+                active_blocks[bk_id].emplace_back(run.sym, run.len, run.valid_area);
+                run.len=0;
+
             } else {// we complete a new block
+
                 //last run of the active block
                 size_t split_run_len = b_size-bk_len;
-                active_blocks[bk_id].emplace_back(sym, split_run_len);
+                active_blocks[bk_id].emplace_back(run.sym, split_run_len, run.valid_area);
                 bk_len+=split_run_len;
                 assert(split_run_len>0 && bk_len==b_size);
                 acc_runs+=active_blocks[bk_id].size();
@@ -185,7 +205,18 @@ struct phi_node {//state of the compression
                 if(acc_runs>=b_runs){
                     process_block_seq();
                 }
-                len -=split_run_len;
+
+                run.len -= split_run_len;
+
+                //this is a small hack due to the artificial breaks of the runs:
+                //we can break a run so that its valid area is the left side.
+                //thus, to know that the right side does not have a valid area, we set its value to 0
+                // to distinguish this case from the blocks where the full block is a valid area, we use -1.
+                // thus, if we see a valid area of -1, we know the block has a valid area, regardless if we break it
+                if (run.valid_area!=-1) {
+                    run.valid_area = run.valid_area > split_run_len ? run.valid_area - split_run_len : 0;
+                }
+
                 bk_len=0;
             }
         }
@@ -198,7 +229,7 @@ struct phi_node {//state of the compression
 
         //HEADER DESCRIPTION:
         //1 bit to indicate it is an internal node
-        //off_width bits store the offset of this node
+        //off_width bit store the offset of this node
         //s bits to indicate which children were collapsed
         //n_children pointers to the children
 
@@ -264,7 +295,7 @@ struct phi_node {//state of the compression
         //==
 
         //move to the next byte-aligned position
-        size_t header_bytes = INT_CEIL(bit_pos, 8);
+        const size_t header_bytes = INT_CEIL(bit_pos, 8);
         assert((header_bytes*8)==header_bits);
 
         //==add the stream of the children
@@ -285,15 +316,13 @@ struct phi_node {//state of the compression
         tree_offset[n_children]= phi_rep.tot_syms;
         size_t n_blocks = INT_CEIL(phi_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
 
-        //pt_bits indicates how many bits we use to encode pointers to the trees:
-        //node_n_bits/8 is the pointer and b_runs indicate collapsed blocks
+        //ext_pt_bits indicates how many bits we use to encode each of the pointers to the trees:
+        //node_n_bits/8 is the pointer, and b_runs indicate collapsed blocks
         //so far, node_n_bits considers:
-        // * the sum of the tree sizes in bits (excluding the external su/pred information)
-        // * the sum of the ext. succ/pred information for the trees
+        // * the sum of the tree sizes in bits
         phi_rep.ext_pt_width = std::max<uint16_t>(sym_width(node_n_bits/8), 2*run_width)+1;
 
         //(pt_bits*n_blocks) for the pointers to the trees
-        //+1 because we add a dummy tree at end for consistency
         size_t tree_ptr_bits = (phi_rep.ext_pt_width*n_blocks);
         size_t header_bits = tree_ptr_bits;
         phi_rep.header_bytes = INT_CEIL(header_bits, 8);
@@ -306,19 +335,19 @@ struct phi_node {//state of the compression
 
         //write the pointers to the trees
         bit_pos=0;
-        size_t c=0, l=0, n_syms, r, offsets;
+        size_t c=0, l=0;
         for(size_t b=0;b<n_children;b++){
 
             buffer.write(bit_pos, bit_pos+phi_rep.ext_pt_width-1, (block_ptr[b]<<1));
             //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<" tree_offset:"<<tree_offset[b]<<" "<<tree_offset[b+1]<<std::endl;
             bit_pos+=phi_rep.ext_pt_width;
-            r = (tree_offset[b+1]-tree_offset[b])/b_size;
+            size_t r = (tree_offset[b + 1] - tree_offset[b]) / b_size;
             c++;
             l++;
             r--;
-            n_syms =tree_offset[b];
+            size_t n_syms = tree_offset[b];
             while((n_syms+b_size)<tree_offset[b+1]){
-                offsets = (l<<run_width) | r;
+                size_t offsets = (l << run_width) | r;
                 offsets = (offsets<<1) | 1;
                 //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" offsets:"<<l<<" "<<r<<std::endl;
                 buffer.write(bit_pos, bit_pos+phi_rep.ext_pt_width-1, offsets);
@@ -343,7 +372,7 @@ struct phi_node {//state of the compression
         stats.tree_pointers_overhead+=tree_ptr_bits;
     }
 
-    void inline get_max_psum(uint64_t* tmp_psum, uint64_t* max_psum) const {
+    static void inline get_max_psum(uint64_t* tmp_psum, uint64_t* max_psum) {
         //max prefix sum within 4 blocks with 8 runs each
         uint64_t tmp_max = std::max(std::max(tmp_psum[0], tmp_psum[1]),
                                     std::max(tmp_psum[2], tmp_psum[3]));
@@ -360,13 +389,13 @@ struct phi_node {//state of the compression
         }
 
         //max prefix sum within one blocks within 32 runs
-        tmp_psum[0]+=tmp_psum[2];
+        tmp_max = tmp_psum[0]+tmp_psum[2];
         if(tmp_max>max_psum[2]){
-            max_psum[2] = tmp_psum[0];
+            max_psum[2] = tmp_max;
         }
     }
 
-    inline uint8_t compute_leaf_enc_code(uint8_t max_bytes, bool vbyte_enc, const uint64_t *max_psum) const {
+    static inline uint8_t compute_leaf_enc_code(const uint8_t max_bytes, const bool vbyte_enc, const uint64_t *max_psum) {
 
         uint8_t code = 0;
 
@@ -412,18 +441,18 @@ struct phi_node {//state of the compression
         assert(node_n_bits==0);
         assert(lvl>0);
 
-        size_t sym, len, n_runs=0;
+        size_t n_runs=0;
         n_runs+=blocks[0].size()-1;
         //combine the runs we previously broke due to boundary constraints
         for(size_t i=1;i<n_blocks;i++){
             //read the rightmost run of the previous block
-            sym = blocks[i-1].back().first;
-            len = blocks[i-1].back().second;
+            size_t sym = blocks[i - 1].back().sym;
+            size_t len = blocks[i - 1].back().len;
 
             //collapse the run with the first run of the current block if they have the same symbol
-            if(sym==blocks[i][0].first){
+            if(sym==blocks[i][0].sym){
                 //collapse the runs as they are the same
-                blocks[i][0].second +=len;
+                blocks[i][0].len +=len;
                 blocks[i-1].pop_back();
             } else {
                 //otherwise process the last run of the previous block as an independent run
@@ -436,20 +465,21 @@ struct phi_node {//state of the compression
 
         //compute the total number of vbytes the run lengths use and
         // if there are prefix sums causing overflow
-        assert(n_runs<=phi_dt_type::max_block_runs);
-        size_t bfr_dist[9]={0}, bytes_len, bytes_sym=0;
+        assert(n_runs<=phi_type::max_block_runs);
+        size_t bfr_dist[9]={0}, bytes_sym=0;
         uint64_t tmp_psum[4]={0};//8,16,24,32
         uint64_t max_psum[3]={0};//8,16,32
         uint64_t bk = 0;
         uint64_t max_sym=0;
+        uint64_t n_valid_area=0;
         for(size_t i=0;i<n_blocks;i++){
             for(auto & run : blocks[i]){
                 // get the frequency of bytes that the run lengths use
                 // (they should be relatively small numbers. Most of them should fit 1-2 bytes)
-                bytes_len = INT_CEIL(sym_width(run.second), 8);
-                bytes_sym += INT_CEIL(sym_width(run.first), 8);
-                bfr_dist[bytes_len]++;
-                tmp_psum[bk>>3] += run.second;
+                const size_t bytes_len = INT_CEIL(sym_width(run.len), 8);
+                bytes_sym += INT_CEIL(sym_width(run.sym), 8);
+                ++bfr_dist[bytes_len];
+                tmp_psum[bk>>3] += run.len;
                 bk++;
 
                 if(bk==32){
@@ -457,7 +487,8 @@ struct phi_node {//state of the compression
                     memset(tmp_psum, 0, 32);
                     bk=0;
                 }
-                if(run.first>max_sym) max_sym = run.first;
+                if(run.sym>max_sym) max_sym = run.sym;
+                n_valid_area += run.valid_area>-1;
             }
         }
         get_max_psum(tmp_psum, max_psum);
@@ -477,7 +508,7 @@ struct phi_node {//state of the compression
         }
 
         //alternative encoding using a fixed number of bytes per run
-        size_t total_fbytes = max_bytes*n_runs;
+        const size_t total_fbytes = max_bytes*n_runs;
 
         //choose the byte encoding for the run lengths of this leaf
         size_t len_bits;
@@ -489,34 +520,50 @@ struct phi_node {//state of the compression
             len_bits = total_fbytes*8;
             fix_len_enc = true;
         }
-        size_t sym_bits = sym_width(max_sym)*n_runs;
-        sym_bits = INT_CEIL(sym_bits, 8)*8;
-
+        size_t sym_bits = phi_rep.run_width+sym_width(max_sym)*n_runs;
         //
+
         len_enc = compute_leaf_enc_code(max_bytes, !fix_len_enc, max_psum);
 
-        //==HEADER DESCRIPTION:
-        //1 bit to indicate it is a leaf node
-        //phi_rep.len_enc_width bits to store the encoding of the run lengths
-        //phi_rep.run_bytes bits to store the value of (run_bits/8)
-        //phi_rep.int_pt_width bits to store the value of sym_width(max_sym)
-        //===
+        //LEAF DESCRIPTION
+        //HEADER:
+        // 1 bit to indicate it is a leaf node
+        // phi_rep.leaf_enc_width bits to store the encoding of the run lengths
+        // phi_rep.run_bytes bits to store the value of X=(len_bits/8). That is, the number of bytes used by the lengths
+        // phi_rep.int_pt_width bits to store the value of sym_width(max_sym)
+        //RUN SEQUENCE:
+        // X storing the run lengths
+        // phi_rep.run_width bits, to indicate how many runs this leaf encodes (n_runs)
+        // n_runs*sym_width(max_sym) encoding the differences of each run
+        //VALID AREA:
+        // n_run bits indicating which runs have valid area information
+        // x*sym_width(phi_rep.subsamp_step-1) to indicate the valid area information, with x being the number of ones in the previous bit vector
 
-        size_t header_bits = 1+phi_rep.len_enc_width+phi_rep.run_bytes+phi_rep.int_pt_width;
+        size_t header_bits = 1+phi_rep.leaf_enc_width+phi_rep.run_bytes+phi_rep.int_pt_width;
         header_bits = INT_CEIL(header_bits, 8)*8;//byte-aligned
+        size_t valid_area_bits = n_runs + n_valid_area*sym_width(phi_rep.subsamp_step-1);
+        size_t combined_bits = sym_bits+valid_area_bits;
 
-        //allocate bytes for the information of this leaf
-        buffer.reserve_in_bits(header_bits + len_bits + sym_bits);
+        if constexpr (phi_type::variant== WITH_VALID_AREA) {
+            //allocate bytes for the information of this leaf
+            combined_bits = INT_CEIL(combined_bits, 8)*8;
+            buffer.reserve_in_bits(header_bits + len_bits + combined_bits);
+        } else {
+            //allocate bytes for the information of this leaf
+            valid_area_bits=0;
+            sym_bits = INT_CEIL(sym_bits, 8)*8;
+            buffer.reserve_in_bits(header_bits + len_bits + sym_bits);
+        }
 
-        //start writing the in the buffer
+        //start writing in the buffer
         size_t bit_pos = 0;
         //1 bit (true) to indicate this node is a leaf
         buffer.write(bit_pos, bit_pos, 1);
         bit_pos++;
 
         //store the encoding of the run lengths
-        buffer.write(bit_pos, bit_pos+phi_rep.len_enc_width-1, len_enc);
-        bit_pos+=phi_rep.len_enc_width;
+        buffer.write(bit_pos, bit_pos+phi_rep.leaf_enc_width-1, len_enc);
+        bit_pos+=phi_rep.leaf_enc_width;
         //
 
         //store the number of bytes used by the run lengths
@@ -530,53 +577,85 @@ struct phi_node {//state of the compression
         bit_pos+=phi_rep.int_pt_width;
 
         //the run lengths are byte-aligned
-        size_t byte_pos = INT_CEIL(bit_pos, 8);
+        const size_t byte_pos = INT_CEIL(bit_pos, 8);
         assert((byte_pos*8)==header_bits);
 
-        auto *byte_stream = (uint8_t *) buffer.stream;
-        size_t written_bytes = insert_run_lens(blocks, n_blocks, &byte_stream[byte_pos], max_bytes , fix_len_enc);
+        //RUN SEQUENCE
+        auto *byte_stream = reinterpret_cast<uint8_t *>(buffer.stream);
+        const size_t written_bytes = insert_run_lens(blocks, n_blocks, &byte_stream[byte_pos], max_bytes , fix_len_enc);
         assert((written_bytes*8)==len_bits);
-
         bit_pos = (byte_pos*8)+len_bits;
+        assert(bit_pos==(header_bits+len_bits));
+
+        buffer.write(bit_pos, bit_pos+run_width-1, n_runs);
+        bit_pos+=run_width;
         uint8_t w = sym_width(max_sym);
         assert(w>0);
         for(size_t i=0;i<n_blocks;i++) {
             for (auto &run: blocks[i]) {
-                buffer.write(bit_pos, bit_pos+w-1, run.first);
+                buffer.write(bit_pos, bit_pos+w-1, run.sym);
                 bit_pos+=w;
-                //std::cout<<" ("<<(run.first>>1)<<", "<<run.second<<")"<<std::flush;
-                assert((run.first>>1)<phi_rep.tot_syms);
+                assert((run.sym>>1)<phi_rep.tot_syms);
             }
         }
-        //std::cout<<" n_runs:"<<n_runs<<" "<<std::endl;
-        bit_pos = INT_CEIL(bit_pos, 8)*8;
-        assert(bit_pos==(header_bits+len_bits+sym_bits));
+        //
 
-        node_n_bits = header_bits+len_bits+sym_bits;
+        if constexpr (phi_type::variant==WITH_VALID_AREA) {
+
+            //create the bit vector marking the runs with a valid area
+            for (size_t i = 0; i < n_blocks; i++) {
+                for (auto &run : blocks[i]) {
+                    buffer.write(bit_pos, bit_pos, run.valid_area>-1);
+                    bit_pos++;
+                }
+            }
+
+            //store the valid area
+            w = sym_width(phi_rep.subsamp_step-1);
+            for (size_t i = 0; i < n_blocks; i++) {
+                for (auto &run : blocks[i]) {
+                    assert(run.valid_area<static_cast<int16_t>(phi_rep.subsamp_step));
+                    if (run.valid_area>-1) {
+                        buffer.write(bit_pos, bit_pos+w-1, run.valid_area);
+                        bit_pos+=w;
+                    }
+                }
+            }
+            bit_pos = INT_CEIL(bit_pos, 8)*8;
+            assert(bit_pos==(header_bits+len_bits+combined_bits));
+            node_n_bits = header_bits+len_bits+combined_bits;
+            stats.valid_area_overhead+=valid_area_bits;
+            stats.runs_overhead+=len_bits+combined_bits;
+        } else {
+            bit_pos = INT_CEIL(bit_pos, 8)*8;
+            assert(bit_pos==(header_bits+len_bits+sym_bits));
+            node_n_bits = header_bits+len_bits+sym_bits;
+            stats.runs_overhead+=len_bits+sym_bits;
+        }
+
         phi_rep.eff_runs += n_runs;
 
         //gather statistics
         if(n_blocks>stats.max_n_blocks) stats.max_n_blocks = n_blocks;
 
-        stats.sym_bits[w]++;
-        stats.sym_overhead+=sym_bits;
+        ++stats.sym_bits[w];
         stats.sym_vbyte_overhead+=(bytes_sym*8);
+        stats.sym_overhead+=sym_bits;
         stats.len_overhead+=len_bits;
-        stats.runs_overhead+=len_bits+sym_bits;
         stats.header_overhead+=header_bits;
-        stats.rpl_freq[n_runs]++;
-        stats.leaf_depth_freq[lvl-1]++;//lvl=0 is the tree, so it doesn't count. lvl=1 is a root of a block
-        stats.leaf_enc_freq[len_enc]++;//the encoding type for a leaf
+        ++stats.rpl_freq[n_runs];
+        ++stats.leaf_depth_freq[lvl-1];//lvl=0 is the tree, so it doesn't count. lvl=1 is a root of a block
+        ++stats.leaf_enc_freq[len_enc];//the encoding type for a leaf
     }
 
-    size_t insert_run_lens(std::vector<block_type>& blocks, size_t n_blocks, uint8_t *stream, size_t max_bytes, bool fix_len_enc){
+    size_t insert_run_lens(std::vector<block_type>& blocks, size_t n_blocks, uint8_t *stream, const size_t max_bytes, bool fix_len_enc){
 
         size_t written_bytes=0;
         if(fix_len_enc){
             size_t enc_run;
             for(size_t i=0;i<n_blocks;i++){
                 for(auto & run : blocks[i]){
-                    enc_run =  run.second;
+                    enc_run =  run.len;
                     memcpy(stream, &enc_run, max_bytes);
                     stream+=max_bytes;
                     written_bytes+=max_bytes;
@@ -596,8 +675,8 @@ struct phi_node {//state of the compression
             for(size_t i=0;i<n_blocks;i++){
                 for(auto & run : blocks[i]){
 
-                    vb_lens[p] = INT_CEIL(sym_width(run.second), 8);
-                    code = run.second;
+                    vb_lens[p] = INT_CEIL(sym_width(run.len), 8);
+                    code = run.len;
                     memcpy(&tmp_stream[byte_pos], &code, vb_lens[p]);
                     ctrl_bits |= ((vb_lens[p]-1U) << acc_width);
                     byte_pos+=vb_lens[p];
@@ -657,23 +736,53 @@ struct phi_node {//state of the compression
                 std::cout<<(k>0 ? ", ":"")<<block_ptr[k];
             }
             std::cout<<""<<std::endl;
-        }else{
+        } else {
             std::cout<<pad<<"leaf encoding:"<<int(len_enc)<<std::endl;
-            std::cout<<pad<<"runs: ";
+            std::cout<<pad<<"runs: "<<std::endl;
             size_t n_r=0;
+            std::cout<<pad<<" lengths: ";
             for(size_t k=0;k<n_blocks;k++){
-                for(auto & r : bkl[k]){
-                    std::cout<<"(sym:"<<r.first<<",len:"<<r.second<<") ";
+                for(auto & run : bkl[k]){
+                    std::cout<<run.len<<", ";
                     n_r++;
                 }
             }
+            std::cout<<" "<<std::endl;
+
+            std::cout<<pad<<" differences: ";
+            for(size_t k=0;k<n_blocks;k++){
+                for(auto & run : bkl[k]){
+                    size_t sym = run.sym>>1UL;
+                    std::cout<<((run.sym & 1UL)?"-":"")<<sym<<", ";
+                }
+            }
             std::cout<<""<<std::endl;
+
+            if constexpr (phi_type::variant==WITH_VALID_AREA) {
+                std::cout<<pad<<" has_valid_area: ";
+                for(size_t k=0;k<n_blocks;k++){
+                    for(auto & run : bkl[k]){
+                        std::cout<<(run.valid_area>-1)<<", ";
+                    }
+                }
+                std::cout<<""<<std::endl;
+
+                std::cout<<pad<<" valid_area_value: ";
+                for(size_t k=0;k<n_blocks;k++){
+                    for(auto & run : bkl[k]){
+                        if (run.valid_area>-1) {
+                            std::cout<<run.valid_area<<", ";
+                        }
+                    }
+                }
+                std::cout<<""<<std::endl;
+            }
             std::cout<<pad<<"total runs: "<<n_r<<std::endl;
         }
     }
 
     template<node_type type>//internal or leaf
-    inline void create_node(size_t n_blocks) {
+    inline void create_node(const size_t n_blocks) {
 
         assert(aligned<8>(node_n_bits));//check it is byte-aligned
         //lvl=0 means the tree root, and tmp_node is then the root v of a block in the tree.
@@ -691,19 +800,20 @@ struct phi_node {//state of the compression
         if constexpr (type==INTERNAL){
             assert(n_blocks==1);
             for(auto & run : active_blocks[0]){
-                tmp_node->process_run(run.first, run.second);
+                tmp_node->process_run(run);
             }
             tmp_node->finish_run_scan();
             tmp_node->finish_int_node();
-            stats.children_freq[tmp_node->n_children]++;
+            ++stats.children_freq[tmp_node->n_children];
         } else {
             assert(n_blocks>=1);
             tmp_node->create_leaf(active_blocks, n_blocks);
         }
 
         //print the node information for debugging purposes
-        //tmp_node->print_node_info(active_blocks, n_blocks);
+        tmp_node->print_node_info(active_blocks, n_blocks);
         //
+
         assert(aligned<8>(node_n_bits+tmp_node->node_n_bits));
 
         if(lvl>0){
@@ -758,23 +868,25 @@ struct phi_tree{
                                                                           phi_rep(_phi_rep){}
 
     void build(std::string& rsa_samp_file) {
+
         //compute basic statistics
+        using tmp_run_type = std::pair<size_type, size_type>;
         size_t f_size = std::filesystem::file_size(rsa_samp_file);
-        size_t n_runs = f_size / sizeof(run_type);
+        size_t n_runs = f_size / sizeof(tmp_run_type);
         size_t buff_size = 1024*1024;
         size_t n_blocks = n_runs/buff_size;
         size_t rem_samples = n_runs;
-        std::vector<run_type> rsa_samples_buff(buff_size);
+        std::vector<tmp_run_type> rsa_samples_buff(buff_size);
         std::ifstream rsa_samp_ifs(rsa_samp_file, std::ios::binary);
         for(size_t i=0;i<n_blocks;i++){
-            rsa_samp_ifs.read((char *)rsa_samples_buff.data(), buff_size*sizeof(run_type));
+            rsa_samp_ifs.read((char *)rsa_samples_buff.data(), buff_size*sizeof(tmp_run_type));
             for(size_t j=0;j<buff_size;j++){
                 phi_rep.tot_syms+=rsa_samples_buff[j].second;
             }
             rem_samples-=buff_size;
         }
         assert(rem_samples<buff_size);
-        rsa_samp_ifs.read((char *)rsa_samples_buff.data(), rem_samples*sizeof(run_type));
+        rsa_samp_ifs.read((char *)rsa_samples_buff.data(), rem_samples*sizeof(tmp_run_type));
         for(size_t j=0;j<rem_samples;j++){
             phi_rep.tot_syms+=rsa_samples_buff[j].second;
         }
@@ -796,16 +908,29 @@ struct phi_tree{
         //compute the tree
         rsa_samp_ifs.seekg(0, std::ios::beg);
         rem_samples = n_runs;
+        run_type run;
         for(size_t i=0;i<n_blocks;i++){
-            rsa_samp_ifs.read((char *)rsa_samples_buff.data(), buff_size*sizeof(run_type));
+            rsa_samp_ifs.read((char *)rsa_samples_buff.data(), buff_size*sizeof(tmp_run_type));
             for(size_t j=0;j<buff_size;j++){
-                root->process_run(rsa_samples_buff[j].first, rsa_samples_buff[j].second);
+                run.sym = rsa_samples_buff[j].first>>15;
+                run.valid_area = rsa_samples_buff[j].first & 0x7FFF;//first 15 bits
+                run.valid_area = run.valid_area==0? -1 : run.valid_area;//a small hack to deal with artificial breaks in the trees
+                assert(run.valid_area==-1 || run.valid_area>=0);
+
+                run.len = rsa_samples_buff[j].second;
+                root->process_run(run);
             }
             rem_samples-=buff_size;
         }
-        rsa_samp_ifs.read((char *)rsa_samples_buff.data(), rem_samples*sizeof(run_type));
+        rsa_samp_ifs.read((char *)rsa_samples_buff.data(), rem_samples*sizeof(tmp_run_type));
         for(size_t j=0;j<rem_samples;j++){
-            root->process_run(rsa_samples_buff[j].first, rsa_samples_buff[j].second);
+            run.sym = rsa_samples_buff[j].first>>15;
+            run.valid_area = rsa_samples_buff[j].first & 0x7FFF;//first 15 bits
+            run.valid_area = run.valid_area==0? -1 : run.valid_area;//a small hack to deal with artificial breaks in the trees
+            assert(run.valid_area==-1 || run.valid_area>=0);
+
+            run.len = rsa_samples_buff[j].second;
+            root->process_run(run);
         }
         rsa_samp_ifs.close();
         destroy_vector(rsa_samples_buff);
@@ -960,14 +1085,15 @@ struct phi_tree{
         std::cout<<"Space breakdown"<<std::endl;
         std::cout<<"\tRuns: "<<INT_CEIL(stats.runs_overhead, 8)<<" bytes ("<<(double(stats.runs_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\t\tSymbols overhead: "<<INT_CEIL(stats.sym_overhead, 8)<<" bytes ("<<(double(stats.sym_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
-        //std::cout<<"\t\tSymbols in vbyte: "<<INT_CEIL(stats.sym_vbyte_overhead, 8)<<" (vbyte) versus "<<INT_CEIL(stats.sym_overhead, 8)<<" (fix-len)"<<std::endl;
         std::cout<<"\t\tLengths overhead: "<<INT_CEIL(stats.len_overhead, 8)<<" bytes ("<<(double(stats.len_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
+        if constexpr (phi_dt_type::variant==WITH_VALID_AREA) {
+            std::cout<<"\t\tValid area overhead: "<<INT_CEIL(stats.valid_area_overhead, 8)<<" bytes ("<<(double(stats.valid_area_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
+        }
         std::cout<<"\tHeaders: "<<INT_CEIL(stats.header_overhead, 8)<<" bytes ("<<(double(stats.header_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
         std::cout<<"\t\tTree pointers: "<<INT_CEIL(stats.tree_pointers_overhead, 8)<<" bytes ("<<(double(stats.tree_pointers_overhead)/double(stats.header_overhead))*100<<"%)"<<std::endl;
         size_t ptr_bv_ov = stats.header_overhead - stats.tree_pointers_overhead;
         std::cout<<"\t\tInt. Pointers, bitvectors, and extras: "<<INT_CEIL(ptr_bv_ov, 8)<<" bytes ("<<(double(ptr_bv_ov)/double(stats.header_overhead))*100<<"%)"<<std::endl;
         assert((stats.header_overhead+stats.runs_overhead)==root->node_n_bits);
-        //std::cout<<"\t\tTrees pointers: "<<INT_CEIL(stats.trees_overhead, 8)<<std::endl;
         std::cout<<"space_usage:"<<float(root->node_n_bits)/float(phi_rep.tot_syms)<<" bps"<<std::endl;
     }
 };
@@ -981,8 +1107,9 @@ void build_phi(phi_dt_type& phi_rep, std::string& rsa_samp_file, std::string tmp
 
 template<class phi_dt_type, class size_type, bool vbyte=false>
 void build_phi_in_memory(phi_dt_type& phi_rep,
-                              std::vector<std::pair<size_type, size_type>> block,
-                              std::string tmp_dir="./"){
+                         std::vector<std::pair<size_type, size_type>> block,
+                         std::string tmp_dir="./"){
+
     phi_tree<phi_dt_type, size_type> tree(tmp_dir, phi_rep);
     tree.build_in_memory(block);
     tree.report_stats();
