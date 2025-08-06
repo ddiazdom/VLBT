@@ -124,7 +124,6 @@ struct vlbt_phi {
             //add the bit offset. now bit_pos points to child
             bit_pos += p * 8;
 
-            //start reading the header of child (there is no ext succ/pred info)
             is_leaf = stream.read_bit(bit_pos++);
         }
     }
@@ -153,15 +152,15 @@ struct vlbt_phi {
 
         //LEAF encoding (bpr=bytes per run):
         //0: 1 bpr, no overflow
-        //1: 1 bpr, overflow window=16
-        //2: 1 brp, overflow window=32
+        //1: 1 bpr, overflow of 32 elements but not 16
+        //2: 1 brp, overflow of 16 and 32 elements
 
         //3: 2 bpr, no_vbyte, no overflow
-        //4: 2 bpr, no_vbyte, overflow window=8
-        //5: 2 bpr, no_vbyte, overflow window=16
+        //4: 2 bpr, no_vbyte, overflow 16 elements but not 8
+        //5: 2 bpr, no_vbyte, overflow 8 and 16 elements
         //6: 2 bpr, vbyte, no overflow
-        //7: 2 bpr, vbyte, overflow window=8
-        //8: 2 bpr, vbyte, overflow window=16
+        //7: 2 bpr, vbyte, overflow of 16 elements but not 8
+        //8: 2 bpr, vbyte, overflow of 8 and 16 elements
 
         //9: 3 bpr, no_vbyte
         //10: 3 bpr, vbyte
@@ -179,7 +178,7 @@ struct vlbt_phi {
                 //runs use 1 byte (no vbyte)
                 break;
             case 1:
-                run = GET_PHI_RUN_8<true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), i);
+                run = GET_PHI_RUN_8<false, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), i);
                 //runs use 1 byte overflow in the sum of 16 symbols
                 break;
             case 2:
@@ -192,7 +191,7 @@ struct vlbt_phi {
                 //runs use 3 bytes (no vbyte)
                 break;
             case 4:
-                run = GET_PHI_RUN_16<false, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), i);
+                run = GET_PHI_RUN_16<false, false, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), i);
                 //runs use 4 bytes (no vbyte)
                 break;
             case 5:
@@ -204,7 +203,7 @@ struct vlbt_phi {
                 //runs use 2 bytes (vbyte)
                 break;
             case 7:
-                run = GET_PHI_RUN_16<true, true, false>(reinterpret_cast<const uint8_t **>(&leaf_addr), i);
+                run = GET_PHI_RUN_16<true, false, true>(reinterpret_cast<const uint8_t **>(&leaf_addr), i);
                 //runs use 3 bytes (vbyte)
                 break;
             case 8:

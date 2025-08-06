@@ -206,9 +206,17 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
 
     fm_index<sdsl::custom_wt_rlmn<>> csa_rlmn(wt_rlmn, C, "", my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
     //TODO checking for errors
-    //std::string pattern = "nstein]]\n[[ko:???? ?????]";
+    //size_t a = my_dt.bwt.rank(198960593, 'N');
+    //size_t b = my_dt.bwt.rank(198960788, 'N');
+    //auto ans = my_dt.bwt.range_rank_no_sa_head(198960593, 198960788, 'N');
+    //std::string pattern = "CTAGGGTGGCTTTTGTAGAGCTAAG";
     //csa_rlmn.backward_search(pattern);
+    //std::cout<<"ahora el mio"<<std::endl;
     //my_dt.count(pattern);
+    //size_t a = my_dt.bwt.rank(226364350, 67);
+    //size_t b = my_dt.bwt.rank(226364352, 67);
+    //auto ans = my_dt.bwt.range_rank_no_sa_head(226364350, 226364352, 67);
+    //exit(0);
 
     //std::cout<<my_dt.sa_head_for_next(151244695, 'w')<<std::endl;
     //std::cout<<my_dt.sa_head_for_next(151208662, 'w')<<std::endl;
@@ -293,12 +301,31 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         }
     }
 
-    std::string rindex_file = input_prefix+".ri";
-    std::ifstream rindex_ifs(rindex_file);
-    ri::r_index<> rindex;
-    rindex.load(rindex_ifs);
+    std::string sa_file = input_prefix+".sa";
+    size_t f_size = util::file_size(sa_file);
+    std::ifstream sa_ifs(sa_file);
+    std::vector<uint32_t> sa;
+    sa.resize(f_size/sizeof(uint32_t));
+    sa_ifs.read((char *)sa.data(), f_size);
+    assert(sa.size()==my_dt.size());
 
-    /*sdsl::custom_wt_rlmn<> wt_rlmn;
+    double my_acc_time=0;
+    size_t ans;
+    for (size_t i=0;i<(sa.size()-1);i++) {
+        MEASURE(my_dt.phi(sa[i]), my_acc_time, ans, std::chrono::nanoseconds)
+        if (sa[i+1]!=ans) {
+            std::cout<<"i:"<<i<<" sa_val:"<<sa[i]<<" -> correct:"<<sa[i+1]<<" / my_answer:"<<ans<<std::endl;
+        }
+        assert(sa[i+1]==ans);
+    }
+    std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(sa.size()-1)<<", "<<my_acc_time/double(sa.size()-1)<<"), ";
+
+    //std::string rindex_file = input_prefix+".ri";
+    //std::ifstream rindex_ifs(rindex_file);
+    //ri::r_index<> rindex;
+    //rindex.load(rindex_ifs);
+
+    custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_prefix+".wt_rlmn");
     std::vector<uint64_t> C(wt_rlmn.sigma+1, 0);
     for(size_t sym=0;sym<wt_rlmn.sigma;sym++){
@@ -311,7 +338,9 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         acc+=tmp;
     }
     C[wt_rlmn.sigma] = acc;
-    fm_index<sdsl::custom_wt_rlmn<>, true> csa_rlmn(wt_rlmn, C, samp_sa_file, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
+    std::string samp_sa_file = input_prefix+".sa_samples";
+
+    fm_index<custom_wt_rlmn<>, true> csa_rlmn(wt_rlmn, C, samp_sa_file, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
     size_t acc_count=0;
     size_t j=0;
     double rlmn_acc_time=0;
@@ -320,30 +349,30 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         MEASURE(csa_rlmn.count_with_head(p), rlmn_acc_time, rlmn_ans[j], std::chrono::nanoseconds)
         acc_count+=std::get<1>(rlmn_ans[j])-std::get<0>(rlmn_ans[j])+1;
         j++;
-    }*/
+    }
 
-    double my_acc_time=0;
-    size_t acc_count=0;
-    size_t j=0;
+    my_acc_time=0;
+    double my_acc_count=0;
+    j=0;
     std::vector<std::tuple<uint64_t, uint64_t, uint64_t>> my_ans(n_pats);
-    for(auto const& p : pat_list) {
+    for(const std::string& p : pat_list) {
         MEASURE(my_dt.locate(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
-        acc_count+=std::get<1>(my_ans[j])-std::get<0>(my_ans[j])+1;
+        my_acc_count+=std::get<1>(my_ans[j])-std::get<0>(my_ans[j])+1;
         j++;
     }
-    std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(acc_count)<<"), ";
-    //std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;
+    std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), ";
+    std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;
 
-    /*for(size_t i=0;i<pat_list.size();i++){
-        if(std::get<0>(my_ans[i])!=std::get<0>(rindex_ans[i]) ||
-           std::get<1>(my_ans[i])!=std::get<1>(rindex_ans[i]) ||
-           std::get<2>(my_ans[i])!=std::get<2>(rindex_ans[i])){
-            std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<std::get<0>(my_ans[i])<<"!="<<std::get<0>(rindex_ans[i])<<" or "
-                                                                        <<std::get<1>(my_ans[i])<<"!="<<std::get<1>(rindex_ans[i])<<" or "
-                                                                        <<std::get<2>(my_ans[i])<<"!="<<std::get<2>(rindex_ans[i])<<std::endl;
+    for(size_t i=0;i<pat_list.size();i++){
+        if(std::get<0>(my_ans[i])!=std::get<0>(rlmn_ans[i]) ||
+           std::get<1>(my_ans[i])!=std::get<1>(rlmn_ans[i]) ||
+           std::get<2>(my_ans[i])!=std::get<2>(rlmn_ans[i])){
+            std::cout<<"Pattern["<<i<<"]: \""<<pat_list[i]<<"\" coords:"<<std::get<0>(my_ans[i])<<"!="<<std::get<0>(rlmn_ans[i])<<" or "
+                                                                        <<std::get<1>(my_ans[i])<<"!="<<std::get<1>(rlmn_ans[i])<<" or "
+                                                                        <<std::get<2>(my_ans[i])<<"!="<<std::get<2>(rlmn_ans[i])<<std::endl;
             exit(1);
         }
-    }*/
+    }
 }
 
 template<class bwt_type>
@@ -470,7 +499,7 @@ void test_bwt(std::string& input_prefix, std::string& output_prefix){
     std::cout<<"We store "<<written_bytes<<" in "<<output_file<<"\n"<<std::endl;
 
     test_rank(bwt_dt, input_prefix, "vlbt_bwt");
-    test_count(bwt_dt, input_prefix, "vlbt_bwt");
+    //test_count(bwt_dt, input_prefix, "vlbt_bwt");
     //test_inverse_select(bwt_dt, input_prefix, "vlbt_bwt");
     //test_access(bwt_dt, input_prefix, "vlbt_bwt");
 }
@@ -526,7 +555,7 @@ template<class size_type>
 void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& output_prefix){
 
     using bwt_th_type = vlbt_bwt<WITH_TOEHOLDS, 65536, 64, 4>;
-    using phi_type = vlbt_phi<WITH_VALID_AREA, 65536, 64, 4>;
+    using phi_type = vlbt_phi<NO_VALID_AREA, 65536, 64, 4>;
     using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
     sr_index_type sr_index;
     build_sr_index<sr_index_type , size_type>(sr_index, input_prefix, subsamp_step, output_prefix);
@@ -534,7 +563,6 @@ void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& 
     std::string output_sr_index_file = output_prefix+".sr_index";
     size_t written_bytes = store_to_file(output_sr_index_file, sr_index);
     std::cout<<"Final sr-index uses "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps)"<<std::endl;
-
 
     test_access(sr_index, input_prefix, "sr_index");
     test_rank(sr_index, input_prefix, "sr_index");
@@ -570,6 +598,6 @@ int main(int argc, char** argv) {
     }
     //test_bwt(input_prefix, output_prefix);
     //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
-    test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    //test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    //test_phi<uint64_t>(input_prefix, 4, output_prefix);
+    test_sr_index<uint64_t>(input_prefix, 0, output_prefix);
 }

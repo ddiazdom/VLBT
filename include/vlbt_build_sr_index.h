@@ -195,7 +195,7 @@ void get_tail_samples(std::vector<sample_type>& samples,
         s_pos++;
         assert(s_pos<samples.size());
 
-        while((s_pos+1)<samples.size() && samples[s_pos+1].prev_tail_val<=str_boundary){
+        while(s_pos<samples.size() && samples[s_pos].prev_tail_val<=str_boundary){
 
             //std::cout<<"s_pos:"<<s_pos<<", tail_pos:"<<samples[s_pos].tail_val<<", str_boundary:"<<str_boundary<<" ";
             if(samples[s_pos].is_head_sampled){
@@ -234,9 +234,9 @@ void get_tail_samples(std::vector<sample_type>& samples,
         }
 
         //std::cout<<"string: "<<str<<":"<<samples[last_sampled].tail_val<<" /  "<<samples[s_pos].tail_val<<" / "<<samples[s_pos+1].tail_val<<std::endl;
-        if(samples[s_pos].prev_tail_val<=str_boundary){
-            s_pos++;
-        }
+        //if(samples[s_pos].prev_tail_val<=str_boundary){
+        //    s_pos++;
+        //}
 
         len = (str_boundary+1)-samples[last_sampled].prev_tail_val;
         diff = get_diff(samples[last_sampled].prev_tail_val, samples[last_sampled].head_val);

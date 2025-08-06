@@ -401,14 +401,19 @@ struct phi_node {//state of the compression
 
         switch (max_bytes) {
             case 1://1-byte encoding (we can read 16 (or 32) runs at the time)
-                code +=max_psum[1]>0xFF;//overflow with 16 runs?
-                code +=max_psum[2]>0XFF;//overflow with 32 runs?
+                if(max_psum[1]<=0xFF && max_psum[2]>0xFF) {//overflow of 32 elements but not 16
+                    code=1;
+                }else if (max_psum[1]>0xFF) {//overflow of 16 and 32 elements
+                    code=2;
+                }
                 return code;
             case 2://2-byte encoding (we can read 8 (or 16) runs at the time)
-                code =3;
-                code +=max_psum[0]>0xFFFF;//overflow with 8 runs?
-                code +=max_psum[1]>0xFFFF;//overflow with 16 runs?
-                code <<=vbyte_enc;
+                code = vbyte_enc? 6 : 3;
+                if(max_psum[0]<=0xFFFF && max_psum[1]>0xFFFF) {//overflow of 16 elements but not 8
+                    code += 1;
+                }else if (max_psum[0]>0xFFFF) {//overflow of 8 and 16 elements
+                    code += 2;
+                }
                 return code;
             case 3://3-byte encoding (we can read 4 (or 8) runs at the time. We assume no overflow)
                 code =9;
@@ -811,7 +816,7 @@ struct phi_node {//state of the compression
         }
 
         //print the node information for debugging purposes
-        tmp_node->print_node_info(active_blocks, n_blocks);
+        //tmp_node->print_node_info(active_blocks, n_blocks);
         //
 
         assert(aligned<8>(node_n_bits+tmp_node->node_n_bits));

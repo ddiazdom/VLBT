@@ -26,7 +26,7 @@ struct vlbt_sr_index{
         return bwt[idx];
     }
 
-    inline auto locate(std::string& pattern) const {
+    [[nodiscard]] inline auto locate(const std::string& pattern) const {
         return bwt.count_with_head(pattern);
     }
 

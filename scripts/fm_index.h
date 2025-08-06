@@ -67,9 +67,11 @@ struct fm_index{
         //std::cout<<l<<" "<<r<<std::endl;
         while(j-->0 && l<=r){
             const uint8_t cc = byte2comp[static_cast<uint8_t>(pat[j])];
-            l = C[cc] + bwt.rank(l, pat[j]); // count c in bwt[0..l-1]
-            r = C[cc] + bwt.rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
-            //std::cout<<l<<" "<<r<<std::endl;
+            const size_t lb = bwt.rank(l, pat[j]);
+            const size_t rb = bwt.rank(r+1, pat[j]);
+            l = C[cc] + lb; // count c in bwt[0..l-1]
+            r = C[cc] +  rb - 1; // count c in bwt[0..r]
+            //std::cout<<l<<" "<<r<<" "<<lb<<" "<<rb<<std::endl;
         }
         return {l, r};
     }
