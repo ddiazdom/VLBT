@@ -308,16 +308,20 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     sa.resize(f_size/sizeof(uint32_t));
     sa_ifs.read((char *)sa.data(), f_size);
     assert(sa.size()==my_dt.size());
-
     double my_acc_time=0;
     size_t ans;
+    size_t n_valid=0;
+    std::cout<<my_dt.phi(430241311)<<std::endl;
     for (size_t i=0;i<(sa.size()-1);i++) {
         MEASURE(my_dt.phi(sa[i]), my_acc_time, ans, std::chrono::nanoseconds)
-        if (sa[i+1]!=ans) {
+        if(ans==-1) continue;//these are computed differently
+        if(sa[i+1]!=ans) {
             std::cout<<"i:"<<i<<" sa_val:"<<sa[i]<<" -> correct:"<<sa[i+1]<<" / my_answer:"<<ans<<std::endl;
         }
         assert(sa[i+1]==ans);
+        n_valid++;
     }
+    std::cout<<n_valid<<" out ouf "<<my_dt.size();
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(sa.size()-1)<<", "<<my_acc_time/double(sa.size()-1)<<"), ";
 
     //std::string rindex_file = input_prefix+".ri";
@@ -339,7 +343,6 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     }
     C[wt_rlmn.sigma] = acc;
     std::string samp_sa_file = input_prefix+".sa_samples";
-
     fm_index<custom_wt_rlmn<>, true> csa_rlmn(wt_rlmn, C, samp_sa_file, my_dt.get_packed_alpha(), my_dt.get_unpacked_alpha());
     size_t acc_count=0;
     size_t j=0;
@@ -555,7 +558,7 @@ template<class size_type>
 void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& output_prefix){
 
     using bwt_th_type = vlbt_bwt<WITH_TOEHOLDS, 65536, 64, 4>;
-    using phi_type = vlbt_phi<NO_VALID_AREA, 65536, 64, 4>;
+    using phi_type = vlbt_phi<WITH_VALID_AREA, 65536, 64, 4>;
     using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
     sr_index_type sr_index;
     build_sr_index<sr_index_type , size_type>(sr_index, input_prefix, subsamp_step, output_prefix);
@@ -599,5 +602,5 @@ int main(int argc, char** argv) {
     //test_bwt(input_prefix, output_prefix);
     //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    test_sr_index<uint64_t>(input_prefix, 0, output_prefix);
+    test_sr_index<uint64_t>(input_prefix, 8, output_prefix);
 }
