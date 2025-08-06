@@ -807,20 +807,25 @@ struct rl_node {//state of the compression
         }
     }
 
-    static inline uint8_t compute_leaf_enc_code(uint8_t max_bytes, bool vbyte_enc, const uint64_t *max_psum) {
+    static inline uint8_t compute_leaf_enc(uint8_t max_bytes, bool vbyte_enc, const uint64_t *max_psum) {
 
         uint8_t code = 0;
 
         switch (max_bytes) {
             case 1:
-                code +=max_psum[1]>0xFF;
-                code +=max_psum[2]>0XFF;
+                if(max_psum[1]<=0xFF && max_psum[2]>0xFF) {//overflow of 32 elements but not 16
+                    code=1;
+                }else if (max_psum[1]>0xFF) {//overflow of 16 and 32 elements
+                    code=2;
+                }
                 return code;
             case 2:
-                code =3;
-                code +=max_psum[0]>0xFFFF;
-                code +=max_psum[1]>0xFFFF;
-                code <<=vbyte_enc;
+                code = vbyte_enc? 6 : 3;
+                if(max_psum[0]<=0xFFFF && max_psum[1]>0xFFFF) {//overflow of 16 elements but not 8
+                    code += 1;
+                }else if (max_psum[0]>0xFFFF) {//overflow of 8 and 16 elements
+                    code += 2;
+                }
                 return code;
             case 3:
                 code =9;
@@ -977,7 +982,7 @@ struct rl_node {//state of the compression
         }
 
         stats.runs_overhead += run_bits;
-        leaf_enc = compute_leaf_enc_code(max_bytes, !fix_len_enc, max_psum);
+        leaf_enc = compute_leaf_enc(max_bytes, !fix_len_enc, max_psum);
 
         //THE ENCODING STARTS HERE
         size_t r_width;
@@ -1190,7 +1195,7 @@ struct rl_node {//state of the compression
             fix_len_enc = true;
         }
 
-        leaf_enc = compute_leaf_enc_code(max_bytes, !fix_len_enc, max_psum);
+        leaf_enc = compute_leaf_enc(max_bytes, !fix_len_enc, max_psum);
 
         //THE ENCODING STARTS HERE
         size_t r_width;

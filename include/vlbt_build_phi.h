@@ -395,7 +395,7 @@ struct phi_node {//state of the compression
         }
     }
 
-    static inline uint8_t compute_leaf_enc_code(const uint8_t max_bytes, const bool vbyte_enc, const uint64_t *max_psum) {
+    static inline uint8_t compute_leaf_enc(const uint8_t max_bytes, const bool vbyte_enc, const uint64_t *max_psum) {
 
         uint8_t code = 0;
 
@@ -528,7 +528,7 @@ struct phi_node {//state of the compression
         size_t sym_bits = phi_rep.run_width+sym_width(max_sym)*n_runs;
         //
 
-        len_enc = compute_leaf_enc_code(max_bytes, !fix_len_enc, max_psum);
+        len_enc = compute_leaf_enc(max_bytes, !fix_len_enc, max_psum);
 
         //LEAF DESCRIPTION
         //HEADER:
@@ -812,6 +812,9 @@ struct phi_node {//state of the compression
             ++stats.children_freq[tmp_node->n_children];
         } else {
             assert(n_blocks>=1);
+            if (tmp_node->syms_before==430112768) {
+                std::cout<<"holaa"<<std::endl;
+            }
             tmp_node->create_leaf(active_blocks, n_blocks);
         }
 

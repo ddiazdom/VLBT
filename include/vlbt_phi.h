@@ -249,12 +249,12 @@ struct vlbt_phi {
 
         if constexpr (variant == NO_VALID_AREA) {
             bit_pos+=run_width;
-
             bit_pos+=run.first*diff_width;
             const uint64_t val = stream.read(bit_pos, bit_pos + diff_width - 1);
             const uint64_t sa_val = val & 1 ? bck_i-(val>>1UL) : bck_i+(val>>1UL);//the first bit indicates if the different is negative or positive
             return static_cast<int64_t>(sa_val);
         } else {
+
             const size_t n_runs = stream.read(bit_pos, bit_pos + run_width - 1);
             bit_pos += run_width;
             const size_t val_bit_pos = bit_pos + run.first*diff_width;
@@ -264,7 +264,7 @@ struct vlbt_phi {
             if(!stream.pop_count(bit_pos, bit_pos + run.first)) {//the whole block is a valid area
                 return static_cast<int64_t>(sa_val);
             }
-            const size_t pos = stream.pop_count(bit_pos, bit_pos + run.first);
+            const size_t pos = stream.pop_count(bit_pos, bit_pos+run.first)-1;//only works because bitstream[bit_pos+run.first] is true
             bit_pos += n_runs;
             const size_t w = sym_width(subsamp_step-1);
             bit_pos += pos*w;

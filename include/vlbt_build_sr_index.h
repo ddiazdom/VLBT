@@ -77,15 +77,21 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
                 len = samples[s_pos].head_val-samples[last_sampled].head_val;
 
 
-                //std::cout<<"sampled "<<samples[last_sampled].head_val<<" "<<samples[last_sampled].prev_tail_right_tail_dist<<" "<<std::endl;;
+                //std::cout<<"sampled "<<samples[last_sampled].head_val<<std::endl;
+                //if (samples[last_sampled].head_val==430241310) {
+                //    std::cout<<"holaa"<<std::endl;
+                //}
+
                 samples[last_sampled].valid_area = 0;
                 if(last_sampled<(s_pos-1)) {
                     samples[last_sampled].valid_area = samples[last_sampled+1].head_val-samples[last_sampled].head_val;
+                    //TODO the value below is the real "invalid suffix" anything after this suffix is valid
+                    std::cout<<samples[s_pos].head_val-samples[last_sampled+1].head_val<<std::endl;
                 }
 
-                /*for(size_t k=last_sampled+1;k<s_pos;k++){
+                for(size_t k=last_sampled+1;k<s_pos;k++){
                     std::cout<<"Not sampled "<<samples[k].head_val<<" "<<samples[k].head_val-samples[last_sampled].head_val<<" "<<std::endl;;
-                }*/
+                }
 
                 samples[last_sampled].is_head_sampled = true;
                 acc_len+=len;
