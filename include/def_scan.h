@@ -145,6 +145,11 @@ static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64
 #define SUCC_32 succ_sse42_32x4
 #define SUCC_64 succ_sse42_64x2
 
+#define GET_PHI_RUN_8 get_phi_run_sse42_8x16
+#define GET_PHI_RUN_16 get_phi_run_sse42_16x8
+#define GET_PHI_RUN_32 get_phi_run_sse42_32x4
+#define GET_PHI_RUN_64 get_phi_run_sse42_64x2
+
 #elif defined(__SSE4_2__)
 #include "scan_sse42.h"
 

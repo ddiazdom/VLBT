@@ -1411,14 +1411,15 @@ public:
     }
 
     [[nodiscard]] inline int64_t decode_sa(size_t bwt_pos) const {
-        int64_t n_steps = 0, sa_samp=std::numeric_limits<int64_t>::min();
+        int64_t sa_samp=std::numeric_limits<int64_t>::min();
+        uint64_t n_steps=0;
         while(sa_samp<0 && n_steps<subsamp_step){
             auto res = inverse_select_with_sa(bwt_pos);
             sa_samp =  res.sa_samp;
             bwt_pos = C[res.sym] + res.rank;
             n_steps++;
         }
-        return sa_samp+n_steps-1;
+        return sa_samp+static_cast<int64_t>(n_steps)-1;
     }
 
     [[nodiscard]] size_t subsampling_value() const {

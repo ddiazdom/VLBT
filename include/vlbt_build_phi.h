@@ -223,7 +223,8 @@ struct phi_node {//state of the compression
                 // to distinguish this case from the blocks where the full block is a valid area, we use -1.
                 // thus, if we see a valid area of -1, we know the block has a valid area, regardless if we break it
                 if (run.valid_area!=-1) {
-                    run.valid_area = run.valid_area > split_run_len ? run.valid_area - split_run_len : 0;
+                    const size_t va = run.valid_area;//to avoid casting problems
+                    run.valid_area = va > split_run_len ? run.valid_area - split_run_len : 0;
                 }
                 run.is_suffix = true;
 

@@ -6,6 +6,8 @@
 #define VLBT_SCAN_SSE42_H
 
 #include <x86intrin.h>
+#include <bits/stdint-uintn.h>
+
 #include "simd_tables.h"
 #include "utils.h"
 
@@ -759,6 +761,148 @@ static inline uint8_t access_sse42_32x4(const uint8_t **stream, uint8_t sigma, u
 template<uint8_t bytes_per_run>
 static inline uint8_t access_sse42_64x2(const uint8_t **stream, uint8_t sigma, uint64_t idx){
     return 0;
+}
+
+template<bool overflow16, bool overflow32=false>
+static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_8x16(const uint8_t **stream, uint64_t idx){
+
+    //NOTE here I do not need to vbyte compress the block
+    __m128i block = _mm_loadu_si128((const __m128i*)*stream);
+    *stream+=16;
+
+    uint32_t idx_run = 0;
+
+    //print8x16(bk_lengths);
+    //sometimes the back of the block has garbage, so I have to assume overflow
+    uint32_t prev_acc = 0;
+    uint32_t acc = hsum_epi8_ovf(block);
+
+    while(acc<=idx){
+        block = _mm_loadu_si128((const __m128i*)*stream);
+        *stream+=16;
+        idx_run+=16;
+
+        //print8x16(bk_lengths);
+        prev_acc = acc;
+        acc += hsum_epi8_ovf(block);
+    }
+
+    idx-=prev_acc;
+
+    uint32_t pf_sum, tmp_idx_run;
+    if constexpr(overflow16){
+        psum_epi8_ovf(block, idx, pf_sum, tmp_idx_run);
+    }else{
+        //prefix sum without overflow
+        block = _mm_add_epi8(block, _mm_slli_si128(block, 1));
+        block = _mm_add_epi8(block, _mm_slli_si128(block, 2));
+        block = _mm_add_epi8(block, _mm_slli_si128(block, 4));
+        block = _mm_add_epi8(block, _mm_slli_si128(block, 8));
+        //print8x16(bk_lengths);
+        const __m128i idx_mask = _mm_cmple_epu8(block, _mm_set1_epi8(idx));//mask for >idx
+        const uint16_t less_than = _mm_movemask_epi8(idx_mask);
+        tmp_idx_run = __builtin_ctzll(~less_than);
+
+        const __m128i shuff = _mm_set1_epi8(idx_run);
+        const __m128i pf_sum_vec = _mm_shuffle_epi8(block, shuff);
+        pf_sum = ((uint8_t*)&pf_sum_vec)[0];
+    }
+
+    const uint32_t offset = static_cast<uint32_t>((*stream - 16)[tmp_idx_run]) - (pf_sum-idx);
+    return std::make_pair(idx_run+tmp_idx_run, offset);
+}
+
+template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
+static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_16x8(const uint8_t **stream, uint64_t idx){
+
+    __m128i block = decode_block_sse42<vbyte_compressed, 1, 2>(stream);
+    uint32_t prev_acc = 0;
+    //some time the block has some garbage, so we have to assume overflow at the end
+    uint32_t acc = hsum_epi16_ovf(block);
+    uint32_t idx_run =0;
+
+    while(acc<=idx){
+        block = decode_block_sse42<vbyte_compressed,1,2>(stream);
+        idx_run+=8;
+        //print16x8(bk_lengths);
+        prev_acc = acc;
+        acc += hsum_epi16_ovf(block);
+    }
+
+    idx-=prev_acc;
+    uint32_t pf_sum, tmp_idx_run, len;
+
+    if constexpr (overflow8){
+        psum_epi16_ovf(block, idx, pf_sum, tmp_idx_run);
+        const __m128i shuff = _mm_add_epi8(_mm_set_epi64x(0x100010001000100ULL, 0x100010001000100ULL),
+                                           _mm_set1_epi8(tmp_idx_run<<1));
+        len = (uint16_t)_mm_cvtsi128_si32(_mm_shuffle_epi8(block, shuff));
+    }else{
+        //prefix sum without overflow
+        __m128i pf_sum_vec = _mm_add_epi16(block, _mm_slli_si128(block, 2));
+        pf_sum_vec = _mm_add_epi16(pf_sum_vec, _mm_slli_si128(pf_sum_vec, 4));
+        pf_sum_vec = _mm_add_epi16(pf_sum_vec, _mm_slli_si128(pf_sum_vec, 8));
+        //print16x8(bk_lengths);
+
+        const __m128i idx_mask = _mm_cmple_epu16(pf_sum_vec, _mm_set1_epi16(idx));//mask for <=idx
+        const uint8_t less_than = (uint8_t)_mm_movemask_epi8(_mm_packs_epi16(idx_mask, _mm_setzero_si128()));
+        tmp_idx_run = __builtin_ctzll(~less_than);
+        //print16x8(idx_mask);
+
+        //_mm_set_epi64x(0x100010001000100ULL, 0x100010001000100ULL) is equal to set {0, 1, 0, 1, 0, 1, ...}
+        const __m128i shuff = _mm_add_epi8(_mm_set_epi64x(0x100010001000100ULL, 0x100010001000100ULL),
+                                           _mm_set1_epi8(tmp_idx_run<<1));
+        pf_sum = (uint16_t)_mm_cvtsi128_si32(_mm_shuffle_epi8(pf_sum_vec, shuff));
+        len = (uint16_t)_mm_cvtsi128_si32(_mm_shuffle_epi8(block, shuff));
+    }
+
+    //print8x16(shuff);
+    uint64_t offset = len - (pf_sum-idx);
+    return std::make_pair(idx_run+tmp_idx_run, offset);
+}
+
+template<bool vbyte_compressed, uint8_t bytes_per_run>
+static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_32x4(const uint8_t **stream, uint64_t idx){
+
+    __m128i block = decode_block_sse42<vbyte_compressed, 2, bytes_per_run>(stream);
+    uint32_t prev_acc=0;
+    uint32_t acc= hsum_epi32(block);
+    uint32_t idx_run =0;
+    //print32x4(bk_lengths);
+
+    while(acc<=idx){
+        block = decode_block_sse42<vbyte_compressed, 2, bytes_per_run>(stream);
+        prev_acc = acc;
+        idx_run+=4;
+        acc += hsum_epi32(block);
+    }
+
+    idx-=prev_acc;
+
+    //prefix sum
+    __m128i pf_sum_vec = _mm_add_epi32(block, _mm_slli_si128(block, 4));
+    pf_sum_vec = _mm_add_epi32(pf_sum_vec, _mm_slli_si128(pf_sum_vec, 8));
+    //
+
+    //print32x4(bk_lengths);
+
+    const __m128i idx_mask = _mm_cmple_epu32(pf_sum_vec, _mm_set1_epi32(idx));//mask for >idx
+    const uint64_t less_than = _mm_cvtsi128_si64(_mm_packs_epi32(idx_mask, _mm_setzero_si128()));
+    const uint8_t tmp_idx_run = __builtin_ctzll(~less_than)>>4;
+
+    //_mm_set_epi64x(0x302010003020100ULL, 0x302010003020100uLL) equal to set {0,1,2,3,4,0,1,2,3,4,0,1,2,3,4,0,1,2,3,4}
+    const __m128i shuff = _mm_add_epi8(_mm_set_epi64x(0x302010003020100ULL, 0x302010003020100ULL),
+                                       _mm_set1_epi8(tmp_idx_run<<2));
+    const uint32_t pf_sum = _mm_cvtsi128_si32(_mm_shuffle_epi8(pf_sum_vec, shuff));
+    const uint32_t len = _mm_cvtsi128_si32(_mm_shuffle_epi8(block, shuff));
+
+    const uint32_t offset = len - static_cast<uint32_t>(pf_sum - idx);
+    return std::make_pair(idx_run+tmp_idx_run, offset);
+}
+
+template<uint8_t bytes_per_run>
+static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_64x2(const uint8_t **stream, uint64_t idx){
+    return std::make_pair(0, 0);
 }
 
 template<bool overflow16, bool overflow32=false, bool check_head>

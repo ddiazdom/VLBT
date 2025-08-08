@@ -38,7 +38,7 @@ struct vlbt_sr_index{
         if(l>r) std::vector<uint64_t>();
 
         //compute the occurrences in SA[i+1..r-1]
-        const size_t len = r-l+1;
+        const int64_t len = r-l+1;
         std::vector<uint64_t> occ(len);
         occ[0] = sa_val;
         if constexpr (phi_type::variant == NO_VALID_AREA) {
