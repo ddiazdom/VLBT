@@ -29,7 +29,7 @@ public:
     static constexpr uint8_t int_pt_width = 6;
     static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
     static constexpr uint8_t leaf_enc_width = 4;
-    static constexpr bool has_toeholds = var;
+    static constexpr bool variant = var;
 
     //the number of bits to encode the number of bytes the run sequence uses:
     // number of bits we use to encode the number of bytes that the runs use in a leaf
@@ -1410,6 +1410,17 @@ public:
         return sa_samp+n_steps;
     }
 
+    [[nodiscard]] inline int64_t decode_sa(size_t bwt_pos) const {
+        int64_t n_steps = 0, sa_samp=std::numeric_limits<int64_t>::min();
+        while(sa_samp<0 && n_steps<subsamp_step){
+            auto res = inverse_select_with_sa(bwt_pos);
+            sa_samp =  res.sa_samp;
+            bwt_pos = C[res.sym] + res.rank;
+            n_steps++;
+        }
+        return sa_samp+n_steps-1;
+    }
+
     [[nodiscard]] size_t subsampling_value() const {
         return subsamp_step;
     }
@@ -1914,7 +1925,7 @@ public:
 
         tree_path_type p;
         find_path_to_leaf(p, i);
-        size_t byte_pos = INT_CEIL(p.bit_pos, 8);
+        const size_t byte_pos = INT_CEIL(p.bit_pos, 8);
 
         const uint8_t *leaf_addr = reinterpret_cast<uint8_t *>(stream.stream)+byte_pos;
         inv_sel_sa_ans ans;
@@ -2177,9 +2188,8 @@ public:
         }
 
         //std::cout<<"mio:"<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
-        int64_t sa_samp = sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
-        //std::cout<<"mio: \""<<pat<<"\" -> "<<l<<" "<<r<<" "<<sa_samp<<std::endl;
-        return {l, r, sa_samp};
+        const int64_t sa_samp = sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
+        return {l, r, sa_samp-head[1].first-1};
     }
 
     [[nodiscard]] inline uint8_t eff2byte(uint8_t eff_sym) const {

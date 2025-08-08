@@ -1884,7 +1884,7 @@ struct tree_dt{
 template<class bwt_type>
 void build_bwt(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std::string tmp_dir="./"){
 
-    static_assert(!bwt_type::has_toeholds);
+    static_assert(bwt_type::variant != WITH_TOEHOLDS);
 
     tree_dt<bwt_type, run_type> tree(tmp_dir, bwt_rep);
 
@@ -1901,7 +1901,7 @@ template<class bwt_type, class sa_samp_type>
 void build_bwt_th(bwt_type& bwt_rep, std::string& bwt_file, size_t subsamp_step, const BWT_FORMAT fmt,
                   std::string& subsamp_sa_file, std::string tmp_dir="./"){
 
-    static_assert(bwt_type::has_toeholds);
+    static_assert(bwt_type::variant == WITH_TOEHOLDS);
 
     tree_dt<bwt_type, run_with_sa_type<sa_samp_type>> tree(tmp_dir, bwt_rep);
 

@@ -36,13 +36,22 @@ struct phi_run_type {
     size_type sym=0;
     size_type len=0;
     int16_t valid_area=0;
+    bool is_suffix=false;
 
-    phi_run_type(size_type _sym, size_type _len, int16_t _valid_area):
+    phi_run_type(size_type _sym, size_type _len, const int16_t _valid_area, const bool _is_suffix):
             sym(_sym),
             len(_len),
-            valid_area(_valid_area){};
+            valid_area(_valid_area),
+            is_suffix(_is_suffix){};
 
     phi_run_type()=default;
+
+    //NOTE: in phi we can merge runs when they have the same symbol
+    //we can only re-merge runs that were split before. We use the flag is_suffix
+    //to detect previously split runs
+    bool can_merge(const phi_run_type& other) const {
+        return sym==other.sym && other.is_suffix;
+    }
 };
 
 template<class phi_type, class size_type>
@@ -188,14 +197,14 @@ struct phi_node {//state of the compression
                 //the run fits the block size
                 assert(run.len<=b_size);
                 bk_len+=run.len;
-                active_blocks[bk_id].emplace_back(run.sym, run.len, run.valid_area);
+                active_blocks[bk_id].emplace_back(run.sym, run.len, run.valid_area, run.is_suffix);
                 run.len=0;
 
             } else {// we complete a new block
 
                 //last run of the active block
                 size_t split_run_len = b_size-bk_len;
-                active_blocks[bk_id].emplace_back(run.sym, split_run_len, run.valid_area);
+                active_blocks[bk_id].emplace_back(run.sym, split_run_len, run.valid_area, run.is_suffix);
                 bk_len+=split_run_len;
                 assert(split_run_len>0 && bk_len==b_size);
                 acc_runs+=active_blocks[bk_id].size();
@@ -216,13 +225,14 @@ struct phi_node {//state of the compression
                 if (run.valid_area!=-1) {
                     run.valid_area = run.valid_area > split_run_len ? run.valid_area - split_run_len : 0;
                 }
+                run.is_suffix = true;
 
                 bk_len=0;
             }
         }
     }
 
-    inline void finish_int_node(){
+    inline void finish_int_node() {
 
         assert(n_children<=s_factor);
         assert(lvl>0);
@@ -450,14 +460,11 @@ struct phi_node {//state of the compression
         n_runs+=blocks[0].size()-1;
         //combine the runs we previously broke due to boundary constraints
         for(size_t i=1;i<n_blocks;i++){
-            //read the rightmost run of the previous block
-            size_t sym = blocks[i - 1].back().sym;
-            size_t len = blocks[i - 1].back().len;
-
-            //collapse the run with the first run of the current block if they have the same symbol
-            if(sym==blocks[i][0].sym){
+            //collapse the run with the first run of the current block if possible
+            //NOTE: different (original) runs with the same symbols can't be merged
+            if(blocks[i-1].back().can_merge(blocks[i][0])){
                 //collapse the runs as they are the same
-                blocks[i][0].len +=len;
+                blocks[i][0].len +=blocks[i - 1].back().len;
                 blocks[i-1].pop_back();
             } else {
                 //otherwise process the last run of the previous block as an independent run
@@ -812,9 +819,6 @@ struct phi_node {//state of the compression
             ++stats.children_freq[tmp_node->n_children];
         } else {
             assert(n_blocks>=1);
-            if (tmp_node->syms_before==430112768) {
-                std::cout<<"holaa"<<std::endl;
-            }
             tmp_node->create_leaf(active_blocks, n_blocks);
         }
 
@@ -923,6 +927,7 @@ struct phi_tree{
                 run.sym = rsa_samples_buff[j].first>>15;
                 run.valid_area = rsa_samples_buff[j].first & 0x7FFF;//first 15 bits
                 run.valid_area = run.valid_area==0? -1 : run.valid_area;//a small hack to deal with artificial breaks in the trees
+                run.is_suffix = false;
                 assert(run.valid_area==-1 || run.valid_area>=0);
 
                 run.len = rsa_samples_buff[j].second;
@@ -935,6 +940,7 @@ struct phi_tree{
             run.sym = rsa_samples_buff[j].first>>15;
             run.valid_area = rsa_samples_buff[j].first & 0x7FFF;//first 15 bits
             run.valid_area = run.valid_area==0? -1 : run.valid_area;//a small hack to deal with artificial breaks in the trees
+            run.is_suffix = false;
             assert(run.valid_area==-1 || run.valid_area>=0);
 
             run.len = rsa_samples_buff[j].second;
@@ -953,7 +959,7 @@ struct phi_tree{
         //
     }
 
-    void build_in_memory(std::vector<run_type>& block){
+    /*void build_in_memory(std::vector<run_type>& block){
 
         //basic information about the block (the area it covers (number of symbols) and the number of runs)
         phi_rep.orig_runs = block.size();
@@ -987,7 +993,7 @@ struct phi_tree{
         root->finish_tree();
         ifs.close();
         //
-    }
+    }*/
 
     void report_stats(){
 
@@ -1113,6 +1119,7 @@ void build_phi(phi_dt_type& phi_rep, std::string& rsa_samp_file, std::string tmp
     tree.report_stats();
 }
 
+/*
 template<class phi_dt_type, class size_type, bool vbyte=false>
 void build_phi_in_memory(phi_dt_type& phi_rep,
                          std::vector<std::pair<size_type, size_type>> block,
@@ -1121,8 +1128,6 @@ void build_phi_in_memory(phi_dt_type& phi_rep,
     phi_tree<phi_dt_type, size_type> tree(tmp_dir, phi_rep);
     tree.build_in_memory(block);
     tree.report_stats();
-}
-
-
+}*/
 
 #endif//VLBT_BUILD_PHI

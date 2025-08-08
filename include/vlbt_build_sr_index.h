@@ -17,10 +17,55 @@
 struct sample_type {
     uint64_t head_val;
     uint64_t prev_tail_val;
-    uint64_t valid_area;
     uint64_t next_head_val;
     uint64_t run_id:56;
     bool is_head_sampled:8;
+};
+
+template<class size_type>
+struct buff_writer {
+
+    std::ofstream ofs;
+    size_t buff_pos=0;
+    std::vector<size_type> buffer;
+    size_t buffer_size = 1024*1024;
+    size_t sz=0;
+    bool is_open = true;
+
+    explicit buff_writer(const std::string& output_file) {
+        ofs = std::ofstream(output_file, std::ios::binary);
+        buffer.resize(buffer_size);
+    }
+
+    void push_back(size_t diff, bool is_diff_neg, size_t valid_area, size_t len) {
+        assert(is_open);
+        buffer[buff_pos] = diff;
+        buffer[buff_pos] = (buffer[buff_pos]<<1) | is_diff_neg;//we use 1 bit to encode if the difference is negative
+        buffer[buff_pos] = (buffer[buff_pos]<<15) | valid_area;//we use 15 bits to encode the valid area
+        buff_pos++;
+        buffer[buff_pos++] = len;
+        if(buff_pos==buffer_size){
+            ofs.write((char *)buffer.data(), sizeof(size_type)*buffer_size);
+            buff_pos=0;
+        }
+        sz+=len;
+    }
+
+    inline size_t size() const {
+        return sz;
+    }
+
+    void close() {
+        if (buff_pos!=0) {
+            ofs.write((char *)buffer.data(), sizeof(size_type)*buff_pos);
+        }
+        ofs.close();
+        is_open = false;
+    }
+
+    ~buff_writer() {
+        close();
+    }
 };
 
 static inline uint64_t get_diff(const uint64_t first, const uint64_t second) {
@@ -33,18 +78,12 @@ template<class size_type>
 void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges_file,
                       size_t ssamp_val, std::string& ssamp_heads_file){
 
-
     std::cout<<"Sampling the heads"<<std::endl;
 
     //sort the samples by the text position of the tails
     std::sort(samples.begin(), samples.end(), [](auto const& a, auto const&b){
         return a.prev_tail_val<b.prev_tail_val;
     });
-    //for(size_t i=0;i<samples.size()-1;i++) {
-    //    samples[i].prev_tail_right_tail_dist = samples[i+1].prev_tail_val - samples[i].prev_tail_val;
-    //}
-    //samples.back().prev_tail_right_tail_dist = std::numeric_limits<uint64_t>::max();
-
 
     //sort the samples by text position
     std::sort(samples.begin(), samples.end(), [](auto const& a, auto const&b){
@@ -71,27 +110,26 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
         assert(s_pos<samples.size());
 
         while((s_pos+1)<samples.size() && samples[s_pos+1].head_val<=str_boundary){
-            //std::cout<<"s_pos:"<<s_pos<<", tail_pos:"<<samples[s_pos].tail_val<<", str_boundary:"<<str_boundary<<" ";
+
 
             if((samples[s_pos+1].head_val-samples[last_sampled].head_val>ssamp_val)){
                 len = samples[s_pos].head_val-samples[last_sampled].head_val;
-
 
                 //std::cout<<"sampled "<<samples[last_sampled].head_val<<std::endl;
                 //if (samples[last_sampled].head_val==430241310) {
                 //    std::cout<<"holaa"<<std::endl;
                 //}
 
-                samples[last_sampled].valid_area = 0;
-                if(last_sampled<(s_pos-1)) {
-                    samples[last_sampled].valid_area = samples[last_sampled+1].head_val-samples[last_sampled].head_val;
+                //samples[last_sampled].valid_area = 0;
+                //if(last_sampled<(s_pos-1)) {
+                //  samples[last_sampled].valid_area = samples[last_sampled+1].head_val-samples[last_sampled].head_val;
                     //TODO the value below is the real "invalid suffix" anything after this suffix is valid
-                    std::cout<<samples[s_pos].head_val-samples[last_sampled+1].head_val<<std::endl;
-                }
+                    //std::cout<<samples[s_pos].head_val-samples[last_sampled+1].head_val<<std::endl;
+                //}
 
-                for(size_t k=last_sampled+1;k<s_pos;k++){
-                    std::cout<<"Not sampled "<<samples[k].head_val<<" "<<samples[k].head_val-samples[last_sampled].head_val<<" "<<std::endl;;
-                }
+                //for(size_t k=last_sampled+1;k<s_pos;k++){
+                //    std::cout<<"Not sampled "<<samples[k].head_val<<" "<<samples[k].head_val-samples[last_sampled].head_val<<" "<<std::endl;;
+                //}
 
                 samples[last_sampled].is_head_sampled = true;
                 acc_len+=len;
@@ -102,14 +140,8 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
         }
 
         if(samples[s_pos].head_val<=str_boundary){
-            if((str_boundary-samples[last_sampled].head_val)>ssamp_val){
+            if((str_boundary+1)-samples[last_sampled].head_val){
                 len = samples[s_pos].head_val-samples[last_sampled].head_val;
-
-                samples[last_sampled].valid_area = 0;
-                if(last_sampled<(s_pos-1)) {
-                    samples[last_sampled].valid_area = samples[last_sampled+1].head_val-samples[last_sampled].head_val;
-                }
-
                 samples[last_sampled].is_head_sampled = true;
                 acc_len+=len;
                 last_sampled = s_pos;
@@ -120,7 +152,7 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
 
         samples[last_sampled].is_head_sampled = true;
         len = (str_boundary+1)-samples[last_sampled].head_val;
-        samples[last_sampled].valid_area = 0;
+        //samples[last_sampled].valid_area = 0;
         acc_len += len;
         n_samp++;
 
@@ -166,6 +198,7 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
 template<class size_type>
 void get_tail_samples(std::vector<sample_type>& samples,
                       std::string& str_ranges_file,
+                      size_t subsamp_step,
                       std::string& ssamp_tails_file){
 
     std::cout<<"Sampling the tails"<<std::endl;
@@ -175,7 +208,6 @@ void get_tail_samples(std::vector<sample_type>& samples,
         return a.prev_tail_val < b.prev_tail_val;
     });
 
-    //
     //compute and store the run head subsamples for phi
     size_t f_size = std::filesystem::file_size(str_ranges_file);
     size_t n_elements = f_size/sizeof(size_type);
@@ -183,90 +215,93 @@ void get_tail_samples(std::vector<sample_type>& samples,
     std::ifstream ifs_str_ranges(str_ranges_file, std::ios::binary);
     ifs_str_ranges.read((char *)str_ranges.data(), f_size);
 
-    std::ofstream ofs_ssamp_tails(ssamp_tails_file, std::ios::binary);
-    size_t n_strings = n_elements-1, last_sampled, len, acc_len=0, buffer_size=1024*1024, buff_pos=0;
-    size_t s_pos=0, diff;
-    size_t valid_area;
+    buff_writer<size_type> output_buffer(ssamp_tails_file);
+    const size_t n_strings = n_elements-1;
+    size_t len, s_pos=0, diff, valid_area;
     size_type str_boundary;
     bool is_diff_neg;
 
-    std::vector<size_type> buffer(buffer_size, 0);
-
-    //bool is_diff_neg;
     for(size_t str=0;str<n_strings;str++){
+
         assert(samples[s_pos].prev_tail_val==str_ranges[str]);
         str_boundary = str_ranges[str+1]-1;
-        //std::cout<<"s_pos:"<<s_pos<<", tail_pos:"<<samples[s_pos].tail_val<<", str_boundary:"<<str_boundary<<std::endl;
-        last_sampled = s_pos;
+        size_t last_sampled = s_pos;
         s_pos++;
         assert(s_pos<samples.size());
 
         while(s_pos<samples.size() && samples[s_pos].prev_tail_val<=str_boundary){
 
-            //std::cout<<"s_pos:"<<s_pos<<", tail_pos:"<<samples[s_pos].tail_val<<", str_boundary:"<<str_boundary<<" ";
             if(samples[s_pos].is_head_sampled){
 
                 assert(s_pos>last_sampled);
+                const size_t n_blocks = s_pos-last_sampled;
+
+                valid_area = samples[last_sampled+1].prev_tail_val-samples[last_sampled].prev_tail_val;
                 len = samples[s_pos].prev_tail_val-samples[last_sampled].prev_tail_val;
                 diff = get_diff(samples[last_sampled].prev_tail_val, samples[last_sampled].head_val);
                 is_diff_neg = samples[last_sampled].prev_tail_val>samples[last_sampled].head_val;
-                valid_area = samples[last_sampled].valid_area;
 
-                //if(samples[s_pos].valid_area>3){
-                //    std::cout<<"are the same length?"<<samples[s_pos].prev_tail_right_tail_dist<<" "<<samples[s_pos].valid_area<<std::endl;
+                //if (samples[last_sampled].prev_tail_val<=72440562 && 72440561<samples[last_sampled].prev_tail_val+len) {
+                //    std::cout<<"holaa"<<std::endl;
                 //}
-                //assert(len>=samples[last_sampled].prev_tail_right_tail_dist);
-                //std::cout<<samples[s_pos].head_val<<" "<<len<<" "<<samples[s_pos].head_next_val_dist<<std::endl;
-                //checking
-                //if (len>samples[last_sampled].head_next_val_dist) {
-                //std::cout<<"len: "<<len<<" valid: "<<samples[last_sampled].prev_tail_right_tail_dist<<" "<<samples[last_sampled].head_next_val_dist<<std::endl;
-                //}
-                //std::cout<<"len: "<<len<<" distances: "<<samples[last_sampled].prev_tail_right_tail_dist<<" "<<samples[s_pos].head_next_val_dist<<std::endl;
-                //
 
-                buffer[buff_pos] = diff;
-                buffer[buff_pos] = (buffer[buff_pos]<<1) | is_diff_neg;//we use 1 bit to encode if the difference is negative
-                buffer[buff_pos] = (buffer[buff_pos]<<15) | valid_area;//we use 15 bits to encode the valid area
-                buff_pos++;
-                buffer[buff_pos++] = len;
-                if(buff_pos==buffer_size){
-                    ofs_ssamp_tails.write((char *)buffer.data(), sizeof(size_type)*buffer_size);
-                    buff_pos=0;
+                if (n_blocks==1) {
+                    output_buffer.push_back(diff, is_diff_neg, 0, len);
+                } else if (valid_area<subsamp_step) {
+                    output_buffer.push_back(diff, is_diff_neg, valid_area, len);
+                } else {
+                    //we break the block into two pieces
+                    len = samples[last_sampled+1].prev_tail_val-samples[last_sampled].prev_tail_val;
+                    assert(len>=subsamp_step && valid_area==len);
+                    diff = get_diff(samples[last_sampled].prev_tail_val, samples[last_sampled].head_val);
+                    is_diff_neg = samples[last_sampled].prev_tail_val>samples[last_sampled].head_val;
+                    output_buffer.push_back(diff, is_diff_neg, 0, len);
+
+                    last_sampled++;
+                    valid_area = samples[last_sampled+1].prev_tail_val-samples[last_sampled].prev_tail_val;
+                    assert(valid_area<subsamp_step);
+                    len = samples[s_pos].prev_tail_val-samples[last_sampled].prev_tail_val;
+                    diff = get_diff(samples[last_sampled].prev_tail_val, samples[last_sampled].head_val);
+                    is_diff_neg = samples[last_sampled].prev_tail_val>samples[last_sampled].head_val;
+                    output_buffer.push_back(diff, is_diff_neg, valid_area, len);
                 }
-                acc_len+=len;
                 last_sampled = s_pos;
             }
             s_pos++;
         }
 
-        //std::cout<<"string: "<<str<<":"<<samples[last_sampled].tail_val<<" /  "<<samples[s_pos].tail_val<<" / "<<samples[s_pos+1].tail_val<<std::endl;
-        //if(samples[s_pos].prev_tail_val<=str_boundary){
-        //    s_pos++;
-        //}
-
+        const size_t n_blocks = s_pos-last_sampled;
+        valid_area = samples[last_sampled+1].prev_tail_val-samples[last_sampled].prev_tail_val;
         len = (str_boundary+1)-samples[last_sampled].prev_tail_val;
         diff = get_diff(samples[last_sampled].prev_tail_val, samples[last_sampled].head_val);
         is_diff_neg = samples[last_sampled].prev_tail_val>samples[last_sampled].head_val;
-        valid_area = samples[last_sampled].valid_area;
 
-        buffer[buff_pos] = diff;
-        buffer[buff_pos] = (buffer[buff_pos]<<1) | is_diff_neg;//we use 1 bit to encode if the difference is negative
-        buffer[buff_pos] = (buffer[buff_pos]<<15) | valid_area;//we use 15 bits to encode the valid area
-        buff_pos++;
-        buffer[buff_pos++] = len;
-        if(buff_pos==buffer_size){
-            ofs_ssamp_tails.write((char *)buffer.data(), sizeof(size_type)*buffer_size);
-            buff_pos=0;
+        if (n_blocks==1) {
+            output_buffer.push_back(diff, is_diff_neg, 0, len);
+        } else if(valid_area<subsamp_step) {
+            output_buffer.push_back(diff, is_diff_neg, valid_area, len);
+        } else {
+            len = samples[last_sampled+1].prev_tail_val-samples[last_sampled].prev_tail_val;
+            assert(len>=subsamp_step && valid_area==len);
+            diff = get_diff(samples[last_sampled].prev_tail_val, samples[last_sampled].head_val);
+            is_diff_neg = samples[last_sampled].prev_tail_val>samples[last_sampled].head_val;
+            output_buffer.push_back(diff, is_diff_neg, 0, len);
+
+            last_sampled++;
+            valid_area = samples[last_sampled+1].prev_tail_val-samples[last_sampled].prev_tail_val;
+            assert(valid_area<subsamp_step);
+            len = (str_boundary+1)-samples[last_sampled].prev_tail_val;
+            diff = get_diff(samples[last_sampled].prev_tail_val, samples[last_sampled].head_val);
+            is_diff_neg = samples[last_sampled].prev_tail_val>samples[last_sampled].head_val;
+            output_buffer.push_back(diff, is_diff_neg, valid_area, len);
         }
-        acc_len += len;
-        assert(acc_len==str_ranges[str+1]);
+        assert(output_buffer.size()==str_ranges[str+1]);
     }
-    ofs_ssamp_tails.write((char *)buffer.data(), off_t(sizeof(size_type)*buff_pos));
 }
 
 template<class size_type>
 void subsample_sa_samples(std::string& sa_samples_file, std::string& str_ranges_file,
-                          size_t ssamp_val, std::string& ssamp_heads_file,
+                          size_t ssamp_step, std::string& ssamp_heads_file,
                           std::string& ssamp_tail_file){
 
     size_t n_elements = std::filesystem::file_size(sa_samples_file)/sizeof(size_type);
@@ -316,8 +351,8 @@ void subsample_sa_samples(std::string& sa_samples_file, std::string& str_ranges_
     ifs_orig_samples.close();
     //
 
-    get_head_samples<size_type>(samples, str_ranges_file, ssamp_val,  ssamp_heads_file);
-    get_tail_samples<size_type>(samples, str_ranges_file, ssamp_tail_file);
+    get_head_samples<size_type>(samples, str_ranges_file, ssamp_step,  ssamp_heads_file);
+    get_tail_samples<size_type>(samples, str_ranges_file, ssamp_step, ssamp_tail_file);
 }
 
 template<class sr_index_type, class sa_samp_type>

@@ -102,10 +102,11 @@ struct fm_index{
     }
 
     [[nodiscard]] inline std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
-        size_t l=0, r=bwt.size()-1, j=pat.size();
+        const size_t len = pat.size();
+        size_t l=0, r=bwt.size()-1, j=len;
         std::pair<uint64_t, uint64_t> head[2]={{0,0}, {j-1, l}};
         while(j-->0 && l<=r){
-            uint8_t cc = byte2comp[static_cast<uint8_t>(pat[j])];
+            const uint8_t cc = byte2comp[static_cast<uint8_t>(pat[j])];
             auto res = bwt.template rank<true>(l, pat[j]);
             head[res.second] = {j, l};
             //std::cout<<head[1].first<<" "<<head[1].second<<std::endl;
@@ -114,9 +115,11 @@ struct fm_index{
             r = C[cc] + bwt.rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
         }
         //std::cout<<"A:"<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
-        int64_t sa_samp = get_sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
+        const int64_t sa_samp = get_sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
         //std::cout<<"A: \""<<pat<<"\" -> l:"<<l<<" r:"<<r<<" sa_samp:"<<sa_samp<<std::endl;
-        return {l, r, sa_samp};
+        //std::cout<<len-head[1].first<<" "<<head[1].first<<" "<<len<<std::endl;;
+
+        return {l, r, sa_samp-head[1].first-1};
     }
 
 };

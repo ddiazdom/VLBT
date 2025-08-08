@@ -66,7 +66,7 @@ add_executable(test_vlbt test_vlbt_suite.cpp)
 target_compile_options(test_vlbt
         PUBLIC
         -Wall -pedantic
-        #-O3
+        -O3
         -g
         ${SIMD_FLAGS}
 )
@@ -95,7 +95,7 @@ add_executable(get_sa scripts/get_sa.cpp)
 target_link_libraries(get_sa LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
 target_include_directories(get_sa PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
 target_compile_options(get_sa PUBLIC
-        #-O3
+        -O3
         ${SIMD_FLAGS})
 
 add_executable(gen_patterns scripts/genpatterns.cpp)

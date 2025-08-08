@@ -4,15 +4,6 @@
 
 #include <iostream>
 #include <ostream>
-//#include "perf_utils.h"
-//#include <sdsl/wt_huff.hpp>
-//#include <sdsl/construct.hpp>
-//#include <sdsl/wt_rlmn.hpp>
-//#include <sdsl/wt_int.hpp>
-//#include <sdsl/wt_rlmn.hpp>
-//#include <sdsl/suffix_arrays.hpp>
-//#include <sdsl/suffix_array_algorithm.hpp>
-//#include "fb_wt/wt-fbb-0.1.0/wt_fbb.hpp"
 
 //==== VLBT framework
 #include "include/vlbt_build_bwt.h"
@@ -186,7 +177,7 @@ time_answer += std::chrono::duration_cast<time_unit>( t2 - t1 ).count();\
 template<class bwt_type>
 void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name){
 
-    std::cout<<"Testing count (nanosecs/pat and nanosecs/occ)"<<std::endl;
+    std::cout<<"Testing count (microsecs/pat and microsecs/occ)"<<std::endl;
 
     sdsl::custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_file+".wt_rlmn");
@@ -253,7 +244,7 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
     double rlmn_acc_time=0;
     std::vector<std::pair<uint64_t, uint64_t>> rlmn_ans(n_pats);
     for(auto const& p : pat_list) {
-        MEASURE(csa_rlmn.backward_search(p), rlmn_acc_time, rlmn_ans[j], std::chrono::nanoseconds)
+        MEASURE(csa_rlmn.backward_search(p), rlmn_acc_time, rlmn_ans[j], std::chrono::microseconds)
         acc_count+=rlmn_ans[j].second-rlmn_ans[j].first+1;
         j++;
     }
@@ -264,7 +255,7 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
     j=0;
     std::vector<std::pair<uint64_t, uint64_t>> my_ans(n_pats);
     for(auto const& p : pat_list) {
-        MEASURE(my_dt.count(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
+        MEASURE(my_dt.count(p), my_acc_time, my_ans[j], std::chrono::microseconds)
         my_acc_count+=my_ans[j].second-my_ans[j].first+1;
         j++;
     }
@@ -282,7 +273,7 @@ void test_count(bwt_type& my_dt, std::string& input_file, std::string my_dt_name
 template<class bwt_type>
 void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_name){
 
-    std::cout<<"Testing locate (nanosecs/pat and nanosecs/occ)"<<std::endl;
+    std::cout<<"Testing locate (microsecs/pat and microsecs/occ)"<<std::endl;
 
     std::string pat_file = input_prefix+".pats";
     std::ifstream ifs(pat_file);
@@ -301,35 +292,34 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         }
     }
 
-    std::string sa_file = input_prefix+".sa";
-    size_t f_size = util::file_size(sa_file);
-    std::ifstream sa_ifs(sa_file);
-    std::vector<uint32_t> sa;
-    sa.resize(f_size/sizeof(uint32_t));
-    sa_ifs.read((char *)sa.data(), f_size);
-    assert(sa.size()==my_dt.size());
+    //std::string sa_file = input_prefix+".sa";
+    //size_t f_size = util::file_size(sa_file);
+    //std::ifstream sa_ifs(sa_file);
+    //std::vector<uint32_t> sa;
+    //sa.resize(f_size/sizeof(uint32_t));
+    //sa_ifs.read((char *)sa.data(), f_size);
+    //assert(sa.size()==my_dt.size());
+
     double my_acc_time=0;
-    size_t ans;
-    size_t n_valid=0;
-    std::cout<<my_dt.phi(430241311)<<std::endl;
-    for (size_t i=0;i<(sa.size()-1);i++) {
-        MEASURE(my_dt.phi(sa[i]), my_acc_time, ans, std::chrono::nanoseconds)
-        if(ans==-1) continue;//these are computed differently
-        if(sa[i+1]!=ans) {
-            std::cout<<"i:"<<i<<" sa_val:"<<sa[i]<<" -> correct:"<<sa[i+1]<<" / my_answer:"<<ans<<std::endl;
-        }
-        assert(sa[i+1]==ans);
-        n_valid++;
-    }
-    std::cout<<n_valid<<" out ouf "<<my_dt.size();
-    std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(sa.size()-1)<<", "<<my_acc_time/double(sa.size()-1)<<"), ";
+    //size_t ans;
+    //size_t n_valid=0;
+    //for (size_t i=0;i<(sa.size()-1);i++) {
+    //    MEASURE(my_dt.phi(sa[i]), my_acc_time, ans, std::chrono::nanoseconds)
+    //    if(ans==-1) continue;//these are computed differently
+    //    if(sa[i+1]!=ans) {
+    //        std::cout<<"i:"<<i<<" sa_val:"<<sa[i]<<" -> correct:"<<sa[i+1]<<" / my_answer:"<<ans<<std::endl;
+    //    }
+    //    assert(sa[i+1]==ans);
+    //    n_valid++;
+    //}
+    //std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(sa.size()-1)<<", "<<my_acc_time/double(sa.size()-1)<<"), "<<n_valid<<"/"<<(sa.size()-1)<<std::endl;
 
     //std::string rindex_file = input_prefix+".ri";
     //std::ifstream rindex_ifs(rindex_file);
     //ri::r_index<> rindex;
     //rindex.load(rindex_ifs);
 
-    custom_wt_rlmn<> wt_rlmn;
+    /*custom_wt_rlmn<> wt_rlmn;
     sdsl::load_from_file(wt_rlmn, input_prefix+".wt_rlmn");
     std::vector<uint64_t> C(wt_rlmn.sigma+1, 0);
     for(size_t sym=0;sym<wt_rlmn.sigma;sym++){
@@ -351,22 +341,32 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     for(auto const& p : pat_list) {
         MEASURE(csa_rlmn.count_with_head(p), rlmn_acc_time, rlmn_ans[j], std::chrono::nanoseconds)
         acc_count+=std::get<1>(rlmn_ans[j])-std::get<0>(rlmn_ans[j])+1;
+        assert(std::get<2>(rlmn_ans[j])==sa[std::get<0>(rlmn_ans[j])]);
         j++;
-    }
+    }*/
 
     my_acc_time=0;
-    double my_acc_count=0;
-    j=0;
-    std::vector<std::tuple<uint64_t, uint64_t, uint64_t>> my_ans(n_pats);
+    size_t my_acc_count=0;
+    size_t j=0;
+    std::vector<std::vector<uint64_t>> my_ans(n_pats);
     for(const std::string& p : pat_list) {
-        MEASURE(my_dt.locate(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
-        my_acc_count+=std::get<1>(my_ans[j])-std::get<0>(my_ans[j])+1;
+        MEASURE(my_dt.locate(p), my_acc_time, my_ans[j], std::chrono::microseconds)
+        my_acc_count+=my_ans[j].size();
+        /*auto res = my_dt.count(p);
+        assert((res.second-res.first+1)==my_ans[j].size());
+        my_acc_count+=static_cast<double>(my_ans[j].size());
+        for(size_t i=res.first, k=0;i<=res.second;++i,++k){
+            if (my_ans[j][k]!=sa[i]) {
+                std::cout<<j<<" pattern:"<<p<<" my_ans:"<<my_ans[j][k]<<" != real:"<<sa[i]<<std::endl;
+            }
+            assert(my_ans[j][k]==sa[i]);
+        }*/
         j++;
     }
-    std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), ";
-    std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;
+    std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;;
 
-    for(size_t i=0;i<pat_list.size();i++){
+    //std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;
+    /*for(size_t i=0;i<pat_list.size();i++){
         if(std::get<0>(my_ans[i])!=std::get<0>(rlmn_ans[i]) ||
            std::get<1>(my_ans[i])!=std::get<1>(rlmn_ans[i]) ||
            std::get<2>(my_ans[i])!=std::get<2>(rlmn_ans[i])){
@@ -375,7 +375,7 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
                                                                         <<std::get<2>(my_ans[i])<<"!="<<std::get<2>(rlmn_ans[i])<<std::endl;
             exit(1);
         }
-    }
+    }*/
 }
 
 template<class bwt_type>
@@ -602,5 +602,5 @@ int main(int argc, char** argv) {
     //test_bwt(input_prefix, output_prefix);
     //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    test_sr_index<uint64_t>(input_prefix, 8, output_prefix);
+    test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }

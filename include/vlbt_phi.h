@@ -10,20 +10,21 @@
 
 enum phi_variant {
     NO_VALID_AREA = 0,
-    WITH_VALID_AREA = 1
+    WITH_VALID_AREA = 1,
+    NO_SUBSAMPLING=2
 };
 
-template<phi_variant type, size_t b_size, size_t b_runs, size_t s_factor>
+template<phi_variant var, size_t b_size, size_t b_runs, size_t s_factor>
 struct vlbt_phi {
     typedef bit_stream<size_t> stream_type;
     static constexpr size_t block_size = b_size;
     static constexpr size_t scale_factor = s_factor;
     static constexpr size_t max_block_runs = b_runs;
-    static constexpr phi_variant variant = type;
+    static constexpr phi_variant variant = var;
 
     static constexpr uint8_t int_pt_width = 7;
     //number of bits we use to encode the number of bits we use to encode pointers
-    static constexpr uint8_t run_width = (sizeof(unsigned long) * 8) - __builtin_clzl(b_runs - 1);
+    static constexpr uint8_t run_width = (sizeof(unsigned long) * 8) - __builtin_clzl(b_runs);
     //number of bits we use to encode the nearest valid tree in representation
     static constexpr uint8_t leaf_enc_width = 4; //number of bits to encode the leaf encoding
     static constexpr uint8_t run_bytes = (sizeof(unsigned long) * 8) - __builtin_clzl((b_runs * 8) + (b_runs / 8));
@@ -261,7 +262,7 @@ struct vlbt_phi {
             const uint64_t val = stream.read(val_bit_pos, val_bit_pos + diff_width - 1);
             uint64_t sa_val = val & 1 ? bck_i-(val>>1UL) : bck_i+(val>>1UL);//the first bit indicates if the different is negative or positive
             bit_pos += n_runs*diff_width;
-            if(!stream.pop_count(bit_pos, bit_pos + run.first)) {//the whole block is a valid area
+            if(!stream.read_bit(bit_pos + run.first)) {//the whole block is a valid area
                 return static_cast<int64_t>(sa_val);
             }
             const size_t pos = stream.pop_count(bit_pos, bit_pos+run.first)-1;//only works because bitstream[bit_pos+run.first] is true
