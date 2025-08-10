@@ -93,17 +93,25 @@ struct vlbt_phi {
 
         bit_pos = (header_bytes + p) * 8; //bit-position where "child" begins in the stream
 
-        //read the node header
-        bool is_leaf = stream.read_bit(bit_pos++);
         i -= child * bk_sz; //relative position of i within the child block
 
+        //read the node header
+        const size_t mt_width = 1 + scale_factor + int_pt_width;
+
+        __builtin_prefetch(&stream.stream[bit_pos/64]+32, 0, 1);
+
+        uint64_t node_metadata = stream.read(bit_pos, bit_pos + mt_width-1);
+        bit_pos+=mt_width;
+        bool is_leaf=node_metadata&1;
+        node_metadata >>= 1;
+
         while (!is_leaf) {
+
             bk_sz /= scale_factor;
             child = i / bk_sz;
-            assert(child<scale_factor);
 
-            size_t child_info = stream.read(bit_pos, bit_pos + scale_factor - 1);
-            bit_pos += scale_factor;
+            size_t child_info = node_metadata & ((1 << scale_factor)-1);
+            node_metadata >>= scale_factor;
 
             const size_t n_children = __builtin_popcount(child_info); //number of eff children
             assert(n_children>0);
@@ -114,8 +122,7 @@ struct vlbt_phi {
             i -= n_real_lsib * bk_sz; //number of symbols before child within the node
 
             //read how many bits we use to encode the pointers to the children
-            const size_t p_width = stream.read(bit_pos, bit_pos + int_pt_width - 1);
-            bit_pos += int_pt_width;
+            const size_t p_width = node_metadata & ((1 << int_pt_width)-1);
 
             p = bit_pos + (child * p_width);
             p = stream.read(p, p + p_width - 1);
@@ -125,8 +132,12 @@ struct vlbt_phi {
             //add the bit offset. now bit_pos points to child
             bit_pos += p * 8;
 
-            is_leaf = stream.read_bit(bit_pos++);
+            node_metadata = stream.read(bit_pos, bit_pos + mt_width-1);
+            bit_pos+=mt_width;
+            is_leaf=node_metadata&1;
+            node_metadata >>= 1;
         }
+        bit_pos-=mt_width-1;
     }
 
 

@@ -292,13 +292,13 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
         }
     }
 
-    //std::string sa_file = input_prefix+".sa";
-    //size_t f_size = util::file_size(sa_file);
-    //std::ifstream sa_ifs(sa_file);
-    //std::vector<uint32_t> sa;
-    //sa.resize(f_size/sizeof(uint32_t));
-    //sa_ifs.read((char *)sa.data(), f_size);
-    //assert(sa.size()==my_dt.size());
+    /*std::string sa_file = input_prefix+".sa";
+    size_t f_size = util::file_size(sa_file);
+    std::ifstream sa_ifs(sa_file);
+    std::vector<uint32_t> sa;
+    sa.resize(f_size/sizeof(uint32_t));
+    sa_ifs.read((char *)sa.data(), f_size);
+    assert(sa.size()==my_dt.size());*/
 
     double my_acc_time=0;
     //size_t ans;
@@ -352,15 +352,16 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     for(const std::string& p : pat_list) {
         MEASURE(my_dt.locate(p), my_acc_time, my_ans[j], std::chrono::microseconds)
         my_acc_count+=my_ans[j].size();
+
         /*auto res = my_dt.count(p);
         assert((res.second-res.first+1)==my_ans[j].size());
-        my_acc_count+=static_cast<double>(my_ans[j].size());
         for(size_t i=res.first, k=0;i<=res.second;++i,++k){
             if (my_ans[j][k]!=sa[i]) {
                 std::cout<<j<<" pattern:"<<p<<" my_ans:"<<my_ans[j][k]<<" != real:"<<sa[i]<<std::endl;
             }
             assert(my_ans[j][k]==sa[i]);
         }*/
+
         j++;
     }
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;;

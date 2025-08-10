@@ -12,44 +12,46 @@
 template<bool vbyte_compressed, uint8_t ctr_width, uint8_t bytes_per_run>
 static inline uint8x16_t decode_block_neon(const uint8_t **stream){
 
+    __builtin_prefetch(*stream + 32, 0, 1);
+
     if constexpr (vbyte_compressed) {
         uint8_t *pshuf, ctrl_bits = **stream;
         uint8_t len;
-        if constexpr (ctr_width == 1) {
+        if constexpr (ctr_width == 1) {//up to 2 bytes (decompressed to uint16x8_t)
             pshuf = (uint8_t *) &dec_table_16x8[ctrl_bits];
             len = pshuf[14 + (ctrl_bits >> 7)] + 1;
-        } else if constexpr (ctr_width == 2) {
+        } else if constexpr (ctr_width == 2) {//up to 4 bytes (decompressed to uint32x4_t)
             pshuf = (uint8_t *) &dec_table_32x4[ctrl_bits];
             len = pshuf[12 + (ctrl_bits >> 6)] + 1;
-        } else if constexpr (ctr_width == 3) {
+        } else if constexpr (ctr_width == 3) {//up to 8 bytes (decompressed to uint64x2_t)
             pshuf = (uint8_t *) &dec_table_64x2[ctrl_bits];
             len = pshuf[8 + ((ctrl_bits >> 3) & 7)] + 1;
         } else {
-            exit(1);
+            __builtin_unreachable();
         }
-        uint8x16_t compressed = vld1q_u8(*stream + 1);
-        uint8x16_t dec_shuffle = vld1q_u8(pshuf);
+        const uint8x16_t compressed = vld1q_u8(*stream + 1);
+        const uint8x16_t dec_shuffle = vld1q_u8(pshuf);
         uint8x16_t data = vqtbl1q_u8(compressed, dec_shuffle);
         *stream += len + 1;
 
         return data;
 
-    } else {
+    } else {//no vbyte compression
         uint8x16_t data = vld1q_u8(*stream);
         //align the bytes
-        if constexpr (bytes_per_run==3){
+        if constexpr (bytes_per_run==3){//decompressed to uint32x4t
             const int8x16_t dec_shuff = {0,1,2,-1, 3,4,5,-1, 6,7,8,-1, 9,10,11,-1};
             data = vqtbl1q_u8(data, dec_shuff);
             *stream+=12;
-        } else if constexpr (bytes_per_run==5){
+        } else if constexpr (bytes_per_run==5){//decompressed to uint64x4t
             const int8x16_t dec_shuff = {0,1,2,3,4,-1,-1,-1, 5,6,7,8,9,-1,-1,-1};
             data = vqtbl1q_u8(data, dec_shuff);
             *stream+=10;
-        } else if constexpr (bytes_per_run==6){
+        } else if constexpr (bytes_per_run==6){//decompressed to uint64x4t
             const int8x16_t dec_shuff = {0,1,2,3,4,5,-1,-1, 6,7,8,9,10,11,-1,-1};
             data = vqtbl1q_u8(data, dec_shuff);
             *stream+=12;
-        } else if constexpr (bytes_per_run==7){
+        } else if constexpr (bytes_per_run==7){//decompressed to uint64x4t
             const int8x16_t dec_shuff = {0,1,2,3,4,5,6,-1, 7,8,9,10,11,12,13,-1};
             data = vqtbl1q_u8(data, dec_shuff);
             *stream+=14;
@@ -98,7 +100,7 @@ static inline void psum_epi8_ovf(uint8x16_t input, const uint32_t idx, uint32_t&
     idx_run = lt>>3;
 
     const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
-    const uint8x16_t ext_shuff = vaddq_u16(shuff_idxs, vdupq_n_u8((idx_run & 7)<<1));
+    const uint8x16_t ext_shuff = vaddq_u8(shuff_idxs, vdupq_n_u8((idx_run & 7)<<1));
     pf_sum = vgetq_lane_u16(vqtbl1q_u8(halves[idx_run>>3], ext_shuff), 0);
 }
 
@@ -138,7 +140,7 @@ static inline void psum_epi16_ovf(uint16x8_t input, uint32_t idx, uint32_t& pf_s
     idx_run = __builtin_ctzll(lt)>>3;
 
     const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
-    const uint8x16_t ext_shuff = vaddq_u32(shuff_idxs, vdupq_n_u8((idx_run & 3)<<2));
+    const uint8x16_t ext_shuff = vaddq_u8(shuff_idxs, vdupq_n_u8((idx_run & 3)<<2));
     pf_sum = vgetq_lane_u32(vqtbl1q_u8(halves[idx_run>>2], ext_shuff), 0);
 }
 
@@ -291,7 +293,7 @@ static inline auto inv_select_neon_16x8(const uint8_t **stream, uint8_t sigma, u
     }
 
     const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
-    const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(idx_run<<1));
+    const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<1));
 
     const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
     const uint16_t run = vgetq_lane_u16(run_vec, 0);
@@ -375,7 +377,7 @@ static inline auto inv_select_neon_32x4(const uint8_t ** stream, const uint8_t s
     const uint32x4_t alpha_mask = vdupq_n_u32(alpha_m);
 
     const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
-    const uint8x16_t shuff = vaddq_u32(shuff_idxs, vdupq_n_u8(idx_run<<2));
+    const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<2));
 
     const uint32x4_t run_vec = vreinterpretq_u32_u8(vqtbl1q_u8(block, shuff));
     const uint32x4_t sym_vec = vandq_u32(run_vec, alpha_mask);
@@ -524,7 +526,7 @@ static inline uint8_t access_neon_16x8(const uint8_t **stream, uint8_t sigma, ui
     }
 
     const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
-    const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(idx_run<<1));
+    const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<1));
 
     const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
     return vgetq_lane_u16(run_vec, 0) & alpha_m;
@@ -564,7 +566,7 @@ static inline uint8_t access_neon_32x4(const uint8_t ** stream, uint8_t sigma, u
 
     uint32_t alpha_m = (1UL << sigma_bits)-1;
     const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
-    const uint8x16_t shuff = vaddq_u32(shuff_idxs, vdupq_n_u8(idx_run<<2));
+    const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<2));
     const uint32x4_t run_vec = vreinterpretq_u32_u8(vqtbl1q_u8(block, shuff));
 
     return vgetq_lane_u32(run_vec, 0) & alpha_m;
@@ -642,7 +644,7 @@ static inline std::pair<uint64_t, uint64_t> get_phi_run_neon_16x8(const uint8_t 
     static const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
     if constexpr (overflow8){
         psum_epi16_ovf(block, idx, pf_sum, tmp_idx_run);
-        const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(tmp_idx_run<<1));
+        const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(tmp_idx_run<<1));
         const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
         len = vgetq_lane_u16(run_vec, 0);
     } else {
@@ -657,7 +659,7 @@ static inline std::pair<uint64_t, uint64_t> get_phi_run_neon_16x8(const uint8_t 
         const uint64_t less_than = vget_lane_u64(vreinterpret_u64_u8(res), 0);
         tmp_idx_run = __builtin_ctzll(less_than) >> 3;
 
-        const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(tmp_idx_run<<1));
+        const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(tmp_idx_run<<1));
 
         pf_sum = vgetq_lane_u16(vreinterpretq_u16_u8(vqtbl1q_u8(pf_sum_vec, shuff)), 0);
 
@@ -698,7 +700,7 @@ static inline std::pair<uint64_t, uint64_t> get_phi_run_neon_32x4(const uint8_t 
     const uint8_t tmp_idx_run = __builtin_ctzll(less_than)>>4;
 
     const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
-    const uint8x16_t shuff = vaddq_u32(shuff_idxs, vdupq_n_u8(tmp_idx_run<<2));
+    const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(tmp_idx_run<<2));
 
     const uint32_t pf_sum = vgetq_lane_u32(vreinterpretq_u32_u8(vqtbl1q_u8(pf_sum_vec, shuff)), 0);
 
@@ -841,7 +843,7 @@ static inline int64_t rank_neon_16x8(const uint8_t **stream, const uint8_t sigma
     }
 
     const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
-    const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(idx_run<<1));
+    const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<1));
 
     const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
     const uint16_t run = vgetq_lane_u16(run_vec, 0);
@@ -914,7 +916,7 @@ static inline int64_t rank_neon_32x4(const uint8_t ** stream, const uint8_t sigm
     const uint8_t idx_run = __builtin_ctzll(less_than)>>4;
 
     const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
-    const uint8x16_t shuff = vaddq_u32(shuff_idxs, vdupq_n_u8(idx_run<<2));
+    const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<2));
 
     const uint32x4_t run_vec = vreinterpretq_u32_u8(vqtbl1q_u8(block, shuff));
     const uint32_t run = vgetq_lane_u32(run_vec, 0);
@@ -1131,7 +1133,7 @@ static inline std::pair<uint64_t, uint64_t> range_rank_neon_16x8(const uint8_t *
 
     const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
 
-    uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(idx_run<<1));
+    uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<1));
     uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
     uint16_t run = vgetq_lane_u16(run_vec, 0);
     uint8_t last_symbol = run & alpha_m;
@@ -1190,7 +1192,7 @@ static inline std::pair<uint64_t, uint64_t> range_rank_neon_16x8(const uint8_t *
         idx_run = __builtin_ctzll(less_than)>>3;
     }
 
-    shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(idx_run<<1));
+    shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<1));
     run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
     run = vgetq_lane_u16(run_vec, 0);
     last_symbol = run & alpha_m;
@@ -1257,7 +1259,7 @@ static inline std::pair<uint64_t, uint64_t> range_rank_neon_32x4(const uint8_t *
 
     const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
 
-    uint8x16_t shuff = vaddq_u32(shuff_idxs, vdupq_n_u8(idx_run<<2));
+    uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<2));
     uint32x4_t run_vec = vreinterpretq_u32_u8(vqtbl1q_u8(block, shuff));
     uint32_t run = vgetq_lane_u32(run_vec, 0);
     uint8_t last_symbol = run & alpha_m;
@@ -1310,7 +1312,7 @@ static inline std::pair<uint64_t, uint64_t> range_rank_neon_32x4(const uint8_t *
     less_than = vget_lane_u64(vreinterpret_u64_u16(res), 0);
     idx_run = __builtin_ctzll(less_than)>>4;
 
-    shuff = vaddq_u32(shuff_idxs, vdupq_n_u8(idx_run<<2));
+    shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<2));
     run_vec = vreinterpretq_u32_u8(vqtbl1q_u8(block, shuff));
     run = vgetq_lane_u32(run_vec, 0);
     last_symbol = run & alpha_m;
@@ -1590,7 +1592,7 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_16x8(const uint8_t **strea
     }
 
     const uint8x16_t shuff_idxs = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
-    const uint8x16_t shuff = vaddq_u16(shuff_idxs, vdupq_n_u8(idx_run<<1));
+    const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<1));
 
     const uint16x8_t run_vec = vreinterpretq_u16_u8(vqtbl1q_u8(block, shuff));
     uint16_t run = vgetq_lane_u16(run_vec, 0);
@@ -1692,7 +1694,7 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_32x4(const uint8_t ** stre
     uint8_t idx_run = __builtin_ctzll(less_than)>>4;
 
     const uint8x16_t shuff_idxs = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
-    const uint8x16_t shuff = vaddq_u32(shuff_idxs, vdupq_n_u8(idx_run<<2));
+    const uint8x16_t shuff = vaddq_u8(shuff_idxs, vdupq_n_u8(idx_run<<2));
 
     const uint32x4_t run_vec = vreinterpretq_u32_u8(vqtbl1q_u8(block, shuff));
     uint32_t run = vgetq_lane_u32(run_vec, 0);
@@ -1738,7 +1740,7 @@ static inline std::pair<uint64_t, uint64_t> succ_neon_32x4(const uint8_t ** stre
     run_id = run_id - 4 + first;
 
     opts[1] = (int64_t)run_id;
-    return {opts[has_sym && run_id<n_runs], rank};
+    return std::make_pair(opts[has_sym && run_id<n_runs], rank);
 }
 
 template<uint8_t bytes_per_run>

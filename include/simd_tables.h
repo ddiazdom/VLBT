@@ -6,7 +6,7 @@
 #define VLBT_SIMD_TABLES_H
 #include <cstdint>
 
-static const uint8_t mask8x16[17][16] = {
+static constexpr uint8_t mask8x16[17][16] = {
         {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
         {0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
         {0xFF, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -62,7 +62,7 @@ static const uint8_t mask8x32[33][32] = {
     {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 };
 
-static const uint16_t mask16x8[9][8] = {
+static constexpr uint16_t mask16x8[9][8] = {
         {0, 0, 0, 0, 0, 0, 0, 0},
         {0xFFFF, 0, 0, 0, 0, 0, 0, 0},
         {0xFFFF, 0xFFFF, 0, 0, 0, 0, 0, 0},
@@ -74,7 +74,7 @@ static const uint16_t mask16x8[9][8] = {
         {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF}
 };
 
-static const uint16_t mask16x16[17][16] = {
+static constexpr uint16_t mask16x16[17][16] = {
     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
     {0xFFFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
     {0xFFFF, 0xFFFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -94,7 +94,7 @@ static const uint16_t mask16x16[17][16] = {
     {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF}
 };
 
-static const uint32_t mask32x4[5][4] = {
+static constexpr uint32_t mask32x4[5][4] = {
         {0, 0, 0, 0},
         {0xFFFFFFFF, 0, 0, 0},
         {0xFFFFFFFF, 0xFFFFFFFF, 0, 0},
@@ -102,7 +102,7 @@ static const uint32_t mask32x4[5][4] = {
         {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}
 };
 
-static const uint32_t mask32x8[9][8] = {
+static constexpr uint32_t mask32x8[9][8] = {
     {0, 0, 0, 0, 0, 0, 0, 0},
     {0xFFFFFFFF, 0, 0, 0, 0, 0, 0, 0},
     {0xFFFFFFFF, 0xFFFFFFFF, 0, 0, 0, 0, 0, 0},
@@ -128,7 +128,7 @@ static constexpr uint64_t mask64x4[5][4] = {
     {0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF}
 };
 
-static int8_t dec_table_16x8[256][16]={
+alignas(16) static const int8_t dec_table_16x8[256][16]={
     {0, -1, 1, -1, 2, -1, 3, -1, 4, -1, 5, -1, 6, -1, 7, -1},
     {0, 1, 2, -1, 3, -1, 4, -1, 5, -1, 6, -1, 7, -1, 8, -1},
     {0, -1, 1, 2, 3, -1, 4, -1, 5, -1, 6, -1, 7, -1, 8, -1},
@@ -387,7 +387,7 @@ static int8_t dec_table_16x8[256][16]={
     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 };
 
-static int8_t dec_table_32x4[256][16]={
+alignas(16) static const int8_t dec_table_32x4[256][16]={
     {0, -1, -1, -1, 1, -1, -1, -1, 2, -1, -1, -1, 3, -1, -1, -1},
     {0, 1, -1, -1, 2, -1, -1, -1, 3, -1, -1, -1, 4, -1, -1, -1},
     {0, 1, 2, -1, 3, -1, -1, -1, 4, -1, -1, -1, 5, -1, -1, -1},
@@ -646,7 +646,7 @@ static int8_t dec_table_32x4[256][16]={
     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 };
 
-static int8_t dec_table_64x2[256][16]={
+alignas(16) static const int8_t dec_table_64x2[256][16]={
     {0, -1, -1, -1, -1, -1, -1, -1, 1, -1, -1, -1, -1, -1, -1, -1},
     {0, 1, -1, -1, -1, -1, -1, -1, 2, -1, -1, -1, -1, -1, -1, -1},
     {0, 1, 2, -1, -1, -1, -1, -1, 3, -1, -1, -1, -1, -1, -1, -1},
