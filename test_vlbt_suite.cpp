@@ -213,7 +213,7 @@ void rl2plain(std::string& rl_file, std::string& output_plain_file){
     ofs.close();
 }
 
-#define MEASURE_MIN_MAX(query, time_answer, time_vec, query_answer, time_unit) \
+#define MEASURE_VECTOR(query, time_answer, time_vec, query_answer, time_unit) \
 {\
 auto t1 = std::chrono::high_resolution_clock::now();\
 query_answer = query;\
@@ -408,7 +408,7 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     std::vector<std::vector<uint64_t>> my_ans(n_pats);
     std::vector<double> times;
     for(const std::string& p : pat_list) {
-        MEASURE_MIN_MAX(my_dt.locate(p),my_acc_time, times, my_ans[j], std::chrono::microseconds)
+        MEASURE_VECTOR(my_dt.locate(p), my_acc_time, times, my_ans[j], std::chrono::microseconds)
         my_acc_count+=my_ans[j].size();
 
         /*auto res = my_dt.count(p);
@@ -422,7 +422,6 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
 
         j++;
     }
-
     print_histogram(times);
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;;
 
@@ -475,7 +474,6 @@ void test_access(bwt_type& my_dt, std::string& input_file, std::string my_dt_nam
 
 template<class bwt_type>
 void test_rank(bwt_type& my_dt, std::string& input_file, std::string my_dt_name){
-
 
     std::cout<<"Testing rank (avg_time in nanoseconds)"<<std::endl;
     sdsl::custom_wt_rlmn<> wt_rlmn;
@@ -620,7 +618,7 @@ template<class size_type>
 void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& output_prefix){
 
     using bwt_th_type = vlbt_bwt<WITH_TOEHOLDS, 65536, 64, 4>;
-    using phi_type = vlbt_phi<WITH_VALID_AREA, 4096, 64, 4>;
+    using phi_type = vlbt_phi<WITH_VALID_AREA, 65536, 64, 4>;
     using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
     sr_index_type sr_index;
     build_sr_index<sr_index_type , size_type>(sr_index, input_prefix, subsamp_step, output_prefix);
@@ -664,5 +662,5 @@ int main(int argc, char** argv) {
     //test_bwt(input_prefix, output_prefix);
     //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    test_sr_index<uint64_t>(input_prefix, 16, output_prefix);
 }

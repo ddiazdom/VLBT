@@ -163,16 +163,17 @@ static inline void psum_epi8_ovf(const __m128i& input, const uint32_t& idx, uint
 }
 
 static inline uint32_t hsum_epi8_ovf(const __m128i& input) {
-    const __m128i sum1 = _mm_add_epi16(_mm_shuffle_epi8(input, _mm_set_epi8(-1,7,  -1,6,  -1,5,  -1,4,  -1,3,  -1,2,  -1,1, -1,0)),
-                                       _mm_shuffle_epi8(input, _mm_set_epi8(-1,15, -1,14, -1,13, -1,12, -1,11, -1,10, -1,9, -1,8)));
-    //print16x8(sum1);
-    const __m128i sum2 = _mm_add_epi16(sum1, _mm_srli_si128(sum1, 2));
-    //print16x8(sum2);
-    const __m128i sum3 = _mm_add_epi16(sum2, _mm_srli_si128(sum2, 4));
-    //print16x8(sum3);
-    const __m128i sum4 = _mm_add_epi16(sum3, _mm_srli_si128(sum3, 8));
-    //print16x8(sum4);
-    return (uint16_t)_mm_cvtsi128_si32(sum4);//extract the lowest 32 bits
+    __m128i sum = _mm_add_epi16(_mm_shuffle_epi8(input, _mm_set_epi8(-1,7,  -1,6,  -1,5,  -1,4,  -1,3,  -1,2,  -1,1, -1,0)),
+                               _mm_shuffle_epi8(input, _mm_set_epi8(-1,15, -1,14, -1,13, -1,12, -1,11, -1,10, -1,9, -1,8)));
+    //const __m128i sum2 = _mm_add_epi16(sum1, _mm_srli_si128(sum1, 2));
+    //const __m128i sum3 = _mm_add_epi16(sum2, _mm_srli_si128(sum2, 4));
+    //const __m128i sum4 = _mm_add_epi16(sum3, _mm_srli_si128(sum3, 8));
+    //return (uint16_t)_mm_cvtsi128_si32(sum4);//extract the lowest 32 bits
+    sum = _mm_hadd_epi16(sum, sum);
+    sum = _mm_hadd_epi16(sum, sum);
+    sum = _mm_hadd_epi16(sum, sum);
+    // Extract the lower 16 bits (sum)
+    return static_cast<uint16_t>(_mm_extract_epi16(sum, 0));
 }
 
 static inline uint32_t hsum_epi8(const __m128i& input) {
@@ -229,11 +230,19 @@ static inline uint32_t hsum_epi16_ovf(const __m128i& input) {
     return (uint32_t) res;
 }
 
-static inline uint32_t hsum_epi16(const __m128i& input) {
+/*static inline uint32_t hsum_epi16(const __m128i& input) {
     const __m128i sum1 = _mm_add_epi16(input, _mm_srli_si128(input, 2));
     const __m128i sum2 = _mm_add_epi16(sum1, _mm_srli_si128(sum1, 4));
     const __m128i sum3 = _mm_add_epi16(sum2, _mm_srli_si128(sum2, 8));
     return (uint16_t)_mm_cvtsi128_si32(sum3);
+}*/
+
+uint16_t hsum_epi16(const __m128i v) {
+    __m128i sum = _mm_hadd_epi16(v, v);
+    sum = _mm_hadd_epi16(sum, sum);
+    sum = _mm_hadd_epi16(sum, sum);
+    // Extract the lower 16 bits (sum)
+    return static_cast<uint16_t>(_mm_extract_epi16(sum, 0));
 }
 
 static inline uint32_t hsum_epi32(const __m128i& input) {
