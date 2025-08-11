@@ -140,7 +140,6 @@ struct vlbt_phi {
         bit_pos-=mt_width-1;
     }
 
-
     int64_t operator()(size_t i) const {
         assert(i<tot_syms);
         uint64_t bit_pos;
@@ -148,19 +147,22 @@ struct vlbt_phi {
 
         find_path_to_leaf(bit_pos, i);
 
-        const uint8_t leaf_enc = stream.read(bit_pos, bit_pos + leaf_enc_width - 1);
-        bit_pos += leaf_enc_width;
+        const size_t leaf_mt_bits = leaf_enc_width + run_bytes + int_pt_width;
+        uint64_t leaf_metadata = stream.read(bit_pos, bit_pos + leaf_mt_bits - 1);
+        bit_pos += leaf_mt_bits;
 
-        const size_t r_bytes = stream.read(bit_pos, bit_pos + run_bytes - 1);//value of run_width/8
-        bit_pos += run_bytes;
+        const uint8_t leaf_enc = leaf_metadata & ((1 << leaf_enc_width)-1);
+        leaf_metadata >>= leaf_enc_width;
 
-        const size_t diff_width = stream.read(bit_pos, bit_pos + int_pt_width - 1); //width we use to store the offsets
-        bit_pos += int_pt_width;
+        const size_t r_bytes = leaf_metadata & ((1 << run_bytes)-1);
+        leaf_metadata >>= run_bytes;
+
+        const size_t diff_width = leaf_metadata & ((1 << int_pt_width)-1);
+
         bit_pos = INT_CEIL(bit_pos, 8)*8;//byte aligned
 
         const uint8_t *leaf_addr = reinterpret_cast<uint8_t *>(stream.stream) + bit_pos/8;
 
-        auto t3 = std::chrono::high_resolution_clock::now();\
         std::pair<uint64_t, uint64_t> run; // id and offset for the run where "i" falls
 
         //LEAF encoding (bpr=bytes per run):
