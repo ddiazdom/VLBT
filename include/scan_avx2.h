@@ -432,8 +432,8 @@ static inline std::pair<uint64_t, uint64_t> get_phi_run_avx2_8x32(const uint8_t 
 
         const __m256i idx_mask = _mm256_cmple_epu8(block, _mm256_set1_epi8(idx));//mask for >idx
         const uint32_t less_than = _mm256_movemask_epi8(idx_mask);
-        idx_run = __builtin_ctzll(~less_than);
-        pf_sum = tmp[idx_run] + tmp[15]*(idx_run>15);
+        tmp_idx_run = __builtin_ctzll(~less_than);
+        pf_sum = tmp[tmp_idx_run] + tmp[15]*(tmp_idx_run>15);
     }
 
     const uint32_t offset = static_cast<uint32_t>((*stream - 32)[tmp_idx_run]) - (pf_sum-idx);
@@ -474,12 +474,12 @@ static inline std::pair<uint64_t, uint64_t> get_phi_run_avx2_16x16(const uint8_t
 
         uint32_t less_than = _mm256_movemask_epi8(_mm256_packs_epi16(idx_mask, _mm256_setzero_si256()));
         less_than = (less_than >> 8) | (less_than & 0xFF);//this is a hack because the way _mm256_packs_epi16 works
-        idx_run = __builtin_ctzll(~less_than);
-        pf_sum = tmp[idx_run] + tmp[7]*(idx_run>7);
+        tmp_idx_run = __builtin_ctzll(~less_than);
+        pf_sum = tmp[tmp_idx_run] + tmp[7]*(tmp_idx_run>7);
     }
 
     _mm256_storeu_si256((__m256i *)&tmp, block);
-    const uint16_t len = tmp[idx_run];
+    const uint16_t len = tmp[tmp_idx_run];
 
     uint64_t offset = len - (pf_sum-idx);
     return std::make_pair(idx_run+tmp_idx_run, offset);
