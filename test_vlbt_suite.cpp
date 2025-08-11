@@ -605,5 +605,5 @@ int main(int argc, char** argv) {
     //test_bwt(input_prefix, output_prefix);
     //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    test_sr_index<uint64_t>(input_prefix, 64, output_prefix);
+    test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
 }

@@ -125,11 +125,6 @@ static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64
 #define RANK_32 rank_sse42_32x4
 #define RANK_64 rank_sse42_64x2
 
-//#define RANK_8 rank_avx2_8x32
-//#define RANK_16 rank_avx2_16x16
-//#define RANK_32 rank_avx2_32x8
-//#define RANK_64 rank_avx2_64x4
-
 #define RANGE_RANK_8 range_rank_sse42_8x16
 #define RANGE_RANK_16 range_rank_sse42_16x8
 #define RANGE_RANK_32 range_rank_sse42_32x4
@@ -145,8 +140,8 @@ static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64
 #define SUCC_32 succ_sse42_32x4
 #define SUCC_64 succ_sse42_64x2
 
-#define GET_PHI_RUN_8 get_phi_run_sse42_8x16
-#define GET_PHI_RUN_16 get_phi_run_sse42_16x8
+#define GET_PHI_RUN_8 get_phi_run_avx2_8x32
+#define GET_PHI_RUN_16 get_phi_run_avx2_16x16
 #define GET_PHI_RUN_32 get_phi_run_sse42_32x4
 #define GET_PHI_RUN_64 get_phi_run_sse42_64x2
 
@@ -182,6 +177,11 @@ static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64
 #define SUCC_16 succ_sse42_16x8
 #define SUCC_32 succ_sse42_32x4
 #define SUCC_64 succ_sse42_64x2
+
+#define GET_PHI_RUN_8 get_phi_run_sse42_8x16
+#define GET_PHI_RUN_16 get_phi_run_sse42_16x8
+#define GET_PHI_RUN_32 get_phi_run_sse42_32x4
+#define GET_PHI_RUN_64 get_phi_run_sse42_64x2
 
 #else
 #define INV_SELECT_8 inv_select_scl_8

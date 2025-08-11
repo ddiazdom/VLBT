@@ -185,10 +185,8 @@ static inline void psum_epi16_ovf(const __m128i& input, const uint32_t& idx, uin
 
     __m128i halves[2];
 
-    halves[0] = _mm_shuffle_epi8(input, _mm_set_epi8(-1,-1,7,6, -1,-1,5,4,
-                                                       -1,-1,3,2, -1,-1,1,0));
-    halves[1] = _mm_shuffle_epi8(input, _mm_set_epi8(-1,-1,15,14, -1,-1,13,12,
-                                                        -1,-1,11,10, -1,-1,9,8));
+    halves[0] = _mm_shuffle_epi8(input, _mm_set_epi8(-1,-1,7,6, -1,-1,5,4, -1,-1,3,2, -1,-1,1,0));
+    halves[1] = _mm_shuffle_epi8(input, _mm_set_epi8(-1,-1,15,14, -1,-1,13,12, -1,-1,11,10, -1,-1,9,8));
 
     halves[0] = _mm_add_epi32(halves[0], _mm_slli_si128(halves[0], 4));
     halves[0] = _mm_add_epi32(halves[0], _mm_slli_si128(halves[0], 8));
@@ -197,10 +195,7 @@ static inline void psum_epi16_ovf(const __m128i& input, const uint32_t& idx, uin
 
     const __m128i idx_vec =  _mm_set1_epi32(idx);
     __m128i idx_mask = _mm_cmple_epu32(halves[0], idx_vec);//mask for >idx
-    //uint64_t less_than = (uint32_t)_mm_cvtsi128_si32(_mm_shuffle_epi8(idx_mask,
-    //                                                                  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1,
-    //                                                                               -1,-1,-1,-1, 12,8,4,0)));
-    //print32x4(idx_mask);
+
     uint64_t lt_low = (uint32_t)_mm_movemask_epi8(idx_mask);//4 bits represent one element
 
     halves[1] = _mm_add_epi32(halves[1], _mm_shuffle_epi8(halves[0], _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1,
@@ -417,10 +412,10 @@ static inline auto inv_select_sse42_16x8(const uint8_t **stream, uint8_t sigma, 
     size_t l=0;
     __m128i block = decode_block_sse42<vbyte_compressed, 1, 2>(stream);
     __m128i bk_lengths =  shift_right_epi16(block, sigma_bits);
-    uint32_t prev_acc = 0, acc;
+    uint32_t prev_acc = 0;
 
     //some time the block has some garbage, so we have to assume overflow at the end
-    acc = hsum_epi16_ovf(bk_lengths);
+    uint32_t acc = hsum_epi16_ovf(bk_lengths);
 
     while(acc<=idx){
         block = decode_block_sse42<vbyte_compressed,1,2>(stream);
@@ -845,9 +840,19 @@ static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_16x8(const uint8_t
         //print16x8(bk_lengths);
 
         const __m128i idx_mask = _mm_cmple_epu16(pf_sum_vec, _mm_set1_epi16(idx));//mask for <=idx
-        const uint8_t less_than = (uint8_t)_mm_movemask_epi8(_mm_packs_epi16(idx_mask, _mm_setzero_si128()));
-        tmp_idx_run = __builtin_ctzll(~less_than);
-        //print16x8(idx_mask);
+
+        //const auto less_than = (uint8_t)_mm_movemask_epi8(_mm_packs_epi16(idx_mask, _mm_setzero_si128()));
+        //tmp_idx_run = __builtin_ctzll(~less_than);
+
+        const int less_than = _mm_movemask_epi8(idx_mask);
+        tmp_idx_run = __builtin_ctz(~less_than)>>1;
+
+        //TODO testing
+        //int tmp = _mm_movemask_epi8(idx_mask);
+        //size_t tmp2 = __builtin_ctzll(~tmp)>>1;
+        //std::cout << tmp_idx_run <<" "<<tmp2<< std::endl;
+        //assert(tmp_idx_run==tmp2);
+        //
 
         //_mm_set_epi64x(0x100010001000100ULL, 0x100010001000100ULL) is equal to set {0, 1, 0, 1, 0, 1, ...}
         const __m128i shuff = _mm_add_epi8(_mm_set_epi64x(0x100010001000100ULL, 0x100010001000100ULL),

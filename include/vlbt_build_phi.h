@@ -28,6 +28,7 @@ struct phi_stat_collector{
     uint64_t trees_overhead=0;
     uint64_t max_n_blocks=0;
     uint64_t valid_area_overhead=0;
+    uint64_t fit_cache[3]={0,0,0};
 };
 
 template<class size_type>
@@ -350,6 +351,18 @@ struct phi_node {//state of the compression
         for(size_t b=0;b<n_children;b++){
 
             buffer.write(bit_pos, bit_pos+phi_rep.ext_pt_width-1, (block_ptr[b]<<1));
+
+            //note some stats to see if it fits the cache
+            const size_t n_bytes = block_ptr[b + 1] - block_ptr[b];
+            if (n_bytes<64000) {
+                ++stats.fit_cache[0];
+            }else if (n_bytes<512000){
+                ++stats.fit_cache[1];
+            }else if (n_bytes<16384000){
+                ++stats.fit_cache[2];
+            }
+            //
+
             //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<" tree_offset:"<<tree_offset[b]<<" "<<tree_offset[b+1]<<std::endl;
             bit_pos+=phi_rep.ext_pt_width;
             size_t r = (tree_offset[b + 1] - tree_offset[b]) / b_size;
@@ -1086,6 +1099,10 @@ struct phi_tree{
                 std::cout<<"\t"<<i<<": "<<stats.sym_bits[i]<<std::endl;
             }
         }
+
+        std::cout<<"Fit 64k "<<stats.fit_cache[0]<<std::endl;
+        std::cout<<"Fit 512k "<<stats.fit_cache[1]<<std::endl;
+        std::cout<<"Fit 16384k "<<stats.fit_cache[2]<<std::endl;
 
         size_t n_blocks = INT_CEIL(phi_rep.tot_syms, phi_rep.block_size);//original number of blocks in the first level of the tree
         std::cout<<"Effective number of trees versus full number of trees (n/b): "<<root->n_children<<" / "<<n_blocks<<std::endl;

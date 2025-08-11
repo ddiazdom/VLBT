@@ -43,9 +43,9 @@ set(NEON_CXX_CODE "
 
 set(SIMD_FLAGS)
 check_cxx_source_compiles("${AVX2_CXX_CODE}" AVX2_SUPPORT)
-if(AVX2_SUPPORT)
-    list(APPEND SIMD_FLAGS -mavx2)
-endif()
+#if(AVX2_SUPPORT)
+#    list(APPEND SIMD_FLAGS -mavx2)
+#endif()
 
 check_cxx_source_compiles("${SSE42_CXX_CODE}" SSE42_SUPPORT)
 if(SSE42_SUPPORT)
