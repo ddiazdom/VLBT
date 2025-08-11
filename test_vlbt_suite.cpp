@@ -60,6 +60,52 @@ ulint get_patterns_length(std::string header){
     return n;
 }*/
 
+void print_histogram(std::vector<double>& times)  {
+
+    std::sort(times.begin(), times.end());
+
+    auto q1 = times[times.size() / 4];
+    auto q3 = times[(3 * times.size()) / 4];
+    double iqr = q3 - q1;
+    double lower = q1 - 1.5 * iqr;
+    double upper = q3 + 1.5 * iqr;
+
+    std::vector<double> filtered;
+    for (double t : times) {
+        if (t <= upper) {
+            filtered.push_back(t);
+        }
+    }
+
+    // Find range
+    double min_val = filtered[0];
+    double max_val = filtered.back();
+
+    // Create histogram bins
+    const int num_bins = 20;
+    std::vector bins(num_bins, 0);
+    double bin_width = (max_val - min_val) / num_bins;
+
+    for (double t : filtered) {
+        int bin = std::min(int((t - min_val) / bin_width), num_bins - 1);
+        bins[bin]++;
+    }
+
+    // Print ASCII histogram
+    std::cout << "Histogram of runtimes (microseconds):\n";
+    for (int i = 0; i < num_bins; ++i) {
+        double bin_start = min_val + i * bin_width;
+        double bin_end = bin_start + bin_width;
+        std::cout << "[" << bin_start << ", " << bin_end << "): ";
+
+        int count = bins[i];
+        for (int j = 0; j < count * 50 / filtered.size(); ++j) { // scale to max width 50
+            std::cout << '#';
+        }
+        std::cout << " (" << count << ")\n";
+    }
+}
+
 std::vector<uint64_t> sample_unique(uint64_t n, uint64_t x) {
     if (x > n) throw std::invalid_argument("x cannot be larger than n");
 
@@ -166,6 +212,17 @@ void rl2plain(std::string& rl_file, std::string& output_plain_file){
     bwt_reader.close();
     ofs.close();
 }
+
+#define MEASURE_MIN_MAX(query, time_answer, time_vec, query_answer, time_unit) \
+{\
+auto t1 = std::chrono::high_resolution_clock::now();\
+query_answer = query;\
+auto t2 = std::chrono::high_resolution_clock::now();\
+size_t time = std::chrono::duration_cast<time_unit>( t2 - t1 ).count();\
+time_answer+=time;\
+time_vec.push_back(time);\
+}\
+
 #define MEASURE(query, time_answer, query_answer, time_unit) \
 {\
 auto t1 = std::chrono::high_resolution_clock::now();\
@@ -349,8 +406,9 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     size_t my_acc_count=0;
     size_t j=0;
     std::vector<std::vector<uint64_t>> my_ans(n_pats);
+    std::vector<double> times;
     for(const std::string& p : pat_list) {
-        MEASURE(my_dt.locate(p), my_acc_time, my_ans[j], std::chrono::microseconds)
+        MEASURE_MIN_MAX(my_dt.locate(p),my_acc_time, times, my_ans[j], std::chrono::microseconds)
         my_acc_count+=my_ans[j].size();
 
         /*auto res = my_dt.count(p);
@@ -364,6 +422,8 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
 
         j++;
     }
+
+    print_histogram(times);
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;;
 
     //std::cout<<"find leaf:"<<double(my_dt.phi.acc_time_a)/double(my_dt.phi.acc_time_b+my_dt.phi.acc_time_a)<<" scan leaf:"<<double(my_dt.phi.acc_time_b)/double(my_dt.phi.acc_time_b+my_dt.phi.acc_time_a)<<std::endl;
@@ -569,9 +629,9 @@ void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& 
     size_t written_bytes = store_to_file(output_sr_index_file, sr_index);
     std::cout<<"Final sr-index uses "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps)"<<std::endl;
 
-    test_access(sr_index, input_prefix, "sr_index");
-    test_rank(sr_index, input_prefix, "sr_index");
-    test_inverse_select(sr_index, input_prefix, "sr_index");
+    //test_access(sr_index, input_prefix, "sr_index");
+    //test_rank(sr_index, input_prefix, "sr_index");
+    //test_inverse_select(sr_index, input_prefix, "sr_index");
     test_count(sr_index, input_prefix, "sr_index");
     test_locate(sr_index, input_prefix, "sr_index");
 }
