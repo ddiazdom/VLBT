@@ -366,8 +366,7 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     }
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;;
 
-    std::cout<<"find leaf:"<<double(my_dt.phi.acc_time_a)/double(my_dt.phi.acc_time_b+my_dt.phi.acc_time_a)<<" scan leaf:"<<double(my_dt.phi.acc_time_b)/double(my_dt.phi.acc_time_b+my_dt.phi.acc_time_a)<<std::endl;
-
+    //std::cout<<"find leaf:"<<double(my_dt.phi.acc_time_a)/double(my_dt.phi.acc_time_b+my_dt.phi.acc_time_a)<<" scan leaf:"<<double(my_dt.phi.acc_time_b)/double(my_dt.phi.acc_time_b+my_dt.phi.acc_time_a)<<std::endl;
     //std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;
     /*for(size_t i=0;i<pat_list.size();i++){
         if(std::get<0>(my_ans[i])!=std::get<0>(rlmn_ans[i]) ||
