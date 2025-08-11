@@ -81,9 +81,9 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
     std::cout<<"Sampling the heads"<<std::endl;
 
     //sort the samples by the text position of the tails
-    std::sort(samples.begin(), samples.end(), [](auto const& a, auto const&b){
-        return a.prev_tail_val<b.prev_tail_val;
-    });
+    //std::sort(samples.begin(), samples.end(), [](auto const& a, auto const&b){
+    //    return a.prev_tail_val<b.prev_tail_val;
+    //});
 
     //sort the samples by text position
     std::sort(samples.begin(), samples.end(), [](auto const& a, auto const&b){
