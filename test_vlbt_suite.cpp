@@ -366,6 +366,8 @@ void test_locate(bwt_type& my_dt, std::string& input_prefix, std::string my_dt_n
     }
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;;
 
+    std::cout<<"find leaf:"<<double(my_dt.phi.acc_time_a)/double(my_dt.phi.acc_time_b+my_dt.phi.acc_time_a)<<" scan leaf:"<<double(my_dt.phi.acc_time_b)/double(my_dt.phi.acc_time_b+my_dt.phi.acc_time_a)<<std::endl;
+
     //std::cout<<"wt_rlmn: ("<<rlmn_acc_time/double(n_pats)<<", "<<rlmn_acc_time/double(acc_count)<<"), tot. occ: "<<my_acc_count<<std::endl;
     /*for(size_t i=0;i<pat_list.size();i++){
         if(std::get<0>(my_ans[i])!=std::get<0>(rlmn_ans[i]) ||
@@ -559,7 +561,7 @@ template<class size_type>
 void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& output_prefix){
 
     using bwt_th_type = vlbt_bwt<WITH_TOEHOLDS, 65536, 64, 4>;
-    using phi_type = vlbt_phi<WITH_VALID_AREA, 65536, 64, 4>;
+    using phi_type = vlbt_phi<WITH_VALID_AREA, 4096, 64, 4>;
     using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
     sr_index_type sr_index;
     build_sr_index<sr_index_type , size_type>(sr_index, input_prefix, subsamp_step, output_prefix);
@@ -603,5 +605,5 @@ int main(int argc, char** argv) {
     //test_bwt(input_prefix, output_prefix);
     //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
-    test_sr_index<uint64_t>(input_prefix, 4, output_prefix);
+    test_sr_index<uint64_t>(input_prefix, 64, output_prefix);
 }

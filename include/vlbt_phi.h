@@ -39,6 +39,11 @@ struct vlbt_phi {
     uint8_t levels = 0; //maximum number of levels
     stream_type stream; //stream with the data
 
+    //TODO remove later
+    size_t acc_time_a=0;
+    size_t acc_time_b=0;
+    //
+
     vlbt_phi(): levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1) {
         //TODO static asserts in block_size, scale_factor, and b_runs
         // logarithm function to calculate value
@@ -141,11 +146,11 @@ struct vlbt_phi {
     }
 
 
-    int64_t operator()(size_t i) const {
+    int64_t operator()(size_t i) {
         assert(i<tot_syms);
         uint64_t bit_pos;
         const size_t bck_i = i;
-
+        auto t1 = std::chrono::high_resolution_clock::now();
         find_path_to_leaf(bit_pos, i);
 
         const uint8_t leaf_enc = stream.read(bit_pos, bit_pos + leaf_enc_width - 1);
@@ -159,7 +164,11 @@ struct vlbt_phi {
         bit_pos = INT_CEIL(bit_pos, 8)*8;//byte aligned
 
         const uint8_t *leaf_addr = reinterpret_cast<uint8_t *>(stream.stream) + bit_pos/8;
+        auto t2 = std::chrono::high_resolution_clock::now();
+        acc_time_a += std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
+
+        auto t3 = std::chrono::high_resolution_clock::now();\
         std::pair<uint64_t, uint64_t> run; // id and offset for the run where "i" falls
 
         //LEAF encoding (bpr=bytes per run):
@@ -264,6 +273,10 @@ struct vlbt_phi {
             bit_pos+=run.first*diff_width;
             const uint64_t val = stream.read(bit_pos, bit_pos + diff_width - 1);
             const uint64_t sa_val = val & 1 ? bck_i-(val>>1UL) : bck_i+(val>>1UL);//the first bit indicates if the different is negative or positive
+
+            auto t4 = std::chrono::high_resolution_clock::now();
+            acc_time_b += std::chrono::duration_cast<std::chrono::microseconds>( t4 - t3 ).count();
+
             return static_cast<int64_t>(sa_val);
         } else {
 
@@ -274,6 +287,9 @@ struct vlbt_phi {
             uint64_t sa_val = val & 1 ? bck_i-(val>>1UL) : bck_i+(val>>1UL);//the first bit indicates if the different is negative or positive
             bit_pos += n_runs*diff_width;
             if(!stream.read_bit(bit_pos + run.first)) {//the whole block is a valid area
+
+                auto t4 = std::chrono::high_resolution_clock::now();
+                acc_time_b += std::chrono::duration_cast<std::chrono::microseconds>( t4 - t3 ).count();
                 return static_cast<int64_t>(sa_val);
             }
             const size_t pos = stream.pop_count(bit_pos, bit_pos+run.first)-1;//only works because bitstream[bit_pos+run.first] is true
@@ -282,6 +298,8 @@ struct vlbt_phi {
             bit_pos += pos*w;
             const size_t valid_area = stream.read(bit_pos, bit_pos + w - 1);
             sa_val = valid_area > run.second ?  sa_val : -1;
+            auto t4 = std::chrono::high_resolution_clock::now();
+            acc_time_b += std::chrono::duration_cast<std::chrono::microseconds>( t4 - t3 ).count();
             return static_cast<int64_t>(sa_val);
         }
     }

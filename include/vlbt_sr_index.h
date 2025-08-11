@@ -28,7 +28,7 @@ struct vlbt_sr_index{
         return bwt[idx];
     }
 
-    [[nodiscard]] inline std::vector<uint64_t> locate(const std::string& pattern) const {
+    [[nodiscard]] inline std::vector<uint64_t> locate(const std::string& pattern) {
         int64_t l, r, sa_val;
 
         //obtain (l,r) for the range SA{i..r-1] and the value of sa_val=SA[i]
