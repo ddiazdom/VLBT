@@ -64,11 +64,10 @@ void print_histogram(std::vector<double>& times)  {
 
     std::sort(times.begin(), times.end());
 
-    auto q1 = times[times.size() / 4];
-    auto q3 = times[(3 * times.size()) / 4];
-    double iqr = q3 - q1;
-    double lower = q1 - 1.5 * iqr;
-    double upper = q3 + 1.5 * iqr;
+    const auto q1 = times[times.size() / 4];
+    const auto q3 = times[(3 * times.size()) / 4];
+    const double iqr = q3 - q1;
+    const double upper = q3 + 1.5 * iqr;
 
     std::vector<double> filtered;
     for (double t : times) {
@@ -78,13 +77,13 @@ void print_histogram(std::vector<double>& times)  {
     }
 
     // Find range
-    double min_val = filtered[0];
-    double max_val = filtered.back();
+    const double min_val = filtered[0];
+    const double max_val = filtered.back();
 
     // Create histogram bins
-    const int num_bins = 20;
+    constexpr int num_bins = 20;
     std::vector bins(num_bins, 0);
-    double bin_width = (max_val - min_val) / num_bins;
+    const double bin_width = (max_val - min_val) / num_bins;
 
     for (double t : filtered) {
         int bin = std::min(int((t - min_val) / bin_width), num_bins - 1);

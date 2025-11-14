@@ -462,7 +462,7 @@ struct rl_node {//state of the compression
     }
 
     inline void compute_tree_bounds(pruned_suffix_tree& st,
-                                    std::vector<std::pair<uint64_t, uint64_t>>& tree_bounds){
+                                    std::vector<std::pair<uint64_t, uint64_t>>& tree_bounds) const {
 
         st_node_t curr_st_node = *st, prev_st_node=*st;
         size_t b=0;
@@ -546,7 +546,7 @@ struct rl_node {//state of the compression
             for(size_t s=0;s<bwt_rep.sigma;s++){
 
                 if(active_succ[s].second==b){
-                    active_succ[s].first++;
+                    ++active_succ[s].first;
                     assert(active_succ[s].first<sigma_trees[s].size());
                     active_succ[s].second = sigma_trees[s][active_succ[s].first];
                 }
@@ -569,7 +569,7 @@ struct rl_node {//state of the compression
                 }
 
                 if(static_cast<int64_t>(sigma_trees[s][active_pred[s].first])==b){
-                    active_pred[s].first++;
+                    ++active_pred[s].first;
                     active_pred[s].second = b;
                 }
             }
@@ -578,7 +578,7 @@ struct rl_node {//state of the compression
             if(max_tree_dist>max_dist) max_dist = max_tree_dist;
             size_t t_ext_bits = succ_samp*sym_width(max_tree_dist) + bwt_rep.sigma;
             trees_extra_bits[b] = t_ext_bits;
-            stats.ext_succ_freq[succ_samp]++;
+            ++stats.ext_succ_freq[succ_samp];
         }
 
         bwt_rep.mtd_bits = std::max<uint8_t>(1, sym_width(sym_width((size_t)max_dist)));

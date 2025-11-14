@@ -163,17 +163,16 @@ static inline void psum_epi8_ovf(const __m128i& input, const uint32_t& idx, uint
 }
 
 static inline uint32_t hsum_epi8_ovf(const __m128i& input) {
-    __m128i sum = _mm_add_epi16(_mm_shuffle_epi8(input, _mm_set_epi8(-1,7,  -1,6,  -1,5,  -1,4,  -1,3,  -1,2,  -1,1, -1,0)),
-                               _mm_shuffle_epi8(input, _mm_set_epi8(-1,15, -1,14, -1,13, -1,12, -1,11, -1,10, -1,9, -1,8)));
-    //const __m128i sum2 = _mm_add_epi16(sum1, _mm_srli_si128(sum1, 2));
-    //const __m128i sum3 = _mm_add_epi16(sum2, _mm_srli_si128(sum2, 4));
-    //const __m128i sum4 = _mm_add_epi16(sum3, _mm_srli_si128(sum3, 8));
-    //return (uint16_t)_mm_cvtsi128_si32(sum4);//extract the lowest 32 bits
-    sum = _mm_hadd_epi16(sum, sum);
-    sum = _mm_hadd_epi16(sum, sum);
-    sum = _mm_hadd_epi16(sum, sum);
-    // Extract the lower 16 bits (sum)
-    return static_cast<uint16_t>(_mm_extract_epi16(sum, 0));
+    const __m128i sum1 = _mm_add_epi16(_mm_shuffle_epi8(input, _mm_set_epi8(-1,7,  -1,6,  -1,5,  -1,4,  -1,3,  -1,2,  -1,1, -1,0)),
+                                       _mm_shuffle_epi8(input, _mm_set_epi8(-1,15, -1,14, -1,13, -1,12, -1,11, -1,10, -1,9, -1,8)));
+    //print16x8(sum1);
+    const __m128i sum2 = _mm_add_epi16(sum1, _mm_srli_si128(sum1, 2));
+    //print16x8(sum2);
+    const __m128i sum3 = _mm_add_epi16(sum2, _mm_srli_si128(sum2, 4));
+    //print16x8(sum3);
+    const __m128i sum4 = _mm_add_epi16(sum3, _mm_srli_si128(sum3, 8));
+    //print16x8(sum4);
+    return static_cast<uint16_t>(_mm_cvtsi128_si32(sum4));//extract the lowest 32 bits
 }
 
 static inline uint32_t hsum_epi8(const __m128i& input) {
@@ -196,7 +195,10 @@ static inline void psum_epi16_ovf(const __m128i& input, const uint32_t& idx, uin
 
     const __m128i idx_vec =  _mm_set1_epi32(idx);
     __m128i idx_mask = _mm_cmple_epu32(halves[0], idx_vec);//mask for >idx
-
+    //uint64_t less_than = (uint32_t)_mm_cvtsi128_si32(_mm_shuffle_epi8(idx_mask,
+    //                                                                  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1,
+    //                                                                               -1,-1,-1,-1, 12,8,4,0)));
+    //print32x4(idx_mask);
     uint64_t lt_low = (uint32_t)_mm_movemask_epi8(idx_mask);//4 bits represent one element
 
     halves[1] = _mm_add_epi32(halves[1], _mm_shuffle_epi8(halves[0], _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1,
@@ -227,22 +229,14 @@ static inline uint32_t hsum_epi16_ovf(const __m128i& input) {
     const __m128i sum2 = _mm_hadd_epi32(sum, sum);
     uint64_t res = _mm_cvtsi128_si64(sum2);
     res = (res & 0xFFFFFFFF) + (res>>32);
-    return (uint32_t) res;
+    return static_cast<uint32_t>(res);
 }
 
-/*static inline uint32_t hsum_epi16(const __m128i& input) {
+static inline uint32_t hsum_epi16(const __m128i& input) {
     const __m128i sum1 = _mm_add_epi16(input, _mm_srli_si128(input, 2));
     const __m128i sum2 = _mm_add_epi16(sum1, _mm_srli_si128(sum1, 4));
     const __m128i sum3 = _mm_add_epi16(sum2, _mm_srli_si128(sum2, 8));
-    return (uint16_t)_mm_cvtsi128_si32(sum3);
-}*/
-
-uint16_t hsum_epi16(const __m128i v) {
-    __m128i sum = _mm_hadd_epi16(v, v);
-    sum = _mm_hadd_epi16(sum, sum);
-    sum = _mm_hadd_epi16(sum, sum);
-    // Extract the lower 16 bits (sum)
-    return static_cast<uint16_t>(_mm_extract_epi16(sum, 0));
+    return static_cast<uint16_t>(_mm_cvtsi128_si32(sum3));
 }
 
 static inline uint32_t hsum_epi32(const __m128i& input) {
@@ -319,12 +313,12 @@ static inline auto inv_select_sse42_8x16(const uint8_t **stream, uint8_t sigma, 
     __m128i block = _mm_loadu_si128((const __m128i*)*stream);
     *stream+=16;
     __m128i bk_lengths =  shift_right_epi8(block, sigma_bits);
-    uint32_t prev_acc = 0, acc;
+    uint32_t prev_acc = 0;
 
     //print8x16(bk_lengths);
 
     //sometimes the back of the block has garbage, so I have to assume overflow
-    acc = hsum_epi8_ovf(bk_lengths);
+    uint32_t acc = hsum_epi8_ovf(bk_lengths);
 
     while(acc<=idx){
         block = _mm_loadu_si128((const __m128i*)*stream);

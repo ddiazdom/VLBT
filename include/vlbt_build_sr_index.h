@@ -75,21 +75,43 @@ static inline uint64_t get_diff(const uint64_t first, const uint64_t second) {
 }
 
 template<class size_type>
-void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges_file,
-                      size_t ssamp_val, std::string& ssamp_heads_file){
-
-    std::cout<<"Sampling the heads"<<std::endl;
+void get_overlap_stats(std::vector<sample_type>& samples, std::vector<size_type>& str_ranges) {
 
     //sort the samples by the text position of the tails
-    //std::sort(samples.begin(), samples.end(), [](auto const& a, auto const&b){
-    //    return a.prev_tail_val<b.prev_tail_val;
-    //});
-
-    //sort the samples by text position
     std::sort(samples.begin(), samples.end(), [](auto const& a, auto const&b){
         return a.head_val<b.head_val;
     });
     //
+
+    std::vector<sample_type> samples_tail = samples;
+    std::sort(samples_tail.begin(), samples_tail.end(), [](auto const& a, auto const&b){
+        return a.prev_tail_val<b.prev_tail_val;
+    });
+
+    size_t k=0;
+    std::unordered_map<size_t, size_t> overlap_stats;
+    for(size_t i=0;i<samples.size();i++) {
+
+        const size_t start = samples[i].head_val;
+        const size_t end = i==samples.size()-1?  str_ranges.back()-1 : samples[i+1].head_val-1;
+        size_t n_ovps=0;
+        while(k<samples_tail.size() && samples_tail[k].prev_tail_val<=end) {
+            assert(samples_tail[k].prev_tail_val>=start);
+            n_ovps++;
+            k++;
+        }
+        overlap_stats[n_ovps]++;
+    }
+
+    for (auto const& pair: overlap_stats) {
+        std::cout << "number of overlaps:"<<pair.first << " proportion:" << (100.0 * static_cast<double>(pair.second)/samples.size()) << std::endl;
+    }
+}
+
+template<class size_type>
+void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges_file,
+                      size_t ssamp_val, std::string& ssamp_heads_file){
+
 
     //compute and store the run head subsamples for phi
     size_t f_size = std::filesystem::file_size(str_ranges_file);
@@ -97,6 +119,16 @@ void get_head_samples(std::vector<sample_type>& samples, std::string& str_ranges
     std::vector<size_type> str_ranges(n_elements, 0);
     std::ifstream ifs_str_ranges(str_ranges_file, std::ios::binary);
     ifs_str_ranges.read((char *)str_ranges.data(), off_t(f_size));
+
+    std::cout<<"gathering statistics"<<std::endl;
+    get_overlap_stats(samples, str_ranges);
+
+    std::cout<<"Sampling the heads"<<std::endl;
+    //sort the samples by the text position of the tails
+    std::sort(samples.begin(), samples.end(), [](auto const& a, auto const&b){
+        return a.head_val<b.head_val;
+    });
+    //
 
     size_t n_strings = n_elements-1, last_sampled, n_samp=0, len, acc_len=0;
     size_type str_boundary;
