@@ -388,7 +388,7 @@ void subsample_sa_samples(std::string& sa_samples_file, std::string& str_ranges_
 }
 
 template<class sr_index_type, class sa_samp_type>
-void build_sr_index(sr_index_type& index, std::string& input_prefix, size_t subsamp_step, std::string& output_prefix){
+void build_sr_index(sr_index_type& index, const std::string& input_prefix, size_t subsamp_step, std::string& output_prefix, std::string tmp_dir="./"){
 
     using bwt_type = typename sr_index_type::bwt_t;
     using phi_type = typename sr_index_type::phi_t;
@@ -404,7 +404,7 @@ void build_sr_index(sr_index_type& index, std::string& input_prefix, size_t subs
 
     subsample_sa_samples<sa_samp_type>(samp_sa_file, str_ranges_file, subsamp_step, ssamp_heads_file, ssamp_tails_file);
 
-    build_bwt_th<bwt_type, sa_samp_type>(index.bwt, bwt_file, subsamp_step, GRL_BWT, ssamp_heads_file);
-    build_phi<phi_type, sa_samp_type>(index.phi, ssamp_tails_file);
+    build_bwt_th<bwt_type, sa_samp_type>(index.bwt, bwt_file, subsamp_step, GRL_BWT, ssamp_heads_file, tmp_dir);
+    build_phi<phi_type, sa_samp_type>(index.phi, ssamp_tails_file, tmp_dir);
 }
 #endif //VLBT_BUILD_SR_INDEX_H

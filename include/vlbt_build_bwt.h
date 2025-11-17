@@ -8,6 +8,7 @@
 #include "pruned_st.h"
 #include "bwt_io.h"
 #include "vlbt_bwt.h"
+#include "vlbt_common.h"
 
 #ifdef __linux__
 #include <malloc.h>
@@ -1586,7 +1587,7 @@ struct tree_dt{
     bwt_type& bwt_rep;
     node_type *root= nullptr;
 
-    explicit tree_dt(const std::string& tmp_dir, bwt_type& _bwt_rep): twd(tmp_dir),
+    explicit tree_dt(const std::string& tmp_dir, bwt_type& _bwt_rep): twd(tmp_dir, true, "vlbt"),
                                                                       bwt_rep(_bwt_rep){}
 
 
@@ -1594,6 +1595,7 @@ struct tree_dt{
     void build(std::string& bwt_file, const BWT_FORMAT& bwt_file_fmt) {
 
         std::string bwt_file_tmp = bwt_file;
+        std::cout<<"Temporary folder:"<<twd.tmp_folder<<std::endl;
 
         if(bwt_file_fmt==PLAIN) {
             bwt_file_tmp = twd.get_file("tmp_input_bwt");
@@ -1640,6 +1642,7 @@ struct tree_dt{
 
     void build(std::string& bwt_file, size_t subsamp_step, std::string& sa_subsamp_file){
 
+        std::cout<<"Temporary folder:"<<twd.tmp_folder<<std::endl;
         using sa_samp_type = typename run_t::sa_samp_t;
 
         bwt_buff_reader bwt_buff(bwt_file);
@@ -1898,27 +1901,27 @@ struct tree_dt{
 
 
 template<class bwt_type>
-void build_bwt(bwt_type& bwt_rep, std::string& bwt_file, const BWT_FORMAT bwt_file_fmt, std::string tmp_dir="./"){
-    static_assert(bwt_type::variant != WITH_TOEHOLDS);
+void build_bwt(bwt_type& bwt_rep, std::string bwt_file,
+               const BWT_FORMAT bwt_file_fmt, std::string tmp_dir="./"){
+
+    static_assert(bwt_type::variant != RLBWT_WITH_TOEHOLDS);
     tree_dt<bwt_type, run_type> tree(tmp_dir, bwt_rep);
     tree.build(bwt_file, bwt_file_fmt);
     tree.report_stats();
 }
 
 template<class bwt_type, class sa_samp_type>
-void build_bwt_th(bwt_type& bwt_rep, std::string& bwt_file, size_t subsamp_step, const BWT_FORMAT fmt,
-                  std::string& subsamp_sa_file, std::string tmp_dir="./"){
+void build_bwt_th(bwt_type& bwt_rep, std::string bwt_file,
+                  size_t subsamp_step, const BWT_FORMAT fmt,
+                  std::string subsamp_sa_file, std::string tmp_dir="./"){
 
-    static_assert(bwt_type::variant == WITH_TOEHOLDS);
-
+    static_assert(bwt_type::variant == RLBWT_WITH_TOEHOLDS);
     tree_dt<bwt_type, run_with_sa_type<sa_samp_type>> tree(tmp_dir, bwt_rep);
-
     if(fmt == RL_PLAIN){
         //TODO transform to grlbwt format
     } else if(fmt == PLAIN){
         //TODO transform to grlbwt format
     }
-
     tree.build(bwt_file, subsamp_step, subsamp_sa_file);
     tree.report_stats();
 }

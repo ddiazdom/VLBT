@@ -9,16 +9,23 @@
 #include <vector>
 #include "bit_stream.h"
 #include "def_scan.h"
+#include "vlbt_common.h"
 
-enum bwt_variant{
-    NO_TOEHOLDS=false,
-    WITH_TOEHOLDS=true
-};
+inline std::pair<VLBT_TYPE, size_t> read_template_param(const std::string& str) {
+    std::ifstream ifs(str);
+    VLBT_TYPE var;
+    load_elm(ifs, var);
+    size_t b_size;
+    load_elm(ifs, b_size);
+    ifs.close();
+    return {var, b_size};
+}
 
-template<bwt_variant var, size_t b_size, size_t b_runs, size_t s_factor>
+template<VLBT_TYPE var, size_t b_size, size_t b_runs=64, size_t s_factor=4>
 class vlbt_bwt  {
 
 public:
+    static_assert(var==RLBWT || var==RLBWT_WITH_TOEHOLDS);
 
     static constexpr size_t block_size = b_size;
     static constexpr size_t scale_factor = s_factor;
@@ -78,17 +85,8 @@ public:
     uint8_t levels=0;//maximum number of levels
     stream_type stream;//stream with the data
 
-    //const std::vector<uint8_t>& packed_alpha;
-    //const std::vector<uint8_t>& unpacked_alpha;
-    //const std::vector<uint64_t>& C;
-
     vlbt_bwt():
         levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1){
-
-        //packed_alpha(pck_alpha),
-        //unpacked_alpha(unpck_alpha),
-        //C(m_C) {
-
         //TODO static asserts in block_size, scale_factor, and b_runs
         // logarithm function to calculate value
         float lg = log(b_size) / log(s_factor);
@@ -107,6 +105,12 @@ public:
 
     size_t serialize(std::ostream & ofs) const {
         size_t written_bytes = 0;
+
+        //this is to check the template arguments once the data structure is loaded
+        written_bytes += serialize_elm(ofs, var);
+        written_bytes += serialize_elm(ofs, b_size);
+        //
+
         written_bytes += serialize_elm(ofs, tot_syms);
         written_bytes += serialize_elm(ofs, orig_runs);
         written_bytes += serialize_elm(ofs, eff_runs);
@@ -116,7 +120,7 @@ public:
         written_bytes += serialize_elm(ofs, sigma);
         written_bytes += serialize_elm(ofs, ext_pt_width);
         written_bytes += serialize_elm(ofs, mtd_bits);
-        if constexpr (var==WITH_TOEHOLDS) {
+        if constexpr (var==RLBWT_WITH_TOEHOLDS) {
             written_bytes += serialize_elm(ofs, subsamp_step);
         }
 
@@ -129,6 +133,14 @@ public:
     }
 
     void load(std::istream & ifs){
+
+        VLBT_TYPE var_tmp;
+        load_elm(ifs, var_tmp);
+        assert(var_tmp==var);
+        size_t b_size_tmp;
+        load_elm(ifs, b_size_tmp);
+        assert(b_size_tmp==b_size);
+
         load_elm(ifs, tot_syms);
         load_elm(ifs, orig_runs);
         load_elm(ifs, eff_runs);
@@ -138,7 +150,7 @@ public:
         load_elm(ifs, sigma);
         load_elm(ifs, ext_pt_width);
         load_elm(ifs, mtd_bits);
-        if constexpr (var==WITH_TOEHOLDS) {
+        if constexpr (var==RLBWT_WITH_TOEHOLDS) {
             load_elm(ifs, subsamp_step);
         }
 
@@ -268,7 +280,7 @@ public:
         bit_pos+= leaf_enc_width;
 
         bool false_break;
-        if constexpr (var==WITH_TOEHOLDS){
+        if constexpr (var==RLBWT_WITH_TOEHOLDS){
             if constexpr (check_head){
                 bit_pos+= run_byte_w + run_width;//skip the number of bytes we use to encode the runs
                 false_break = stream.read_bit(bit_pos++);//read if the leftmost run in this head is artificial
@@ -833,7 +845,7 @@ public:
             bit_pos+= leaf_enc_width;
 
             bool false_break;
-            if constexpr (var==WITH_TOEHOLDS){
+            if constexpr (var==RLBWT_WITH_TOEHOLDS){
                 if constexpr (check_head){
                     bit_pos+= run_byte_w + run_width;//skip the number of bytes we use to encode the runs
                     false_break = stream.read_bit(bit_pos++);//read if the leftmost run in this head is artificial
@@ -1143,7 +1155,7 @@ public:
             bit_pos+= leaf_enc_width;
 
             bool false_break;
-            if constexpr (var==WITH_TOEHOLDS){
+            if constexpr (var==RLBWT_WITH_TOEHOLDS){
                 if constexpr (check_head){
                     bit_pos+= run_byte_w + run_width;//skip the number of bytes we use to encode the runs
                     false_break = stream.read_bit(bit_pos++);//read if the leftmost run in this head is artificial
@@ -1428,7 +1440,7 @@ public:
 
     [[nodiscard]] inline int64_t sa_samp_of_succ_head(size_t i, uint8_t symbol) const {
 
-        static_assert(var==WITH_TOEHOLDS);
+        static_assert(var==RLBWT_WITH_TOEHOLDS);
         uint8_t pck_sym = packed_alpha[symbol];
         symbol = pck_sym;
         // NOTE this is a partial successor, because it can sometimes answer -1 for a valid query.
@@ -1798,7 +1810,7 @@ public:
 
         path.leaf_enc = stream.read(path.bit_pos, path.bit_pos+leaf_enc_width-1);
         path.bit_pos+= leaf_enc_width;
-        if constexpr (var==WITH_TOEHOLDS){
+        if constexpr (var==RLBWT_WITH_TOEHOLDS){
             path.bit_pos+= run_byte_w+run_width+1;//skip the bits encoding the number of bytes we use to store the runs in their encoding
         }
     }

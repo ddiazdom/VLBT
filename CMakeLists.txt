@@ -97,4 +97,11 @@ endif()
 add_executable(gen_patterns scripts/gen_patterns.cpp)
 target_compile_options(gen_patterns PUBLIC -O3)
 
+add_executable(vlbt-cli vlbt-cli.cpp)
+target_compile_options(vlbt-cli
+        PUBLIC
+        #-O3
+        ${SIMD_FLAGS}
+)
+
 #add_subdirectory(scripts/r-index)

@@ -14,7 +14,7 @@ enum phi_variant {
     NO_SUBSAMPLING=2
 };
 
-template<phi_variant var, size_t b_size, size_t b_runs, size_t s_factor>
+template<phi_variant var, size_t b_size, size_t b_runs=64, size_t s_factor=4>
 struct vlbt_phi {
     typedef bit_stream<size_t> stream_type;
     static constexpr size_t block_size = b_size;

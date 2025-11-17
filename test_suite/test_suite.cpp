@@ -18,6 +18,7 @@
 #include "simple_rlbwt.h"
 #include "custom_wt_rlmn.hpp"
 #include "r-index/internal/r_index.hpp"
+#include "../scripts/utils.h"
 #include <unordered_set>
 #include <vector>
 #include <random>
@@ -145,63 +146,11 @@ void test_count(my_bwt_type& my_bwt, const std::string& my_dt_name,
 
     std::cout<<"Testing count (microsecs/pat and microsecs/occ)"<<std::endl;
 
-    /*std::vector<uint64_t> C(other_bwt.sigma+1, 0);
-    for(size_t sym=0;sym<other_bwt.sigma;sym++){
-        C[sym] = other_bwt.rank(other_bwt.size(), my_bwt.eff2byte(sym));
-    }
+    ulint n_pats, pat_len;
+    std::vector<std::string> pat_list = file2pat_list(pat_file, n_pats, pat_len);
 
-    size_t acc=0, tmp;
-    for(size_t i=0;i<other_bwt.sigma;i++){
-        tmp = C[i];
-        C[i] = acc;
-        acc+=tmp;
-    }
-    C[other_bwt.sigma] = acc;
-    fm_index<other_bwt_type> csa_rlmn(other_bwt, C, "", my_bwt.get_packed_alpha(), my_bwt.get_unpacked_alpha());*/
-    //TODO checking for errors
-    //size_t a = my_dt.bwt.rank(198960593, 'N');
-    //size_t b = my_dt.bwt.rank(198960788, 'N');
-    //auto ans = my_dt.bwt.range_rank_no_sa_head(198960593, 198960788, 'N');
-    //std::string pattern = "CTAGGGTGGCTTTTGTAGAGCTAAG";
-    //csa_rlmn.backward_search(pattern);
-    //std::cout<<"ahora el mio"<<std::endl;
-    //my_dt.count(pattern);
-    //size_t a = my_dt.bwt.rank(226364350, 67);
-    //size_t b = my_dt.bwt.rank(226364352, 67);
-    //auto ans = my_dt.bwt.range_rank_no_sa_head(226364350, 226364352, 67);
-    //exit(0);
-
-    //std::cout<<my_dt.sa_head_for_next(151244695, 'w')<<std::endl;
-    //std::cout<<my_dt.sa_head_for_next(151208662, 'w')<<std::endl;
-    //std::cout<<my_dt.rank(228000000, 'T')<<std::endl;
-    //std::cout<<wt_rlmn.rank(151208662, 'w')<<std::endl;
-    //std::cout<<wt_rlmn.rank(151244695, 'w')<<std::endl;
-    //exit(1);
-    //csa_mydt.backward_search(pattern);
-    //return;
-    //std::cout<<wt_rlmn.rank(228579272, 'b')<<std::endl;
-    //exit(1);
-    //
-
-    //std::string pat_file = input_file+".pats";
-    std::ifstream ifs(pat_file);
-    std::string header;
-    std::getline(ifs, header);
-    ulint n_pats = get_number_of_patterns(header);
-    ulint pat_len = get_patterns_length(header);
-    std::cout<<"\t"<<n_pats<<" patterns of length "<<pat_len<<" each "<<std::endl;
-    std::vector<std::string> pat_list(n_pats);
-    for(ulint i=0;i<n_pats;++i){
-        pat_list[i].reserve(pat_len);
-        for(ulint j=0;j<pat_len;++j){
-            char c;
-            ifs.get(c);
-            pat_list[i].push_back(c);
-        }
-    }
-
-    size_t other_acc_count=0;
     double other_acc_time=0;
+    size_t other_acc_count=0;
     size_t j=0;
     std::vector<std::pair<uint64_t, uint64_t>> other_ans(n_pats);
     for(auto const& p : pat_list) {
@@ -209,7 +158,6 @@ void test_count(my_bwt_type& my_bwt, const std::string& my_dt_name,
         other_acc_count+=other_ans[j].second-other_ans[j].first+1;
         j++;
     }
-    //std::cout<<"\tTotal number of occurrences "<<acc_count<<" avg:"<<double(acc_count)/double(n_pats)<<std::endl;
 
     double my_acc_time=0;
     size_t my_acc_count=0;
@@ -222,7 +170,7 @@ void test_count(my_bwt_type& my_bwt, const std::string& my_dt_name,
     }
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), ";
     std::cout<<"\t"<<other_dt_name<<": ("<<other_acc_time/double(n_pats)<<", "<<other_acc_time/double(other_acc_count)<<")"<<std::endl;;
-    std::cout<<"\tTotal occurrences: "<<my_acc_count<<std::endl;
+    std::cout<<"\tTotal occurrences: "<<my_acc_count<<"="<<other_acc_count<<std::endl;
 
     for(size_t i=0;i<pat_list.size();i++){
         if(my_ans[i].first!=other_ans[i].first || my_ans[i].second!=other_ans[i].second){
@@ -443,7 +391,7 @@ void test_inverse_select(my_bwt_type& my_dt, std::string my_dt_name, other_bwt_t
 void test_bwt(const std::string& input_prefix, const BWT_FORMAT fmt, const std::string& output_prefix){
 
     std::cout<<"Testing VLBT BWT"<<std::endl;
-    using my_bwt_type = vlbt_bwt<NO_TOEHOLDS, 262144, 64, 4>;
+    using my_bwt_type = vlbt_bwt<RLBWT, 262144>;
     my_bwt_type bwt_dt;
 
     std::string input_bwt = input_prefix+".bwt";
@@ -484,7 +432,7 @@ void test_bwt_th(std::string& input_prefix, size_t subsamp_val, std::string& out
 
     std::cout<<"Testing VLBT BWT with toeholds"<<std::endl;
     std::string bwt_file = input_prefix+".ebwt";
-    using bwt_th_type = vlbt_bwt<WITH_TOEHOLDS, 65536, 64, 4>;
+    using bwt_th_type = vlbt_bwt<RLBWT_WITH_TOEHOLDS, 65536>;
     bwt_th_type bwt_dt;
 
     std::string samp_sa_file = input_prefix+".sa_samples";
@@ -529,8 +477,8 @@ void test_phi(std::string& input_prefix, size_t ssamp_step, std::string& output_
 template<class size_type>
 void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& output_prefix){
 
-    using bwt_th_type = vlbt_bwt<WITH_TOEHOLDS, 65536, 64, 4>;
-    using phi_type = vlbt_phi<WITH_VALID_AREA, 65536, 64, 4>;
+    using bwt_th_type = vlbt_bwt<RLBWT_WITH_TOEHOLDS, 65536>;
+    using phi_type = vlbt_phi<WITH_VALID_AREA, 65536>;
     using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
     sr_index_type sr_index;
     build_sr_index<sr_index_type , size_type>(sr_index, input_prefix, subsamp_step, output_prefix);
@@ -556,18 +504,15 @@ void test_sr_index(std::string& input_prefix, size_t subsamp_step, std::string& 
 
 int main(int argc, char** argv) {
 
-    if(argc!=4){
-        std::cout<<"usage: ./test_vlbt input_prefix build_other_dts=0|1 output_prefix"<<std::endl;
+    if(argc!=3){
+        std::cout<<"usage: ./test_vlbt input_prefix output_prefix"<<std::endl;
         exit(1);
     }
 
     std::string input_text = std::string(argv[1]);
-    char *pend;
-    long int other_dts = strtol(argv[2], &pend, 10);
-    assert(other_dts>=0 && other_dts<=1);
-    const auto output_prefix = std::string(argv[3]);
-
+    const auto output_prefix = std::string(argv[2]);
     test_bwt(input_text, PLAIN, output_prefix);
+
     //test_bwt_th<uint64_t>(input_prefix, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
     //test_sr_index<uint64_t>(input_prefix, 16, output_prefix);

@@ -4,11 +4,12 @@
 
 #ifndef VLBT_SR_INDEX_H
 #define VLBT_SR_INDEX_H
+#include "vlbt_common.h"
 
 template<class bwt_dt_type, class phi_type>
 struct vlbt_sr_index{
 
-    static_assert(bwt_dt_type::variant==WITH_TOEHOLDS);
+    static_assert(bwt_dt_type::variant==RLBWT_WITH_TOEHOLDS);
 
     typedef bwt_dt_type bwt_t;
     typedef phi_type phi_t;
