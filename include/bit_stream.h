@@ -397,17 +397,17 @@ struct bit_stream{
             return (stream[i>>word_shift] >> (i & (word_bits - 1UL))) & 1UL;
         } else {
 
-            const __uint128_t combined = (static_cast<__uint128_t>(stream[j>>word_shift]) << word_bits) | stream[i>>word_shift];
-            return combined >> (i & (word_bits-1UL)) & ((1ULL << (j-i+1)) - 1);
+            //const __uint128_t combined = (static_cast<__uint128_t>(stream[j>>word_shift]) << word_bits) | stream[i>>word_shift];
+            //return combined >> (i & (word_bits-1UL)) & ((1ULL << (j-i+1)) - 1);
 
-            //size_t cell_i = i >> word_shift;
-            //size_t i_pos = i & (word_bits - 1UL);
-            //size_t cell_j = j >> word_shift;
-            //if(cell_i == cell_j){
-            //    return (stream[cell_i] >> i_pos) & masks[(j - i + 1UL)];
-            //}
-            //size_t right = word_bits-i_pos;
-            //return ((stream[cell_j] & masks[1+(j & (word_bits - 1UL))]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
+            size_t cell_i = i >> word_shift;
+            size_t i_pos = i & (word_bits - 1UL);
+            size_t cell_j = j >> word_shift;
+            if(cell_i == cell_j){
+                return (stream[cell_i] >> i_pos) & masks[(j - i + 1UL)];
+            }
+            size_t right = word_bits-i_pos;
+            return ((stream[cell_j] & masks[1+(j & (word_bits - 1UL))]) << right) | ((stream[cell_i] >> i_pos) & masks[right]);
 
             /*size_t cell_i = i >> word_shift;
             size_t i_pos = (i & (word_bits - 1UL));

@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cassert>
 #include <cstdint>
+#include <filesystem>
 
 class bwt_buff_reader {
 
@@ -566,5 +567,77 @@ public:
         }
     };
 };
+
+//bprs is bytes per run symbol (1, assuming the text has a byte alphabet (0-255))
+//bprl is bytes per run len (5, assuming the length of the runs fits 5 bytes)
+inline void plain2grlbwt(const std::string& orig_bwt, const std::string& new_bwt,
+                         uint8_t bprs=1, uint8_t bprl=5){
+
+    static constexpr size_t buff_size = 8 * 1024 * 1024;
+    std::ifstream bwt_in(orig_bwt, std::ios::binary);
+    bwt_buff_writer bwt_out(new_bwt, std::ios::out, bprs, bprl);
+    const auto buffer = static_cast<uint8_t *>(malloc(buff_size));
+    assert(buffer!=nullptr);
+    size_t fsz = std::filesystem::file_size(orig_bwt);
+
+    //read the first block separately to set the initial symbol
+    bwt_in.read(reinterpret_cast<char *>(buffer), buff_size);
+    size_t read_bytes = bwt_in.gcount();
+    uint8_t sym = buffer[0];
+    size_t len = 1;
+    for (size_t i = 1; i < read_bytes; i++) {
+        if(sym!=buffer[i]){
+            bwt_out.push_back(sym, len);
+            sym = buffer[i];
+            len = 0;
+        }
+        len++;
+    }
+    fsz -= read_bytes;
+    //
+
+    while (fsz>0) {
+        bwt_in.read(reinterpret_cast<char *>(buffer), buff_size);
+        read_bytes = bwt_in.gcount();
+        for (size_t i = 0; i < read_bytes; i++) {
+            if(sym!=buffer[i]){
+                bwt_out.push_back(sym, len);
+                sym = buffer[i];
+                len = 0;
+            }
+            len++;
+        }
+        fsz -= read_bytes;
+    }
+    assert(len>0);
+    bwt_out.push_back(sym, len);
+    free(buffer);
+    bwt_in.close();
+    bwt_out.close();
+}
+
+inline void grl2plain(std::string& rl_file, std::string& output_plain_file){
+    std::ofstream ofs(output_plain_file, std::ios::out | std::ios::binary);
+    uint8_t buffer[1024]={0};
+    bwt_buff_reader bwt_reader(rl_file);
+    size_t sym, freq, k=0;
+    size_t sym_freqs[256]={0};
+    for(size_t i=0;i<bwt_reader.size();i++){
+        bwt_reader.read_run(i, sym, freq);
+        for(size_t j=0;j<freq;j++){
+            buffer[k++] = sym;
+            if(k==1024){
+                ofs.write((char *)buffer, 1024);
+                k=0;
+            }
+        }
+        sym_freqs[sym]+=freq;
+    }
+    if(k!=0){
+        ofs.write((char *)buffer, (std::streamsize)k);
+    }
+    bwt_reader.close();
+    ofs.close();
+}
 
 #endif //GBWT_BWT_IO_H

@@ -113,12 +113,11 @@ inline std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, c
         std::vector<uint64_t> block_symbols(256, 0);
 
         size_t k = 0;
-        uint64_t range_start = st_nodes_in_dfs[depth-1][k].start;
+        //uint64_t range_start = st_nodes_in_dfs[depth-1][k].start;
         uint64_t range_end = st_nodes_in_dfs[depth-1][k].end+1;
         size_t acc=0, sym, len, l;
 
-
-        std::cout<<" ===== "<<range_start<<" "<<range_end-1<<std::endl;
+        //std::cout<<" ===== "<<range_start<<" "<<range_end-1<<std::endl;
 
         for(size_t j=0;j<bwt.size();j++){
 

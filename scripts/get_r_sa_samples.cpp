@@ -5,7 +5,7 @@
 #include "../include/bwt_io.h"
 #include <thread>
 #include "../include/utils.h"
-#include "custom_wt_rlmn.hpp"
+#include "../test_suite/custom_wt_rlmn.hpp"
 
 enum run_annot_t{
     NONE=0,

@@ -62,7 +62,7 @@ find_package(LibSDSL REQUIRED)
 message("Compiling with ${SIMD_FLAGS}")
 
 #Build the BWT data structures
-add_executable(test_vlbt test_vlbt_suite.cpp)
+add_executable(test_vlbt test_suite/test_suite.cpp)
 target_compile_options(test_vlbt
         PUBLIC
         -Wall -pedantic
@@ -85,20 +85,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     endif()
 endif()
 
-add_executable(get_r_sa_samp scripts/get_r_sa_samples.cpp)
-target_link_libraries(get_r_sa_samp LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
-target_include_directories(get_r_sa_samp PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
-target_compile_options(get_r_sa_samp PUBLIC
-        -O3
-        ${SIMD_FLAGS})
+#add_executable(get_r_sa_samp scripts/get_r_sa_samples.cpp)
+#target_link_libraries(get_r_sa_samp LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
+#target_include_directories(get_r_sa_samp PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
+#target_compile_options(get_r_sa_samp PUBLIC -O3 ${SIMD_FLAGS})
+#add_executable(get_sa scripts/get_sa.cpp)
+#target_link_libraries(get_sa LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
+#target_include_directories(get_sa PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
+#target_compile_options(get_sa PUBLIC -O3 ${SIMD_FLAGS})
 
-add_executable(get_sa scripts/get_sa.cpp)
-target_link_libraries(get_sa LINK_PUBLIC pthread ${LIBSDSL_LIBRARIES})
-target_include_directories(get_sa PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/)
-target_compile_options(get_sa PUBLIC -O3
-        ${SIMD_FLAGS})
-
-add_executable(gen_patterns scripts/genpatterns.cpp)
+add_executable(gen_patterns scripts/gen_patterns.cpp)
 target_compile_options(gen_patterns PUBLIC -O3)
 
 #add_subdirectory(scripts/r-index)

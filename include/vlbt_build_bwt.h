@@ -656,7 +656,7 @@ struct rl_node {//state of the compression
         //std::cout<<"whut? "<<n_children<<" "<<INT_CEIL(bwt_rep.tot_syms, b_size)<<" "<<bwt_rep.tot_syms<<" "<<b_size<<std::endl;
 
         //round the last offset for consistency in the succ. info computation
-        tree_offset[n_children]= INT_CEIL(bwt_rep.tot_syms, b_size)*b_size;
+        tree_offset[n_children]= consumed_syms;
         tree_offset[n_children+1]= tree_offset[n_children];
 
         //compute symbols with low frequency and their tree positions explicitly
@@ -671,7 +671,7 @@ struct rl_node {//state of the compression
         compute_ext_succ_info(concat_exp_suc_pred_info, low_freq_syms, pruned_st);
         //
 
-        const size_t n_blocks = INT_CEIL(bwt_rep.tot_syms, b_size);//original number of blocks in the first level of the tree
+        const size_t n_blocks = INT_CEIL(consumed_syms, b_size);
 
         //pt_bits indicates how many bits we use to encode pointers to the trees:
         //node_n_bits/8 is the pointer, and b_runs indicate collapsed blocks
@@ -683,13 +683,13 @@ struct rl_node {//state of the compression
 
         //(pt_bits*n_blocks) for the pointers to the trees
         //+1 because we add a fake tree at the end for consistency
-        size_t tree_ptr_bits = (bwt_rep.ext_pt_width*(n_blocks+1));
+        size_t tree_ptr_bits = bwt_rep.ext_pt_width*(n_blocks+1);
         size_t header_bits = bwt_rep.lfs_bits+tree_ptr_bits;
         bwt_rep.header_bytes = INT_CEIL(header_bits, 8);
         header_bits = bwt_rep.header_bytes*8;
         bit_pos=header_bits;
 
-        size_t trailing_bits = compute_dummy_tree_bits();
+        const size_t trailing_bits = compute_dummy_tree_bits();
 
         size_t w2;
         buffer.reserve_in_bits(header_bits+node_n_bits+trailing_bits);
@@ -749,7 +749,7 @@ struct rl_node {//state of the compression
         for(size_t b=0;b<=n_children;b++){
 
             buffer.write(bit_pos, bit_pos+bwt_rep.ext_pt_width-1, (block_ptr[b]<<1));
-            //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<" tree_offset:"<<tree_offset[b]<<" "<<tree_offset[b+1]<<std::endl;
+            //std::cout<<"block:"<<b<<" n_children:"<<n_children<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<" tree_offset:"<<tree_offset[b]<<" "<<tree_offset[b+1]<<" // "<<tree_offset.size()<<std::endl;
             bit_pos+=bwt_rep.ext_pt_width;
             size_t r = (tree_offset[b + 1] - tree_offset[b]) / b_size;
             c++;
@@ -759,7 +759,7 @@ struct rl_node {//state of the compression
             while((n_syms+b_size)<tree_offset[b+1]){
                 size_t offsets = (l << run_width) | r;
                 offsets = (offsets<<1) | 1;
-                //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" offsets:"<<l<<" "<<r<<std::endl;
+                //std::cout<<"\tblock:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" offsets:"<<l<<" "<<r<<" "<<c<<std::endl;
                 buffer.write(bit_pos, bit_pos+bwt_rep.ext_pt_width-1, offsets);
                 bit_pos+=bwt_rep.ext_pt_width;
                 n_syms +=b_size;
@@ -769,8 +769,9 @@ struct rl_node {//state of the compression
             }
             l=0;
         }
-        assert(bit_pos==(bwt_rep.lfs_bits+tree_ptr_bits));
+        //std::cout<<c<<" "<<n_blocks<<" "<<n_children<<" "<<std::endl;
         assert(c==(n_blocks+1));
+        assert(bit_pos==(bwt_rep.lfs_bits+tree_ptr_bits));
 
         node_n_bits+=header_bits;
         node_n_bits+=trailing_bits;
@@ -1590,9 +1591,19 @@ struct tree_dt{
 
 
 
-    void build(std::string& bwt_file) {
+    void build(std::string& bwt_file, const BWT_FORMAT& bwt_file_fmt) {
 
-        bwt_buff_reader bwt_buff(bwt_file);
+        std::string bwt_file_tmp = bwt_file;
+
+        if(bwt_file_fmt==PLAIN) {
+            bwt_file_tmp = twd.get_file("tmp_input_bwt");
+            plain2grlbwt(bwt_file, bwt_file_tmp);
+        } else if (bwt_file_fmt==RL_PLAIN) {
+            //TODO not implemented yet
+            exit(1);
+        }
+
+        bwt_buff_reader bwt_buff(bwt_file_tmp);
         std::ofstream trees_ofs(twd.get_file("trees"), std::ios::binary);
 
         preprocess_bwt(bwt_buff, trees_ofs);
@@ -1600,13 +1611,18 @@ struct tree_dt{
         //compute the tree
         size_t n_runs = bwt_buff.size(), sym, len;
         for(size_t i=0;i<n_runs;i++){
+
             run_t run;
             bwt_buff.read_run(i, sym, len);
             run.sym = bwt_rep.packed_alpha[sym];
             run.len = len;
             root->process_run(run);
         }
-        root->process_run(run_t{0,1});//fake run for border cases
+        //fake run
+        //queries are zero-based, but with this little hack we can query index n.
+        //it is useful for some circumstances, and it will return an ansert for [0..n-1] anyway
+        size_t fake_run_len = (INT_CEIL(bwt_rep.tot_syms+1, root->b_size)*root->b_size)-bwt_rep.tot_syms;
+        root->process_run(run_t{0,fake_run_len});
         root->finish_run_scan();
         trees_ofs.close();
 
@@ -1882,18 +1898,10 @@ struct tree_dt{
 
 
 template<class bwt_type>
-void build_bwt(bwt_type& bwt_rep, std::string& bwt_file, BWT_FORMAT fmt, std::string tmp_dir="./"){
-
+void build_bwt(bwt_type& bwt_rep, std::string& bwt_file, const BWT_FORMAT bwt_file_fmt, std::string tmp_dir="./"){
     static_assert(bwt_type::variant != WITH_TOEHOLDS);
-
     tree_dt<bwt_type, run_type> tree(tmp_dir, bwt_rep);
-
-    if(fmt == RL_PLAIN){
-        //TODO transform to grlbwt format
-    } else if(fmt == PLAIN){
-        //TODO transform to grlbwt format
-    }
-    tree.build(bwt_file);
+    tree.build(bwt_file, bwt_file_fmt);
     tree.report_stats();
 }
 
