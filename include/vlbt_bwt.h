@@ -988,7 +988,7 @@ public:
     }
 
     template<bool check_head=false>
-    [[nodiscard]] inline auto rank(size_t i, uint8_t symbol) const {
+    [[nodiscard]] auto rank(size_t i, uint8_t symbol) const {
 
         //assert(i<=tot_syms);
 
@@ -1412,7 +1412,7 @@ public:
         return sa_samp+n_steps;
     }
 
-    [[nodiscard]] inline int64_t decode_sa(size_t bwt_pos) const {
+    [[nodiscard]] int64_t decode_sa(size_t bwt_pos) const {
         int64_t sa_samp=std::numeric_limits<int64_t>::min();
         uint64_t n_steps=0;
         while(sa_samp<0 && n_steps<subsamp_step){
@@ -2148,19 +2148,20 @@ public:
         return unpacked_alpha[symbol];
     }
 
-    [[nodiscard]] inline std::pair<uint64_t, uint64_t> count(const std::string &pat) const {
+    [[nodiscard]] std::pair<uint64_t, uint64_t> count(const std::string &pat) const {
         size_t l=0, r=size()-1, j=pat.size();
         //std::cout<<l<<" "<<r<<std::endl;
         while(j-->0 && l<=r){
             const uint8_t cc = packed_alpha[static_cast<uint8_t>(pat[j])];
             //l = C[cc] + rank(l, pat[j]); // count c in bwt[0..l-1]
             //r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
-            //std::cout<<"MIO: "<<l<<" "<<r<<std::endl;
             auto [fst, snd] = range_rank_no_sa_head(l, r+1, pat[j]);
+
             l = C[cc] + fst;
             r = C[cc] + snd-1;
             //std::cout<<l<<" "<<r<<" "<<j<<" "<<int(pat[j])<<" "<<fst<<" "<<snd<<std::endl;
         }
+        assert(l<=r);
         return {l, r};
     }
 

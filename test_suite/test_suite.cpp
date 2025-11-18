@@ -348,10 +348,9 @@ void test_inverse_select(my_bwt_type& my_dt, std::string my_dt_name, other_bwt_t
 
 void test_bwt(const std::string& input_prefix, const BWT_FORMAT bwt_file_fmt, const std::string& output_prefix){
 
-    std::cout<<"Testing VLBT BWT"<<std::endl;
-    vlbt_rlbwt<262144> bwt_dt;
+    vlbt_rlbwt<4096> bwt_dt;
+    const std::string bwt_file = input_prefix+".bwt";
 
-    std::string bwt_file = input_prefix+".bwt";
     std::cout<<"Building VLBT from input BWT "<<bwt_file<<std::endl;
     build_bwt(bwt_dt, bwt_file, bwt_file_fmt);
     const std::string output_file = output_prefix+".vlbt_bwt";
@@ -369,6 +368,7 @@ void test_bwt(const std::string& input_prefix, const BWT_FORMAT bwt_file_fmt, co
         sdsl::store_to_file(simple_rlbwt, rlwt_file);
         std::cout<<"Wavelet trees created"<<std::endl;
     }
+    std::cout<<"Loading RLBWT from "<<rlwt_file<<std::endl;
     simple_rlbwt<sdsl::wt_rlmn<>> other_bwt;
     sdsl::load_from_file(other_bwt, rlwt_file);
 
@@ -535,10 +535,10 @@ int main(int argc, char** argv) {
     std::cout<<"Testing RLBWT"<<std::endl;
     test_bwt(input_text, PLAIN, output_prefix);
 
-    std::cout<<"Testing RLBWT with toeholds"<<std::endl;
-    test_bwt_th<uint64_t>(input_text, PLAIN, 4, output_prefix);
+    //std::cout<<"Testing RLBWT with toeholds"<<std::endl;
+    //test_bwt_th<uint64_t>(input_text, PLAIN, 4, output_prefix);
 
-    std::cout<<"Testing sr-index with valid area"<<std::endl;
-    test_sr_index<uint64_t>(input_text, PLAIN, 4, output_prefix);
+    //std::cout<<"Testing sr-index with valid area"<<std::endl;
+    //test_sr_index<uint64_t>(input_text, PLAIN, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
 }

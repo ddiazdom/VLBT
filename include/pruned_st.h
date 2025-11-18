@@ -18,25 +18,29 @@ struct st_node_t {
     st_node_t(uint64_t start_, uint64_t end_, uint64_t depth_) : start(start_),
                                                                  end(end_),
                                                                  depth(depth_){}
-    inline bool is_child(st_node_t& v) const{
+
+    bool is_child(st_node_t& v) const{
         return start<=v.start && v.end<=end;
     }
 
-    inline bool is_sibling(st_node_t& v) const {
+    bool is_sibling(st_node_t& v) const {
         return v.depth == depth && v.start==end+1;
     }
 
-    inline bool unrelated(st_node_t& v) const {
+    bool unrelated(st_node_t& v) const {
         return v.depth<depth;
     }
 
-    [[nodiscard]] inline bool intersect(uint64_t start_, uint64_t end_) const {
-        return !(end < start_ || end_ < start);
+    //+1 because the backward search considers rank(lb, sym) and rank(rb+1, sym)
+    //If this st_node (start, end) immediately precedes (a, b) (that is, end+1=a),
+    //then (a, b) might need `sym` to answer rank(a=rb+1, sym)
+    [[nodiscard]] bool intersect(const uint64_t start_, const uint64_t end_) const {
+        return !(end+1 < start_ || end_ < start);
     }
 
-    [[nodiscard]] inline bool smaller(uint64_t start_, uint64_t end_) const {
-        return end_ < start;
-    }
+    //[[nodiscard]] bool smaller(uint64_t start_, uint64_t end_) const {
+    //    return end_ < start;
+    //}
 };
 
 //pruned suffix tree where the internal nodes with depth>threshold are pruned and the whole subtree is treated as a leaf

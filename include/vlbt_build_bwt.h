@@ -534,7 +534,7 @@ struct rl_node {//state of the compression
         for(int64_t b=0;b<n_ch;b++){
 
             size_t succ_samp=0;
-            int64_t max_tree_dist=0, real_dist;
+            int64_t max_tree_dist=0;
 
             for(size_t s=0;s<bwt_rep.sigma;s++){
 
@@ -544,17 +544,17 @@ struct rl_node {//state of the compression
                     active_succ[s].second = sigma_trees[s][active_succ[s].first];
                 }
 
-                int64_t tree_dist = active_succ[s].second-b;
+                const int64_t tree_dist = active_succ[s].second-b;
                 assert(tree_dist>0 && tree_dist<n_ch);
                 size_t sym_pos = (b * bwt_rep.sigma) + s;
                 ext_succ_info[sym_pos] = tree_dist>5 && !low_freq_syms[s];
 
                 if(ext_succ_info[sym_pos]) {
-                    bool out_of_range = tree_offset[active_succ[s].second] > tree_bounds[b].second &&
-                                        (active_pred[s].second < 0 || (tree_offset[active_pred[s].second + 1] - 1) < tree_bounds[b].first);
+                    const bool out_of_range = tree_offset[active_succ[s].second] > tree_bounds[b].second &&
+                                              (active_pred[s].second < 0 || (tree_offset[active_pred[s].second + 1] - 1) < tree_bounds[b].first);
                     ext_succ_info[sym_pos] = !out_of_range;
                     if(ext_succ_info[sym_pos]) {
-                        real_dist = (tree_offset[b + tree_dist] - tree_offset[b]) / b_size;
+                        const int64_t real_dist = (tree_offset[b + tree_dist] - tree_offset[b]) / b_size;
                         if (real_dist > max_tree_dist) max_tree_dist = real_dist;
                         concat_ext_suc_info.push_back(real_dist);
                         succ_samp++;
@@ -574,7 +574,7 @@ struct rl_node {//state of the compression
             ++stats.ext_succ_freq[succ_samp];
         }
 
-        bwt_rep.mtd_bits = std::max<uint8_t>(1, sym_width(sym_width((size_t)max_dist)));
+        bwt_rep.mtd_bits = std::max<uint8_t>(1, sym_width(sym_width(static_cast<size_t>(max_dist))));
         size_t acc_bits=0;
         for(size_t b=0;b<n_children;b++){
             trees_extra_bits[b]+=bwt_rep.mtd_bits;
