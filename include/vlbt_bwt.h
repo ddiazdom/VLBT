@@ -11,16 +11,6 @@
 #include "def_scan.h"
 #include "vlbt_common.h"
 
-inline std::pair<VLBT_TYPE, size_t> read_template_param(const std::string& str) {
-    std::ifstream ifs(str);
-    VLBT_TYPE var;
-    load_elm(ifs, var);
-    size_t b_size;
-    load_elm(ifs, b_size);
-    ifs.close();
-    return {var, b_size};
-}
-
 template<VLBT_TYPE var, size_t b_size, size_t b_runs=64, size_t s_factor=4>
 class vlbt_bwt  {
 
@@ -36,7 +26,7 @@ public:
     static constexpr uint8_t int_pt_width = 6;
     static constexpr uint8_t run_width = (sizeof(unsigned long)*8) - __builtin_clzl(b_runs-1);
     static constexpr uint8_t leaf_enc_width = 4;
-    static constexpr bool variant = var;
+    static constexpr VLBT_TYPE tag = var;
 
     //the number of bits to encode the number of bytes the run sequence uses:
     // number of bits we use to encode the number of bytes that the runs use in a leaf
@@ -107,8 +97,8 @@ public:
         size_t written_bytes = 0;
 
         //this is to check the template arguments once the data structure is loaded
-        written_bytes += serialize_elm(ofs, var);
-        written_bytes += serialize_elm(ofs, b_size);
+        written_bytes += serialize_elm(ofs, tag);
+        written_bytes += serialize_elm(ofs, block_size);
         //
 
         written_bytes += serialize_elm(ofs, tot_syms);
@@ -120,7 +110,7 @@ public:
         written_bytes += serialize_elm(ofs, sigma);
         written_bytes += serialize_elm(ofs, ext_pt_width);
         written_bytes += serialize_elm(ofs, mtd_bits);
-        if constexpr (var==RLBWT_WITH_TOEHOLDS) {
+        if constexpr (tag==RLBWT_WITH_TOEHOLDS) {
             written_bytes += serialize_elm(ofs, subsamp_step);
         }
 
@@ -134,12 +124,12 @@ public:
 
     void load(std::istream & ifs){
 
-        VLBT_TYPE var_tmp;
-        load_elm(ifs, var_tmp);
-        assert(var_tmp==var);
+        VLBT_TYPE tag_tmp;
+        load_elm(ifs, tag_tmp);
+        assert(tag_tmp==tag);
         size_t b_size_tmp;
         load_elm(ifs, b_size_tmp);
-        assert(b_size_tmp==b_size);
+        assert(b_size_tmp==block_size);
 
         load_elm(ifs, tot_syms);
         load_elm(ifs, orig_runs);
@@ -150,7 +140,7 @@ public:
         load_elm(ifs, sigma);
         load_elm(ifs, ext_pt_width);
         load_elm(ifs, mtd_bits);
-        if constexpr (var==RLBWT_WITH_TOEHOLDS) {
+        if constexpr (tag==RLBWT_WITH_TOEHOLDS) {
             load_elm(ifs, subsamp_step);
         }
 
@@ -161,7 +151,7 @@ public:
         stream.load(ifs);
     }
 
-    inline void find_prev_bit_pos(uint64_t& child_i, uint64_t& child_j, size_t& bit_pos_i, size_t& bit_pos_j) const {
+    void find_prev_bit_pos(uint64_t& child_i, uint64_t& child_j, size_t& bit_pos_i, size_t& bit_pos_j) const {
         //get the effective block where "i" lies and its byte offset within the stream
         //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
 
@@ -181,7 +171,7 @@ public:
         bit_pos_j = (header_bytes + (stream.read(p, p+loc_ext_pt_width-1)>>1)) * 8;
     }
 
-    inline size_t find_prev(uint64_t& child) const {
+    size_t find_prev(uint64_t& child) const {
         //get the effective block where "i" lies and its byte offset within the stream
         //[p..p+ext_pt_width-1] is the area where the pointer information of bk lies in the stream
 
@@ -197,7 +187,7 @@ public:
         return (header_bytes + (stream.read(p, p+loc_ext_pt_width-1)>>1)) * 8;//bit-position where "child" begins in the stream
     }
 
-    inline size_t find_next(uint64_t& child) const {
+    size_t find_next(uint64_t& child) const {
 
         const size_t loc_lfs_bits = lfs_bits;
         const size_t loc_ext_pt_width = ext_pt_width;
@@ -211,7 +201,7 @@ public:
         return (header_bytes + (stream.read(p, p+loc_ext_pt_width - 1) >> 1)) * 8;
     }
 
-    inline void skip_ext_succ_info(size_t& bit_pos) const {
+    void skip_ext_succ_info(size_t& bit_pos) const {
         //skip ext succ/pred information
         const size_t n_samps = stream.pop_count(bit_pos, bit_pos+sigma-1);
         bit_pos+=sigma;
@@ -222,7 +212,7 @@ public:
         //
     }
 
-    inline void decode_ext_succ_info(size_t& bit_pos, size_t child, uint8_t symbol) const {
+    void decode_ext_succ_info(size_t& bit_pos, size_t child, uint8_t symbol) const {
         //the position where the offset for the successor is located
         const size_t succ_pos = stream.pop_count(bit_pos, bit_pos+symbol)-1;//works only because bit_stream[bit_pos+symbol] is true
         bit_pos+=sigma;
@@ -234,7 +224,7 @@ public:
         bit_pos = (header_bytes+p)*8;
     }
 
-    [[nodiscard]] inline size_t find_low_freq_succ(size_t i, uint8_t symbol) const {
+    [[nodiscard]] size_t find_low_freq_succ(size_t i, uint8_t symbol) const {
 
         symbol = stream.pop_count(0, symbol)-1;//this works because stream[symbol] is true
         const size_t c_bits = sigma;//c_bits + (n_symbol+1)*40 contains pointers to the areas where the info lies
@@ -266,8 +256,8 @@ public:
     }
 
     template<bool check_head>
-    [[nodiscard]] inline auto scan_leaf(uint64_t bit_pos, size_t i, size_t j, uint8_t symbol,
-                                        const size_t node_sigma, const size_t rank_width) const {
+    [[nodiscard]] auto scan_leaf(uint64_t bit_pos, size_t i, size_t j, uint8_t symbol,
+                                 const size_t node_sigma, const size_t rank_width) const {
 
         const uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
         symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//only works because bit_stream[bit_pos+symbol] is true
@@ -1266,7 +1256,7 @@ public:
         }
     }
 
-    inline int64_t get_sa_from_leftmost_leaf(succ_info& si, uint8_t pck_sym) const {
+    int64_t get_sa_from_leftmost_leaf(succ_info& si, uint8_t pck_sym) const {
 
         bool is_leaf = stream.read_bit(si.bit_pos++);
 
@@ -1438,7 +1428,7 @@ public:
         return subsamp_step;
     }
 
-    [[nodiscard]] inline int64_t sa_samp_of_succ_head(size_t i, uint8_t symbol) const {
+    [[nodiscard]] int64_t sa_samp_of_succ_head(size_t i, uint8_t symbol) const {
 
         static_assert(var==RLBWT_WITH_TOEHOLDS);
         uint8_t pck_sym = packed_alpha[symbol];
@@ -2174,7 +2164,7 @@ public:
         return {l, r};
     }
 
-    [[nodiscard]] inline std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
+    [[nodiscard]] std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
 
         size_t l=0, r=size()-1, j=pat.size();
         std::pair<uint64_t, uint64_t> head[2]={{0,0}, {j-1, l}};
@@ -2214,4 +2204,10 @@ public:
         return tot_syms;
     }
 };
+
+template<size_t b_size>
+using vlbt_rlbwt=vlbt_bwt<RLBWT, b_size>;
+
+template<size_t b_size>
+using vlbt_rlbwt_th=vlbt_bwt<RLBWT_WITH_TOEHOLDS, b_size>;
 #endif //VLBT_BWT_TH_H

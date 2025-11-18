@@ -68,7 +68,6 @@ inline std::vector<std::string> file2pat_list(const std::string& pat_file, ulint
     std::getline(ifs, header);
     n_pats = get_n_patterns(header);
     pat_len = get_patterns_len(header);
-    std::cout<<"Searching for "<<n_pats<<" patterns of length "<<pat_len<<" each "<<std::endl;
     std::vector<std::string> pat_list(n_pats);
     for(ulint i=0;i<n_pats;++i){
         pat_list[i].reserve(pat_len);

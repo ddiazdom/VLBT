@@ -886,14 +886,14 @@ struct phi_tree{
     typedef typename node_type::run_type run_type;
 
     phi_stat_collector<phi_dt_type> stats;
-    tmp_workspace twd;
+    tmp_workspace& twd;
     phi_dt_type& phi_rep;
     node_type *root= nullptr;
 
-    explicit phi_tree(const std::string& tmp_dir, phi_dt_type& _phi_rep): twd(tmp_dir),
-                                                                          phi_rep(_phi_rep){}
+    explicit phi_tree(phi_dt_type& _phi_rep, tmp_workspace& _twd): twd(_twd),
+                                                                   phi_rep(_phi_rep){}
 
-    void build(std::string& rsa_samp_file) {
+    void build(const std::string& rsa_samp_file) {
 
         //compute basic statistics
         using tmp_run_type = std::pair<size_type, size_type>;
@@ -1131,9 +1131,10 @@ struct phi_tree{
 };
 
 template<class phi_dt_type, class size_type, bool vbyte=false>
-void build_phi(phi_dt_type& phi_rep, std::string& rsa_samp_file, std::string tmp_dir="./"){
-    phi_tree<phi_dt_type, size_type> tree(tmp_dir, phi_rep);
-    tree.build(rsa_samp_file);
+void build_phi(phi_dt_type& phi_rep, const std::string& sa_tails_subsamp_file, tmp_workspace& twd){
+
+    phi_tree<phi_dt_type, size_type> tree(phi_rep, twd);
+    tree.build(sa_tails_subsamp_file);
     tree.report_stats();
 }
 

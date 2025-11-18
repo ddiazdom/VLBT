@@ -152,7 +152,7 @@ size_t store_to_file(std::string const& file, data_type& dt){
 }
 
 template<uint8_t width>
-static inline bool aligned(size_t bit_pos){
+static bool aligned(size_t bit_pos){
     return (bit_pos % width)==0;
 }
 

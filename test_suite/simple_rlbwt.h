@@ -107,7 +107,7 @@ struct simple_rlbwt{
         return bwt.inverse_select(idx);
     }
 
-    [[nodiscard]] std::pair<uint64_t, uint64_t> backward_search(const std::string &pat) const {
+    [[nodiscard]] std::pair<uint64_t, uint64_t> count(const std::string &pat) const {
         size_t l=0, r=bwt.size()-1, j=pat.size();
         //std::cout<<l<<" "<<r<<std::endl;
         while(j-->0 && l<=r){

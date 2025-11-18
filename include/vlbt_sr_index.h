@@ -9,7 +9,8 @@
 template<class bwt_dt_type, class phi_type>
 struct vlbt_sr_index{
 
-    static_assert(bwt_dt_type::variant==RLBWT_WITH_TOEHOLDS);
+    static_assert(bwt_dt_type::tag==RLBWT_WITH_TOEHOLDS);
+    static constexpr VLBT_TYPE tag = SRI_VALID_AREA;
 
     typedef bwt_dt_type bwt_t;
     typedef phi_type phi_t;
@@ -17,19 +18,19 @@ struct vlbt_sr_index{
     bwt_dt_type bwt;//bwt with toeholds
     phi_type phi;//phi function
 
-    [[nodiscard]] inline std::pair<uint64_t, uint64_t> count(const std::string &pat) const {
+    [[nodiscard]] std::pair<uint64_t, uint64_t> count(const std::string &pat) const {
         return bwt.count(pat);
     }
 
-    [[nodiscard]] inline std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
+    [[nodiscard]] std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
         return bwt.count_with_head(pat);
     }
 
-    [[nodiscard]] inline uint8_t operator[](const size_t idx) const {
+    [[nodiscard]] uint8_t operator[](const size_t idx) const {
         return bwt[idx];
     }
 
-    [[nodiscard]] inline std::vector<uint64_t> locate(const std::string& pattern) {
+    [[nodiscard]] std::vector<uint64_t> locate(const std::string& pattern) {
         int64_t l, r, sa_val;
 
         //obtain (l,r) for the range SA{i..r-1] and the value of sa_val=SA[i]
@@ -39,11 +40,11 @@ struct vlbt_sr_index{
         if(l>r) std::vector<uint64_t>();
 
         //compute the occurrences in SA[i+1..r-1]
-        const int64_t len = r-l+1;
-        std::vector<uint64_t> occ(len);
+        const int64_t n_occ = r-l+1;
+        std::vector<uint64_t> occ(n_occ);
         occ[0] = sa_val;
         if constexpr (phi_type::variant == NO_VALID_AREA) {
-            for (int64_t i = 1; i<len; i++) {
+            for (int64_t i = 1; i<n_occ; i++) {
                 sa_val = bwt.decode_sa(l+i);
                 if (sa_val < 0) {
                     sa_val = phi(occ[i-1]);
@@ -52,7 +53,7 @@ struct vlbt_sr_index{
                 occ[i] = sa_val;
             }
         } else if constexpr (phi_type::variant == WITH_VALID_AREA) {
-            for (int64_t i = 1; i<len; i++) {
+            for (int64_t i = 1; i<n_occ; i++) {
                 sa_val = phi(occ[i-1]);
                 if(sa_val<0) {//invalid, resort to lf mapping to find the sa value
                     sa_val = bwt.decode_sa(l+i);
@@ -61,14 +62,14 @@ struct vlbt_sr_index{
                 occ[i] = sa_val;
             }
         } else if constexpr (phi_type::variant==NO_SUBSAMPLING) {//standard r-index
-            for (int64_t i = 1; i<len; i++) {
+            for (int64_t i = 1; i<n_occ; i++) {
                 occ[i] = phi(occ[i-1]);
             }
         }
         return occ;
     }
 
-    [[nodiscard]] inline uint64_t size() const {
+    [[nodiscard]] uint64_t size() const {
         return bwt.size();
     }
 
@@ -88,7 +89,7 @@ struct vlbt_sr_index{
         return bwt.rank(i, symbol);
     }
 
-    [[nodiscard]] inline uint8_t eff2byte(uint8_t c) const {
+    [[nodiscard]] uint8_t eff2byte(uint8_t c) const {
         return bwt.eff2byte(c);
     }
 
@@ -101,15 +102,41 @@ struct vlbt_sr_index{
     }
 
     size_t serialize(std::ostream & ofs) const {
+
         size_t written_bytes = 0;
+
+        //this is to make sure the data structure is loaded
+        //with the correct template arguments
+        written_bytes+= serialize_elm(ofs, tag);
+        size_t b_size_phi = phi_t::block_size;
+        written_bytes+= serialize_elm(ofs, b_size_phi);
+        size_t b_size_bwt = bwt_t::block_size;
+        written_bytes+= serialize_elm(ofs, b_size_bwt);
+        //
+
         written_bytes+= bwt.serialize(ofs);
         written_bytes+= phi.serialize(ofs);
         return written_bytes;
     }
 
     void load(std::istream & ifs){
+
+        VLBT_TYPE tmp_tag;
+        load_elm(ifs, tmp_tag);
+        assert(tmp_tag==tag);
+        size_t b_size_phi, b_size_bwt;
+        load_elm(ifs, b_size_phi);
+        assert(phi_t::block_size==b_size_phi);
+        load_elm(ifs, b_size_bwt);
+        assert(bwt_t::block_size==b_size_bwt);
+
         bwt.load(ifs);
         phi.load(ifs);
     }
 };
+
+template<size_t b_size_bwt, size_t b_size_phi>
+using vlbt_sri_va = vlbt_sr_index<
+    vlbt_bwt<RLBWT_WITH_TOEHOLDS, b_size_bwt>,
+    vlbt_phi<WITH_VALID_AREA, b_size_phi>>;
 #endif //VLBT_SR_INDEX_H

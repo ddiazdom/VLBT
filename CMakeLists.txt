@@ -65,10 +65,7 @@ message("Compiling with ${SIMD_FLAGS}")
 add_executable(test_vlbt test_suite/test_suite.cpp)
 target_compile_options(test_vlbt
         PUBLIC
-        -Wall -pedantic
-        -O3
-        -ffast-math
-        -g
+        -Wall -pedantic -O3 -ffast-math -g
         ${SIMD_FLAGS}
 )
 
@@ -100,8 +97,7 @@ target_compile_options(gen_patterns PUBLIC -O3)
 add_executable(vlbt-cli vlbt-cli.cpp)
 target_compile_options(vlbt-cli
         PUBLIC
-        #-O3
+        -O3
         ${SIMD_FLAGS}
 )
-
 #add_subdirectory(scripts/r-index)

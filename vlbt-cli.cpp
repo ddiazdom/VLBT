@@ -5,8 +5,6 @@
 #include "scripts/utils.h"
 #include "include/vlbt_build_bwt.h"
 #include "include/vlbt_build_sr_index.h"
-#include "include/vlbt_bwt.h"
-#include "include/vlbt_phi.h"
 #include "include/vlbt_sr_index.h"
 #include <filesystem>
 
@@ -28,7 +26,6 @@ public:
 
 template<class dt_type>
 void count_int3(const std::string& input_index, const std::string& pat_file, std::string index_name){
-
     dt_type dt;
     load_from_file(input_index, dt);
 
@@ -50,43 +47,43 @@ void count_int3(const std::string& input_index, const std::string& pat_file, std
 }
 
 template<size_t b_size>
-void count_int2(VLBT_TYPE& dt_type, const std::string& input_index, const std::string& pat_file) {
-    if (dt_type==RLBWT) {
-        using rlbwt_type = vlbt_bwt<RLBWT, b_size>;
-        count_int3<rlbwt_type>(input_index, pat_file, "RLBWT_"+std::to_string(b_size));
-    } else if (dt_type==RLBWT_WITH_TOEHOLDS) {
-        using rlbwt_th_type = vlbt_bwt<RLBWT_WITH_TOEHOLDS, b_size>;
-        count_int3<rlbwt_th_type>(input_index, pat_file, "RLBWT_WITH_TOEHOLDS_"+std::to_string(b_size));
-    } else if (dt_type==SRI_VALID_AREA) {
-        using bwt_th_type = vlbt_bwt<RLBWT_WITH_TOEHOLDS, b_size>;
-        using phi_type = vlbt_phi<WITH_VALID_AREA, b_size>;
-        using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
-        count_int3<sr_index_type>(input_index, pat_file, "SRI_VALID_AREA_"+std::to_string(b_size));
-    } else {
-        exit(1);
+void count_int2(temp_param_t& tp, const std::string& input_index, const std::string& pat_file) {
+    switch (tp.tag) {
+        case RLBWT:
+            count_int3<vlbt_rlbwt<b_size>>(input_index, pat_file, "RLBWT_"+std::to_string(b_size));
+            break;
+        case RLBWT_WITH_TOEHOLDS:
+            count_int3<vlbt_rlbwt_th<b_size>>(input_index, pat_file, "RLBWT_WITH_TOEHOLDS_"+std::to_string(b_size));
+            break;
+        case SRI_VALID_AREA:
+            count_int3<vlbt_sri_va<b_size, b_size>>(input_index, pat_file, "SRI_VALID_AREA_"+std::to_string(b_size));
+            break;
+        default:
+            exit(1);
     }
 }
 
 void count_int(const std::string& input_index, const std::string& pat_file) {
-    std::pair<VLBT_TYPE, size_t> template_param = read_template_param(input_index);
-    switch (template_param.second) {
+
+    temp_param_t tp = read_template_param(input_index);
+    switch (tp.b_size) {
         case 1024:
-            count_int2<1024>(template_param.first, input_index, pat_file);
+            count_int2<1024>(tp, input_index, pat_file);
             break;
         case 4096:
-            count_int2<4096>(template_param.first, input_index, pat_file);
+            count_int2<4096>(tp, input_index, pat_file);
             break;
         case 16384:
-            count_int2<16384>(template_param.first, input_index, pat_file);
+            count_int2<16384>(tp, input_index, pat_file);
             break;
         case 65536:
-            count_int2<65536>(template_param.first, input_index, pat_file);
+            count_int2<65536>(tp, input_index, pat_file);
             break;
         case 262144:
-            count_int2<262144>(template_param.first, input_index, pat_file);
+            count_int2<262144>(tp, input_index, pat_file);
             break;
         case 1048576:
-            count_int2<1048576>(template_param.first, input_index, pat_file);
+            count_int2<1048576>(tp, input_index, pat_file);
             break;
         default:
             exit(1);
@@ -96,10 +93,7 @@ void count_int(const std::string& input_index, const std::string& pat_file) {
 template<size_t b_size>
 void locate_int2(const std::string& input_index, std::string pat_file) {
 
-    using bwt_th_type = vlbt_bwt<RLBWT_WITH_TOEHOLDS, b_size>;
-    using phi_type = vlbt_phi<WITH_VALID_AREA, b_size>;
-    using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
-    sr_index_type sr_index;
+    vlbt_sri_va<b_size, b_size> sr_index;
     load_from_file(input_index, sr_index);
 
     uint64_t n_pats, pat_len;
@@ -121,9 +115,10 @@ void locate_int2(const std::string& input_index, std::string pat_file) {
 }
 
 void locate_int(const std::string& input_index, const std::string& pat_file) {
-    auto [fst, snd] = read_template_param(input_index);
-    assert(fst==SRI_VALID_AREA);
-    switch (snd) {
+    temp_param_t tp = read_template_param(input_index);
+    assert(tp.tag==SRI_VALID_AREA);
+
+    switch (tp.b_size) {
         case 1024:
             locate_int2<1024>(input_index, pat_file);
             break;
@@ -148,57 +143,54 @@ void locate_int(const std::string& input_index, const std::string& pat_file) {
 }
 
 template<uint64_t b_size>
-void build_int2(VLBT_TYPE &dt_type, const std::string& input_text, size_t sri_samp, const std::filesystem::path& tmp_path, std::string& output_file) {
+void build_int2(VLBT_TYPE &dt_type, const std::string& input_text, size_t sri_samp_val, const std::filesystem::path& tmp_path, std::string& output_file) {
 
     std::string bwt_file = input_text+".bwt";
     assert(std::filesystem::exists(bwt_file));
 
     if (dt_type==RLBWT) {
-        std::cout<<"Building RLBWT with block size "<<b_size<<std::endl;
-        using bwt_type = vlbt_bwt<RLBWT, b_size>;
-        bwt_type bwt_dt;
-        build_bwt<bwt_type>(bwt_dt, bwt_file, PLAIN, tmp_path);
+        std::cout<<"Building the RLBWT with block size "<<b_size<<std::endl;
+        vlbt_rlbwt<b_size> bwt;
+        build_bwt(bwt, bwt_file, PLAIN, tmp_path);
         output_file = std::filesystem::path(output_file).replace_extension("rlbwt_vlt");
-        store_to_file(output_file, bwt_dt);
+        store_to_file(output_file, bwt);
     } else if (dt_type==RLBWT_WITH_TOEHOLDS) {
-        std::cout<<"Building RLBWT with toeholds with subsampling "<<sri_samp<<" and vlbt block size "<<b_size<<std::endl;
-        using bwt_th_type = vlbt_bwt<RLBWT_WITH_TOEHOLDS, b_size>;
-        bwt_th_type bwt_th_dt;
-        build_bwt_th<bwt_th_type, uint64_t>(bwt_th_dt,  bwt_file, sri_samp, PLAIN, input_text+".ssa", tmp_path);
+        std::cout<<"Building the RLBWT with toeholds, using subsampling "<<sri_samp_val<<" and vlbt block size "<<b_size<<std::endl;
+        vlbt_rlbwt_th<b_size> bwt_th;
+        build_bwt_th<uint64_t>(bwt_th,  bwt_file, PLAIN, sri_samp_val,   tmp_path);
         output_file = std::filesystem::path(output_file).replace_extension("rlbwt_th_vlt");
-        store_to_file(output_file, bwt_th_dt);
+        store_to_file(output_file, bwt_th);
     } else if (dt_type==SRI_VALID_AREA) {
-        std::cout<<"Building sr-index with with subsampling "<<sri_samp<<" and vlbt block size "<<sri_samp<<std::endl;
-        using bwt_th_type = vlbt_bwt<RLBWT_WITH_TOEHOLDS, b_size>;
-        using phi_type = vlbt_phi<WITH_VALID_AREA, b_size>;
-        using sr_index_type = vlbt_sr_index<bwt_th_type, phi_type>;
-        sr_index_type sr_index;
+        std::cout<<"Building the sr-index with valid area, using subsampling "<<sri_samp_val<<" and vlbt block size "<<sri_samp_val<<std::endl;
+        vlbt_sri_va<b_size, b_size> sri_va;
+        build_sr_index<uint64_t>(sri_va, input_text, PLAIN, sri_samp_val, tmp_path);
         output_file = std::filesystem::path(output_file).replace_extension("sri_vlt");
-        build_sr_index<sr_index_type , uint64_t>(sr_index, input_text, sri_samp, output_file, tmp_path);
+        store_to_file(output_file, sri_va);
     } else {
         exit(1);
     }
 }
 
-void build_int(VLBT_TYPE& dt_type, const std::string& input_text, uint64_t b_size, size_t ssamp_val, std::filesystem::path tmp_path, std::string& output_file){
+void build_int(VLBT_TYPE& dt_type, const std::string& input_text, const uint64_t b_size,
+               const size_t sri_samp_val, const std::filesystem::path &tmp_path, std::string& output_file){
     switch (b_size) {
         case 1024:
-            build_int2<1024>(dt_type, input_text, ssamp_val, tmp_path, output_file);
+            build_int2<1024>(dt_type, input_text, sri_samp_val, tmp_path, output_file);
             break;
         case 4096:
-            build_int2<4096>(dt_type, input_text, ssamp_val, tmp_path, output_file);
+            build_int2<4096>(dt_type, input_text, sri_samp_val, tmp_path, output_file);
             break;
         case 16384:
-            build_int2<16384>(dt_type, input_text, ssamp_val, tmp_path, output_file);
+            build_int2<16384>(dt_type, input_text, sri_samp_val, tmp_path, output_file);
             break;
         case 65536:
-            build_int2<65536>(dt_type, input_text, ssamp_val, tmp_path, output_file);
+            build_int2<65536>(dt_type, input_text, sri_samp_val, tmp_path, output_file);
             break;
         case 262144:
-            build_int2<262144>(dt_type, input_text, ssamp_val, tmp_path, output_file);
+            build_int2<262144>(dt_type, input_text, sri_samp_val, tmp_path, output_file);
             break;
         case 1048576:
-            build_int2<1048576>(dt_type, input_text, ssamp_val, tmp_path, output_file);
+            build_int2<1048576>(dt_type, input_text, sri_samp_val, tmp_path, output_file);
             break;
         default:
             exit(1);
@@ -241,11 +233,8 @@ static void parse_app(CLI::App& app, arguments& args){
     //auto * bkdown = app.add_subcommand("breakdown");
     //bkdown->add_option("INDEX", args.input_file, "Index to be read")->check(CLI::ExistingFile)->required();
     //bkdown->add_option("-i,--index-type", args.index_type, "Subsample r-index variant (0=standard, 1=valid_marks, 2=valid_area)")->required();
-
     app.require_subcommand(1,1);
 }
-
-
 
 /*template<class index_type>
 void breakdown_int(std::string input_index){
