@@ -106,14 +106,6 @@ std::vector<std::pair<uint64_t, uint8_t>> compute_random_rank_queries(uint64_t t
     return {seen.begin(), seen.end()};
 }
 
-#define MEASURE(query, time_answer, query_answer, time_unit) \
-{\
-auto t1 = std::chrono::high_resolution_clock::now();\
-query_answer = query;\
-auto t2 = std::chrono::high_resolution_clock::now();\
-time_answer += std::chrono::duration_cast<time_unit>( t2 - t1 ).count();\
-}
-
 template<class my_bwt_type, class other_bwt_type>
 void test_count_with_sa_head(my_bwt_type& my_bwt, const std::string& my_dt_name,
                              other_bwt_type& other_index, const std::string& other_index_name,
@@ -170,27 +162,34 @@ void test_count(my_dt_type& my_dt, const std::string& my_dt_name,
     const std::vector<std::string> pat_list = file2pat_list(pat_file, n_pats, pat_len);
     std::cout<<"\tSearching for "<<n_pats<<" patterns of length "<<pat_len<<" each "<<std::endl;
 
-    double other_acc_time=0;
-    size_t other_acc_count=0;
+    size_t my_acc_time=0;
+    size_t my_acc_count=0;
     size_t j=0;
+    std::vector<std::pair<uint64_t, uint64_t>> my_ans(n_pats);
+    for(auto const& p : pat_list) {
+        MEASURE(my_dt.count(p), my_acc_time, my_ans[j], std::chrono::nanoseconds)
+        my_acc_count+=my_ans[j].second-my_ans[j].first+1;
+        j++;
+    }
+
+    size_t other_acc_time=0;
+    size_t other_acc_count=0;
+    j=0;
     std::vector<std::pair<uint64_t, uint64_t>> other_ans(n_pats);
     for(auto const& p : pat_list) {
-        MEASURE(other_dt.count(p), other_acc_time, other_ans[j], std::chrono::microseconds)
+        MEASURE(other_dt.count(p), other_acc_time, other_ans[j], std::chrono::nanoseconds)
         other_acc_count+=other_ans[j].second-other_ans[j].first+1;
         j++;
     }
 
-    double my_acc_time=0;
-    size_t my_acc_count=0;
-    j=0;
-    std::vector<std::pair<uint64_t, uint64_t>> my_ans(n_pats);
-    for(auto const& p : pat_list) {
-        MEASURE(my_dt.count(p), my_acc_time, my_ans[j], std::chrono::microseconds)
-        my_acc_count+=my_ans[j].second-my_ans[j].first+1;
-        j++;
-    }
-    std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), ";
-    std::cout<<"\t"<<other_dt_name<<": ("<<other_acc_time/double(n_pats)<<", "<<other_acc_time/double(other_acc_count)<<")"<<std::endl;;
+    const double my_ns_per_pat = double(my_acc_time)/double(n_pats);
+    const double my_ns_per_occ = double(my_acc_time)/double(my_acc_count);
+
+    const double other_ns_per_pat = double(other_acc_time)/double(n_pats);
+    const double other_ns_per_occ = double(other_acc_time)/double(my_acc_count);
+    std::cout<<std::fixed<<std::setprecision(3);
+    std::cout<<"\t"<<my_dt_name<<": ("<<my_ns_per_pat<<", "<<my_ns_per_occ<<"), ";
+    std::cout<<"\t"<<other_dt_name<<": ("<<other_ns_per_pat<<", "<<other_ns_per_occ<<")"<<std::endl;;
     std::cout<<"\tTotal occurrences: "<<my_acc_count<<"="<<other_acc_count<<std::endl;
 
     for(size_t i=0;i<pat_list.size();i++){

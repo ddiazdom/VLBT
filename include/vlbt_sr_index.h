@@ -73,19 +73,19 @@ struct vlbt_sr_index{
         return bwt.size();
     }
 
-    [[nodiscard]] inline uint64_t subsampling_value() const {
+    [[nodiscard]] uint64_t subsampling_value() const {
         return bwt.subsampling_value();
     }
 
-    [[nodiscard]] inline uint64_t tot_runs() const {
+    [[nodiscard]] uint64_t tot_runs() const {
         return bwt.orig_runs;
     }
 
-    [[nodiscard]] inline std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {
+    [[nodiscard]] std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {
         return bwt.inverse_select(i);
     }
 
-    [[nodiscard]] inline int64_t rank(size_t i, uint8_t symbol) const {
+    [[nodiscard]] int64_t rank(size_t i, uint8_t symbol) const {
         return bwt.rank(i, symbol);
     }
 

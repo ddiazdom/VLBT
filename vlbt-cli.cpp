@@ -30,37 +30,41 @@ void count_int3(const std::string& input_index, const std::string& pat_file, std
     load_from_file(input_index, dt);
 
     const double bps = double(std::filesystem::file_size(input_index)*8)/double(dt.size());
+    const std::string file = std::filesystem::path(input_index).filename();
+
+    if constexpr (dt_type::tag==RLBWT_WITH_TOEHOLDS || dt_type::tag==SRI_VALID_AREA) {
+        index_name= index_name+"_s_"+std::to_string(dt.subsampling_value());
+    }
 
     uint64_t n_pats, pat_len;
-    std::vector<std::string> pat_list = file2pat_list(pat_file, n_pats, pat_len);
+    const std::vector<std::string> pat_list = file2pat_list(pat_file, n_pats, pat_len);
 
-    double acc_time=0;
+    size_t acc_time=0;
     size_t acc_count=0;
     std::pair<uint64_t, uint64_t> ans;
     for(auto const& p : pat_list) {
         MEASURE(dt.count(p), acc_time, ans, std::chrono::nanoseconds)
         acc_count+=ans.second-ans.first+1;
     }
-    //std::cout<<std::fixed<<std::setprecision(3);
-    const double ns_per_pat = acc_time/double(n_pats);
-    const double ns_per_occ = acc_time/double(acc_count);
-    std::cout<<acc_time<<std::endl;
+    const double ns_per_pat = double(acc_time)/double(n_pats);
+    const double ns_per_occ = double(acc_time)/double(acc_count);
 
-    std::cout<<"#index_name\tbits_per_sym\tn_pats\tpat_len\tn_occ\tnanosecs/pat\tnanosecs/occ"<<std::endl;
-    std::cout<<index_name<<"\t"<<bps<<"\t"<<n_pats<<"\t"<<pat_len<<"\t"<<acc_count<<"\t"<<ns_per_pat<<"\t"<<ns_per_occ<<std::endl;
+    std::cout<<std::fixed<<std::setprecision(3);
+    std::cout<<"#file\tindex_type\tbits_per_sym\tn_pats\tpat_len\tn_occ\tnanosecs/pat\tnanosecs/occ"<<std::endl;
+    std::cout<<file<<"\t"<<index_name<<"\t"<<bps<<"\t"<<n_pats<<"\t"<<pat_len<<"\t"<<acc_count<<"\t"<<ns_per_pat<<"\t"<<ns_per_occ<<std::endl;
 }
 
 template<size_t b_size>
 void count_int2(temp_param_t& tp, const std::string& input_index, const std::string& pat_file) {
     switch (tp.tag) {
         case RLBWT:
-            count_int3<vlbt_rlbwt<b_size>>(input_index, pat_file, "RLBWT_"+std::to_string(b_size));
+            count_int3<vlbt_rlbwt<b_size>>(input_index, pat_file, "RLBWT_b_"+std::to_string(b_size));
             break;
         case RLBWT_WITH_TOEHOLDS:
-            count_int3<vlbt_rlbwt_th<b_size>>(input_index, pat_file, "RLBWT_WITH_TOEHOLDS_"+std::to_string(b_size));
+            count_int3<vlbt_rlbwt_th<b_size>>(input_index, pat_file, "RLBWT_WITH_TOEHOLDS_b_"+std::to_string(b_size));
             break;
         case SRI_VALID_AREA:
-            count_int3<vlbt_sri_va<b_size, b_size>>(input_index, pat_file, "SRI_VALID_AREA_"+std::to_string(b_size));
+            count_int3<vlbt_sri_va<b_size, b_size>>(input_index, pat_file, "SRI_VALID_AREA_b_"+std::to_string(b_size));
             break;
         default:
             exit(1);
@@ -95,10 +99,14 @@ void count_int(const std::string& input_index, const std::string& pat_file) {
 }
 
 template<size_t b_size>
-void locate_int2(const std::string& input_index, std::string pat_file) {
+void locate_int2(const std::string& input_index, std::string pat_file, std::string index_name) {
 
     vlbt_sri_va<b_size, b_size> sr_index;
     load_from_file(input_index, sr_index);
+
+    const double bps = double(std::filesystem::file_size(input_index)*8)/double(sr_index.size());
+    const std::string file = std::filesystem::path(input_index).filename();
+    index_name= index_name+"_s_"+std::to_string(sr_index.subsampling_value());
 
     uint64_t n_pats, pat_len;
     std::vector<std::string> pat_list = file2pat_list(pat_file, n_pats, pat_len);
@@ -107,15 +115,16 @@ void locate_int2(const std::string& input_index, std::string pat_file) {
     size_t acc_count=0;
     for(auto const& p : pat_list) {
         std::vector<uint64_t> occ;
-        MEASURE(sr_index.locate(p), acc_time, occ, std::chrono::microseconds)
+        MEASURE(sr_index.locate(p), acc_time, occ, std::chrono::nanoseconds)
         acc_count+=occ.size();
     }
 
+    const double ns_per_pat = double(acc_time)/double(n_pats);
+    const double ns_per_occ = double(acc_time)/double(acc_count);
+
     std::cout<<std::fixed<<std::setprecision(3);
-    std::cout<<"Index type \""<<"SRI_VALID_AREA"<<"\""<<std::endl;
-    std::cout<<"\tTotal number of occurrences "<<acc_count<<std::endl;
-    std::cout<<"\t"<<double(acc_time)/double(n_pats)<<" microsecs/pat"<<std::endl;
-    std::cout<<"\t"<<double(acc_time)/double(acc_count)<<" microsecs/occ"<<std::endl;
+    std::cout<<"#file\tindex_type\tbits_per_sym\tn_pats\tpat_len\tn_occ\tnanosecs/pat\tnanosecs/occ"<<std::endl;
+    std::cout<<file<<"\t"<<index_name<<"\t"<<bps<<"\t"<<n_pats<<"\t"<<pat_len<<"\t"<<acc_count<<"\t"<<ns_per_pat<<"\t"<<ns_per_occ<<std::endl;
 }
 
 void locate_int(const std::string& input_index, const std::string& pat_file) {
@@ -124,22 +133,22 @@ void locate_int(const std::string& input_index, const std::string& pat_file) {
 
     switch (tp.b_size) {
         case 1024:
-            locate_int2<1024>(input_index, pat_file);
+            locate_int2<1024>(input_index, pat_file, "SRI_VALID_AREA_b_"+std::to_string(tp.b_size));
             break;
         case 4096:
-            locate_int2<4096>(input_index, pat_file);
+            locate_int2<4096>(input_index, pat_file, "SRI_VALID_AREA_b_"+std::to_string(tp.b_size));
             break;
         case 16384:
-            locate_int2<16384>(input_index, pat_file);
+            locate_int2<16384>(input_index, pat_file, "SRI_VALID_AREA_b_"+std::to_string(tp.b_size));
             break;
         case 65536:
-            locate_int2<65536>(input_index, pat_file);
+            locate_int2<65536>(input_index, pat_file, "SRI_VALID_AREA_b_"+std::to_string(tp.b_size));
             break;
         case 262144:
-            locate_int2<262144>(input_index, pat_file);
+            locate_int2<262144>(input_index, pat_file, "SRI_VALID_AREA_b_"+std::to_string(tp.b_size));
             break;
         case 1048576:
-            locate_int2<1048576>(input_index, pat_file);
+            locate_int2<1048576>(input_index, pat_file, "SRI_VALID_AREA_b"+std::to_string(tp.b_size));
             break;
         default:
             exit(1);
