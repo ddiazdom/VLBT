@@ -91,4 +91,10 @@ target_compile_options(vlbt-cli
         -Wall -pedantic -O3 -ffast-math -g
         ${SIMD_FLAGS}
 )
+
+add_executable(patfile2fasta scripts/patfile2fasta.cpp)
+target_compile_options(patfile2fasta
+        PUBLIC
+        #-Wall -pedantic -O3 -ffast-math -g
+)
 #add_subdirectory(scripts/r-index)
