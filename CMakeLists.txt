@@ -97,7 +97,7 @@ target_compile_options(gen_patterns PUBLIC -O3)
 add_executable(vlbt-cli vlbt-cli.cpp)
 target_compile_options(vlbt-cli
         PUBLIC
-        -O3
+        -Wall -pedantic -O3 -ffast-math -g
         ${SIMD_FLAGS}
 )
 #add_subdirectory(scripts/r-index)

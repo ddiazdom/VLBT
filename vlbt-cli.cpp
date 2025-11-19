@@ -29,21 +29,25 @@ void count_int3(const std::string& input_index, const std::string& pat_file, std
     dt_type dt;
     load_from_file(input_index, dt);
 
+    const double bps = double(std::filesystem::file_size(input_index)*8)/double(dt.size());
+
     uint64_t n_pats, pat_len;
     std::vector<std::string> pat_list = file2pat_list(pat_file, n_pats, pat_len);
 
-    size_t acc_time=0;
-    std::pair<size_t, size_t> ans;
+    double acc_time=0;
     size_t acc_count=0;
+    std::pair<uint64_t, uint64_t> ans;
     for(auto const& p : pat_list) {
         MEASURE(dt.count(p), acc_time, ans, std::chrono::nanoseconds)
         acc_count+=ans.second-ans.first+1;
     }
-    std::cout<<std::fixed<<std::setprecision(3);
-    std::cout<<"\tIndex type \""<<index_name<<"\""<<std::endl;
-    std::cout<<"\tTotal number of occurrences "<<acc_count<<std::endl;
-    std::cout<<"\t"<<double(acc_time)/double(n_pats)<<" nanosecs/pat"<<std::endl;
-    std::cout<<"\t"<<double(acc_time)/double(acc_count)<<" nanosecs/occ"<<std::endl;
+    //std::cout<<std::fixed<<std::setprecision(3);
+    const double ns_per_pat = acc_time/double(n_pats);
+    const double ns_per_occ = acc_time/double(acc_count);
+    std::cout<<acc_time<<std::endl;
+
+    std::cout<<"#index_name\tbits_per_sym\tn_pats\tpat_len\tn_occ\tnanosecs/pat\tnanosecs/occ"<<std::endl;
+    std::cout<<index_name<<"\t"<<bps<<"\t"<<n_pats<<"\t"<<pat_len<<"\t"<<acc_count<<"\t"<<ns_per_pat<<"\t"<<ns_per_occ<<std::endl;
 }
 
 template<size_t b_size>

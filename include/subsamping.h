@@ -63,7 +63,7 @@ struct buff_writer {
     }
 };
 
-static uint64_t get_diff(const uint64_t first, const uint64_t second) {
+static inline uint64_t get_diff(const uint64_t first, const uint64_t second) {
     const uint64_t abs_diff = (first > second) ? (first - second) : (second - first);
     assert(abs_diff<=INT64_MAX);
     return abs_diff;
