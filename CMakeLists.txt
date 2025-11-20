@@ -95,6 +95,12 @@ target_compile_options(vlbt-cli
 add_executable(patfile2fasta scripts/patfile2fasta.cpp)
 target_compile_options(patfile2fasta
         PUBLIC
-        #-Wall -pedantic -O3 -ffast-math -g
+        -Wall -pedantic -O3 -ffast-math -g
+)
+
+add_executable(filter_pat_set scripts/filter_patset.cpp)
+target_compile_options(filter_pat_set
+        PUBLIC
+        -Wall -pedantic -O3 -ffast-math -g
 )
 #add_subdirectory(scripts/r-index)

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <random>
 #include <filesystem>
+#include <unistd.h>
 
 #define INT_CEIL(a,b) (a>0? 1+(a-1)/b : 0)
 
