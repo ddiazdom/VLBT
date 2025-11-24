@@ -4,6 +4,8 @@
 
 #ifndef SR_INDEX_PARSE_PATTERN_H
 #define SR_INDEX_PARSE_PATTERN_H
+#include <cstdint>
+#include <vector>
 
 #define MEASURE(query, time_answer, query_answer, time_unit) \
 {\
