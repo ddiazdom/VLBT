@@ -466,11 +466,16 @@ void test_phi(std::string& input_prefix, size_t ssamp_step, std::string& output_
 template<class sa_samp_type>
 void test_sr_index(const std::string& input_prefix, BWT_FORMAT bwt_file_fmt, size_t sri_samp_val, const std::string& output_prefix){
 
-    vlbt_sri_va<65536, 65536> sr_index;
-    build_sr_index<sa_samp_type>(sr_index, input_prefix, bwt_file_fmt, sri_samp_val);
-    std::string output_file = output_prefix+".sri_vlbt";
-    size_t written_bytes = store_to_file(output_file, sr_index);
-    std::cout<<"We store "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps) in "<<output_file<<std::endl;
+    //vlbt_sri_va<4096, 4096> sr_index;
+    //build_sr_index<sa_samp_type>(sr_index, input_prefix, bwt_file_fmt, sri_samp_val);
+    //std::string output_file = output_prefix+".sri_vlbt";
+    //size_t written_bytes = store_to_file(output_file, sr_index);
+    //std::cout<<"We store "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps) in "<<output_file<<std::endl;
+    vlbt_sri_va<4096, 4096> sr_index;
+    load_from_file( "covid_bug.sri_vlbt", sr_index);
+    //load_from_file( "../data/covid_failed_dataset/covid_sri_4096_4.sri_vlt", sr_index);
+    //load_from_file( "/home/ddiaz/covid_failed_datasets/covid_sri_4096_4.sri_vlt", sr_index);
+    //sr_index.locate("TAGGAGACATTATACTTAAACCAGCAAATAATAGTTTAAAAATTACAGAAGAGGTTGGCCACACAGATCTAANNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN");
 
     //=====
     //Create the RLBWT in case it does not exist
@@ -531,13 +536,13 @@ int main(int argc, char** argv) {
     auto input_text = std::string(argv[1]);
     const auto output_prefix = std::string(argv[2]);
 
-    std::cout<<"Testing RLBWT"<<std::endl;
-    test_bwt(input_text, PLAIN, output_prefix);
+    //std::cout<<"Testing RLBWT"<<std::endl;
+    //test_bwt(input_text, PLAIN, output_prefix);
 
     //std::cout<<"Testing RLBWT with toeholds"<<std::endl;
     //test_bwt_th<uint64_t>(input_text, PLAIN, 4, output_prefix);
 
-    //std::cout<<"Testing sr-index with valid area"<<std::endl;
-    //test_sr_index<uint64_t>(input_text, PLAIN, 4, output_prefix);
+    std::cout<<"Testing sr-index with valid area"<<std::endl;
+    test_sr_index<uint64_t>(input_text, GRL_BWT, 4, output_prefix);
     //test_phi<uint64_t>(input_prefix, 4, output_prefix);
 }

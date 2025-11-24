@@ -65,12 +65,15 @@ message("Compiling with ${SIMD_FLAGS}")
 add_executable(test_vlbt test_suite/test_suite.cpp)
 target_compile_options(test_vlbt
         PUBLIC
-        #-Wall -pedantic -O3 -ffast-math -g
+        -Wall -pedantic -O3 -ffast-math -g
         ${SIMD_FLAGS}
 )
-
-target_link_libraries(test_vlbt LINK_PUBLIC ${LIBSDSL_LIBRARIES})
-target_include_directories(test_vlbt PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/r-index/internal)
+target_link_libraries(test_vlbt
+        LINK_PUBLIC
+        ${LIBSDSL_LIBRARIES})
+target_include_directories(test_vlbt
+        PUBLIC
+        ${LIBSDSL_INCLUDE_DIRS} scripts/r-index/internal)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     message(STATUS "Adding -march=native compiler flag due to ${CMAKE_CXX_COMPILER_ID}")

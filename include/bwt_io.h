@@ -60,7 +60,7 @@ public:
         read_block();
     }
 
-    inline size_t read_sym(size_t i) {
+    size_t read_sym(size_t i) {
         assert(i<tot_runs);
         size_t sym = 0;
         size_t start = (i*bpr);
@@ -95,7 +95,7 @@ public:
         return sym;
     }
 
-    inline void read_run(size_t i, size_t& sym, size_t& freq) {
+    void read_run(size_t i, size_t& sym, size_t& freq) {
 
         assert(i<tot_runs);
         sym = 0;
@@ -136,15 +136,15 @@ public:
         memcpy(&freq, buffer+buff_start+sb, fb);
     }
 
-    inline size_t bytes_per_rsym() const {
+    size_t bytes_per_rsym() const {
         return sb;
     }
 
-    inline size_t bytes_per_rlen() const {
+    size_t bytes_per_rlen() const {
         return fb;
     }
 
-    inline size_t size() const {
+    size_t size() const {
        return tot_runs;
     }
 

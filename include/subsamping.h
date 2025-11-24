@@ -330,7 +330,7 @@ std::vector<size_type> decode_samples(const std::string& samples_file, const siz
     std::vector<char> buffer(floor_buff);
     while(f_size>0) {
         ifs_sa_first.read(buffer.data(), floor_buff);
-        std::streamsize bytes_read = ifs_sa_first.gcount();
+        const std::streamsize bytes_read = ifs_sa_first.gcount();
 
         for (size_t i = bytes_per_elm; i < bytes_read; i+=bytes_pair) {
             uint64_t sa_val = 0; //clean the values, just in case

@@ -27,7 +27,7 @@
         _mm_cmpeq_epi64(_mm_max_epu64(a, b), a)
 #define _mm_cmple_epu64(a, b) _mm_cmpge_epu64(b, a)
 
-static inline void print8x16(__m128i vec) {
+static void print8x16(__m128i vec) {
     uint8_t values[16];
     _mm_storeu_si128((__m128i*)values, vec); // Unaligned store
     for (int i = 0; i < 16; ++i) {
@@ -36,7 +36,7 @@ static inline void print8x16(__m128i vec) {
     std::cout<<""<<std::endl;
 }
 
-static inline void print16x8(__m128i vec) {
+static void print16x8(__m128i vec) {
     uint16_t values[8];
     _mm_storeu_si128((__m128i*)values, vec); // Unaligned store
     for (int i = 0; i < 8; ++i) {
@@ -45,7 +45,7 @@ static inline void print16x8(__m128i vec) {
     std::cout<<""<<std::endl;
 }
 
-static inline void print32x4(__m128i vec) {
+static void print32x4(__m128i vec) {
     uint32_t values[4];
     _mm_storeu_si128((__m128i*)values, vec); // Unaligned store
     for (int i = 0; i < 4; ++i) {
@@ -54,7 +54,7 @@ static inline void print32x4(__m128i vec) {
     std::cout<<""<<std::endl;
 }
 
-static inline void print64x2(__m128i vec) {
+static void print64x2(__m128i vec) {
     uint64_t values[2];
     _mm_storeu_si128((__m128i*)values, vec); // Unaligned store
     for (int i = 0; i < 2; ++i) {
@@ -63,7 +63,7 @@ static inline void print64x2(__m128i vec) {
     std::cout<<""<<std::endl;
 }
 
-static inline __m128i shift_right_epi8(const __m128i& input, const uint8_t shift) {
+static __m128i shift_right_epi8(const __m128i& input, const uint8_t shift) {
     //from https://wunkolo.github.io/post/2020/11/gf2p8affineqb-int8-shifting/
     switch (shift) {
         case 0: return input;
@@ -78,7 +78,7 @@ static inline __m128i shift_right_epi8(const __m128i& input, const uint8_t shift
     }
 }
 
-static inline __m128i shift_right_epi16(const __m128i& input, const int shift) {
+static __m128i shift_right_epi16(const __m128i& input, const int shift) {
     switch (shift) {
         case 0: return input;
         case 1: return _mm_srli_epi16(input, 1);
@@ -92,7 +92,7 @@ static inline __m128i shift_right_epi16(const __m128i& input, const int shift) {
     }
 }
 
-static inline __m128i shift_right_epi32(const __m128i& input, const int shift) {
+static __m128i shift_right_epi32(const __m128i& input, const int shift) {
     switch (shift) {
         case 0: return input;
         case 1: return _mm_srli_epi32(input, 1);
@@ -106,7 +106,7 @@ static inline __m128i shift_right_epi32(const __m128i& input, const int shift) {
     }
 }
 
-static inline __m128i shift_right_epi64(const __m128i& input, const int shift) {
+static __m128i shift_right_epi64(const __m128i& input, const int shift) {
     switch (shift) {
         case 0: return input;
         case 1: return _mm_srli_epi64(input, 1);
@@ -120,7 +120,7 @@ static inline __m128i shift_right_epi64(const __m128i& input, const int shift) {
     }
 }
 
-static inline void psum_epi8_ovf(const __m128i& input, const uint32_t& idx, uint32_t& pf_sum, uint32_t& idx_run) {
+static void psum_epi8_ovf(const __m128i& input, const uint32_t& idx, uint32_t& pf_sum, uint32_t& idx_run) {
 
     __m128i halves[2];
 
@@ -162,7 +162,7 @@ static inline void psum_epi8_ovf(const __m128i& input, const uint32_t& idx, uint
     pf_sum = pf_sum_vec[idx_run & 7];
 }
 
-static inline uint32_t hsum_epi8_ovf(const __m128i& input) {
+static uint32_t hsum_epi8_ovf(const __m128i& input) {
     const __m128i sum1 = _mm_add_epi16(_mm_shuffle_epi8(input, _mm_set_epi8(-1,7,  -1,6,  -1,5,  -1,4,  -1,3,  -1,2,  -1,1, -1,0)),
                                        _mm_shuffle_epi8(input, _mm_set_epi8(-1,15, -1,14, -1,13, -1,12, -1,11, -1,10, -1,9, -1,8)));
     //print16x8(sum1);
@@ -175,13 +175,13 @@ static inline uint32_t hsum_epi8_ovf(const __m128i& input) {
     return static_cast<uint16_t>(_mm_cvtsi128_si32(sum4));//extract the lowest 32 bits
 }
 
-static inline uint32_t hsum_epi8(const __m128i& input) {
+static uint32_t hsum_epi8(const __m128i& input) {
     __m128i sad = _mm_sad_epu8(input, _mm_setzero_si128());
     sad = _mm_add_epi64(sad, _mm_srli_si128(sad, 8));
     return _mm_cvtsi128_si32(sad);
 }
 
-static inline void psum_epi16_ovf(const __m128i& input, const uint32_t& idx, uint32_t& pf_sum, uint32_t& idx_run) {
+static void psum_epi16_ovf(const __m128i& input, const uint32_t& idx, uint32_t& pf_sum, uint32_t& idx_run) {
 
     __m128i halves[2];
 
@@ -223,7 +223,7 @@ static inline void psum_epi16_ovf(const __m128i& input, const uint32_t& idx, uin
     pf_sum = pf_sum_vec[idx_run & 3];
 }
 
-static inline uint32_t hsum_epi16_ovf(const __m128i& input) {
+static uint32_t hsum_epi16_ovf(const __m128i& input) {
     const __m128i sum = _mm_add_epi32(_mm_shuffle_epi8(input, _mm_set_epi8(-1,-1,7,6, -1,-1,5,4, -1,-1,3,2, -1,-1,1,0)),
                                       _mm_shuffle_epi8(input, _mm_set_epi8(-1,-1,15,14, -1,-1,13,12, -1,-1,11,10, -1,-1,9,8)));
     const __m128i sum2 = _mm_hadd_epi32(sum, sum);
@@ -232,26 +232,26 @@ static inline uint32_t hsum_epi16_ovf(const __m128i& input) {
     return static_cast<uint32_t>(res);
 }
 
-static inline uint32_t hsum_epi16(const __m128i& input) {
+static uint32_t hsum_epi16(const __m128i& input) {
     const __m128i sum1 = _mm_add_epi16(input, _mm_srli_si128(input, 2));
     const __m128i sum2 = _mm_add_epi16(sum1, _mm_srli_si128(sum1, 4));
     const __m128i sum3 = _mm_add_epi16(sum2, _mm_srli_si128(sum2, 8));
     return static_cast<uint16_t>(_mm_cvtsi128_si32(sum3));
 }
 
-static inline uint32_t hsum_epi32(const __m128i& input) {
+static uint32_t hsum_epi32(const __m128i& input) {
     const __m128i sum1 = _mm_add_epi32(input, _mm_srli_si128(input, 4));
     const __m128i sum2 = _mm_add_epi32(sum1, _mm_srli_si128(sum1, 8));
     return _mm_cvtsi128_si32(sum2);
 }
 
-static inline uint64_t hsum_sum_epi64(const __m128i& input) {
+static uint64_t hsum_sum_epi64(const __m128i& input) {
     const __m128i sum = _mm_add_epi32(input, _mm_srli_si128(input, 8));
     return _mm_cvtsi128_si64(sum);
 }
 
 template<bool vbyte_compressed, uint8_t ctr_width, uint8_t bytes_per_run>
-static inline __m128i decode_block_sse42(const uint8_t **stream) {
+static __m128i decode_block_sse42(const uint8_t **stream) {
 
     if constexpr (vbyte_compressed) {
         uint8_t *pshuf, ctrl_bits = **stream;
@@ -303,7 +303,7 @@ static inline __m128i decode_block_sse42(const uint8_t **stream) {
 }
 
 template<bool overflow16, bool overflow32=false, bool get_run_id=false>
-static inline auto inv_select_sse42_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx) {
+static auto inv_select_sse42_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx) {
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
@@ -407,7 +407,7 @@ static inline auto inv_select_sse42_8x16(const uint8_t **stream, uint8_t sigma, 
 }
 
 template<bool vbyte_compressed, bool overflow8, bool overflow16=false, bool get_run_id=false>
-static inline auto inv_select_sse42_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx) {
+static auto inv_select_sse42_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx) {
 
     const uint8_t sigma_bits = sym_width(sigma);
     const uint8_t *stream_start = *stream;
@@ -505,7 +505,7 @@ static inline auto inv_select_sse42_16x8(const uint8_t **stream, uint8_t sigma, 
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run, bool get_run_id=false>
-static inline auto inv_select_sse42_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx) {
+static auto inv_select_sse42_32x4(const uint8_t ** stream, uint8_t sigma, uint64_t idx) {
 
     //TODO: assert idx fits 2 bytes
     const uint8_t sigma_bits = sym_width(sigma);
@@ -597,7 +597,7 @@ static inline auto inv_select_sse42_32x4(const uint8_t ** stream, uint8_t sigma,
 
 //byte compressed by default
 template<uint8_t bytes_per_run, bool get_run_id=false>
-static inline auto inv_select_sse42_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
+static auto inv_select_sse42_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx){
     if constexpr (get_run_id){
         return std::make_tuple<int64_t, uint8_t, uint64_t>(0,0, 0);
     }else{
@@ -606,7 +606,7 @@ static inline auto inv_select_sse42_64x2(const uint8_t ** stream, uint8_t sigma,
 }
 
 template<bool overflow16, bool overflow32=false>
-static inline uint8_t access_sse42_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx){
+static uint8_t access_sse42_8x16(const uint8_t **stream, uint8_t sigma, uint64_t idx){
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
@@ -657,7 +657,7 @@ static inline uint8_t access_sse42_8x16(const uint8_t **stream, uint8_t sigma, u
 }
 
 template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
-static inline uint8_t access_sse42_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx){
+static uint8_t access_sse42_16x8(const uint8_t **stream, uint8_t sigma, uint64_t idx){
 
     const uint8_t sigma_bits = sym_width(sigma);
 
@@ -708,7 +708,7 @@ static inline uint8_t access_sse42_16x8(const uint8_t **stream, uint8_t sigma, u
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run>
-static inline uint8_t access_sse42_32x4(const uint8_t **stream, uint8_t sigma, uint64_t idx){
+static uint8_t access_sse42_32x4(const uint8_t **stream, uint8_t sigma, uint64_t idx){
 
     const uint8_t sigma_bits = sym_width(sigma);
 
@@ -757,12 +757,12 @@ static inline uint8_t access_sse42_32x4(const uint8_t **stream, uint8_t sigma, u
 }
 
 template<uint8_t bytes_per_run>
-static inline uint8_t access_sse42_64x2(const uint8_t **stream, uint8_t sigma, uint64_t idx){
+static uint8_t access_sse42_64x2(const uint8_t **stream, uint8_t sigma, uint64_t idx){
     return 0;
 }
 
 template<bool overflow16, bool overflow32=false>
-static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_8x16(const uint8_t **stream, uint64_t idx){
+static std::pair<uint64_t, uint64_t> get_phi_run_sse42_8x16(const uint8_t **stream, uint64_t idx){
 
     //NOTE here I do not need to vbyte compress the block
     __m128i block = _mm_loadu_si128((const __m128i*)*stream);
@@ -811,7 +811,7 @@ static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_8x16(const uint8_t
 }
 
 template<bool vbyte_compressed, bool overflow8, bool overflow16=false>
-static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_16x8(const uint8_t **stream, uint64_t idx){
+static std::pair<uint64_t, uint64_t> get_phi_run_sse42_16x8(const uint8_t **stream, uint64_t idx){
 
     __m128i block = decode_block_sse42<vbyte_compressed, 1, 2>(stream);
     uint32_t prev_acc = 0;
@@ -850,13 +850,6 @@ static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_16x8(const uint8_t
         const int less_than = _mm_movemask_epi8(idx_mask);
         tmp_idx_run = __builtin_ctz(~less_than)>>1;
 
-        //TODO testing
-        //int tmp = _mm_movemask_epi8(idx_mask);
-        //size_t tmp2 = __builtin_ctzll(~tmp)>>1;
-        //std::cout << tmp_idx_run <<" "<<tmp2<< std::endl;
-        //assert(tmp_idx_run==tmp2);
-        //
-
         //_mm_set_epi64x(0x100010001000100ULL, 0x100010001000100ULL) is equal to set {0, 1, 0, 1, 0, 1, ...}
         const __m128i shuff = _mm_add_epi8(_mm_set_epi64x(0x100010001000100ULL, 0x100010001000100ULL),
                                            _mm_set1_epi8(tmp_idx_run<<1));
@@ -870,7 +863,7 @@ static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_16x8(const uint8_t
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run>
-static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_32x4(const uint8_t **stream, uint64_t idx){
+static std::pair<uint64_t, uint64_t> get_phi_run_sse42_32x4(const uint8_t **stream, uint64_t idx){
 
     __m128i block = decode_block_sse42<vbyte_compressed, 2, bytes_per_run>(stream);
     uint32_t prev_acc=0;
@@ -909,12 +902,12 @@ static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_32x4(const uint8_t
 }
 
 template<uint8_t bytes_per_run>
-static inline std::pair<uint64_t, uint64_t> get_phi_run_sse42_64x2(const uint8_t **stream, uint64_t idx){
+static std::pair<uint64_t, uint64_t> get_phi_run_sse42_64x2(const uint8_t **stream, uint64_t idx){
     return std::make_pair(0, 0);
 }
 
 template<bool overflow16, bool overflow32=false, bool check_head>
-static inline int64_t rank_sse42_8x16(const uint8_t **stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
+static int64_t rank_sse42_8x16(const uint8_t **stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
@@ -931,7 +924,7 @@ static inline int64_t rank_sse42_8x16(const uint8_t **stream, const uint8_t sigm
     uint32_t acc = hsum_epi8_ovf(bk_lengths);
 
     uint32_t rank=0;
-    size_t l=0;
+    //size_t l=0;
     while(acc<=idx){
         //compute acc rank in the previous block
         bk_lengths = _mm_and_si128(bk_lengths, _mm_cmpeq_epi8(_mm_and_si128(block, alpha_mask), sym_vec));
@@ -947,7 +940,7 @@ static inline int64_t rank_sse42_8x16(const uint8_t **stream, const uint8_t sigm
         //print8x16(bk_lengths);
         prev_acc = acc;
         acc += hsum_epi8_ovf(bk_lengths);
-        l++;
+        //l++;
     }
 
     idx-=prev_acc;
@@ -1006,7 +999,7 @@ static inline int64_t rank_sse42_8x16(const uint8_t **stream, const uint8_t sigm
 }
 
 template<bool vbyte_compressed, bool overflow8, bool overflow16=false, bool check_head>
-static inline int64_t rank_sse42_16x8(const uint8_t **stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
+static int64_t rank_sse42_16x8(const uint8_t **stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const uint8_t alpha_m = (1UL << sigma_bits)-1;
@@ -1097,7 +1090,7 @@ static inline int64_t rank_sse42_16x8(const uint8_t **stream, const uint8_t sigm
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run, bool check_head>
-static inline int64_t rank_sse42_32x4(const uint8_t ** stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
+static int64_t rank_sse42_32x4(const uint8_t ** stream, const uint8_t sigma, uint64_t idx, const uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const uint8_t alpha_m = (1UL << sigma_bits)-1;
@@ -1170,13 +1163,13 @@ static inline int64_t rank_sse42_32x4(const uint8_t ** stream, const uint8_t sig
 }
 
 template<uint8_t bytes_per_run, bool check_head>
-static inline int64_t rank_sse42_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
+static int64_t rank_sse42_64x2(const uint8_t ** stream, uint8_t sigma, uint64_t idx, uint8_t symbol){
     return 0;
 }
 
 template<bool overflow16, bool overflow32=false, bool check_head>
-static inline std::pair<uint64_t, uint64_t> range_rank_sse42_8x16(const uint8_t **stream, const uint8_t sigma,
-                                                                  uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
+static std::pair<uint64_t, uint64_t> range_rank_sse42_8x16(const uint8_t **stream, const uint8_t sigma,
+                                                           uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
@@ -1194,7 +1187,7 @@ static inline std::pair<uint64_t, uint64_t> range_rank_sse42_8x16(const uint8_t 
     uint32_t acc = hsum_epi8_ovf(bk_lengths);
 
     uint32_t rank_i=0;
-    size_t l=0;
+    //size_t l=0;
     while(acc<=idx_i){
         //compute acc rank in the previous block
         bk_lengths = _mm_and_si128(bk_lengths, _mm_cmpeq_epi8(_mm_and_si128(block, alpha_mask), sym_vec));
@@ -1210,7 +1203,7 @@ static inline std::pair<uint64_t, uint64_t> range_rank_sse42_8x16(const uint8_t 
         //print8x16(bk_lengths);
         prev_acc = acc;
         acc += hsum_epi8_ovf(bk_lengths);
-        l++;
+        //l++;
     }
 
     uint64_t rank_j= rank_i;
@@ -1287,7 +1280,7 @@ static inline std::pair<uint64_t, uint64_t> range_rank_sse42_8x16(const uint8_t 
         //print8x16(bk_lengths);
         prev_acc = acc;
         acc += hsum_epi8_ovf(bk_lengths);
-        l++;
+        //l++;
     }
 
     idx_j-=prev_acc;
@@ -1331,8 +1324,8 @@ static inline std::pair<uint64_t, uint64_t> range_rank_sse42_8x16(const uint8_t 
 }
 
 template<bool vbyte_compressed, bool overflow8, bool overflow16=false, bool check_head>
-static inline std::pair<uint64_t, uint64_t> range_rank_sse42_16x8(const uint8_t **stream, const uint8_t sigma,
-                                                                  uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
+static std::pair<uint64_t, uint64_t> range_rank_sse42_16x8(const uint8_t **stream, const uint8_t sigma,
+                                                           uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const uint8_t alpha_m = (1UL << sigma_bits)-1;
@@ -1484,8 +1477,8 @@ static inline std::pair<uint64_t, uint64_t> range_rank_sse42_16x8(const uint8_t 
 }
 
 template<bool vbyte_compressed, uint8_t bytes_per_run, bool check_head>
-static inline std::pair<uint64_t, uint64_t> range_rank_sse42_32x4(const uint8_t ** stream, const uint8_t sigma,
-                                                                  uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
+static std::pair<uint64_t, uint64_t> range_rank_sse42_32x4(const uint8_t ** stream, const uint8_t sigma,
+                                                           uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
     const uint8_t alpha_m = (1UL << sigma_bits)-1;
@@ -1598,16 +1591,16 @@ static inline std::pair<uint64_t, uint64_t> range_rank_sse42_32x4(const uint8_t 
 }
 
 template<uint8_t bytes_per_run, bool check_head>
-static inline std::pair<uint64_t, uint64_t> range_rank_sse42_64x2(const uint8_t ** stream, const uint8_t sigma, uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
+static std::pair<uint64_t, uint64_t> range_rank_sse42_64x2(const uint8_t ** stream, const uint8_t sigma, uint64_t idx_i, uint64_t idx_j, const uint8_t symbol){
     return std::make_pair(0,0);
 }
 
-static inline size_t first_run_sse42_8x16(const uint8_t **stream, const uint8_t sigma, uint8_t symbol) {
+static size_t first_run_sse42_8x16(const uint8_t **stream, const uint8_t sigma, uint8_t symbol) {
 
     const uint8_t sigma_bits = sym_width(sigma);
     const uint8_t alpha_m = (1UL << sigma_bits)-1;
-    const __m128i alpha_mask = _mm_set1_epi16(alpha_m);
-    const __m128i sym_vec = _mm_set1_epi16(symbol);
+    const __m128i alpha_mask = _mm_set1_epi8(alpha_m);
+    const __m128i sym_vec = _mm_set1_epi8(symbol);
 
     __m128i block = _mm_loadu_si128((const __m128i*)*stream);
     *stream+=16;
