@@ -1711,7 +1711,7 @@ public:
         return get_sa_from_leftmost_leaf(s_info[1], pck_sym);
     }
 
-    inline void find_path_to_leaf(tree_path_type& path, size_t& i) const {
+    void find_path_to_leaf(tree_path_type& path, size_t& i) const {
 
         //initialize the block size
         size_t bk_sz = block_size;
@@ -2196,12 +2196,12 @@ public:
         return {l, r, sa_samp-head[1].first-1};
     }
 
-    [[nodiscard]] inline uint8_t eff2byte(uint8_t eff_sym) const {
+    [[nodiscard]] uint8_t eff2byte(uint8_t eff_sym) const {
         assert(eff_sym<sigma);
         return unpacked_alpha[eff_sym];
     }
 
-    [[nodiscard]] inline uint64_t size() const {
+    [[nodiscard]] uint64_t size() const {
         return tot_syms;
     }
 };

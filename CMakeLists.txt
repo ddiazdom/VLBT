@@ -65,7 +65,7 @@ message("Compiling with ${SIMD_FLAGS}")
 add_executable(test_vlbt test_suite/test_suite.cpp)
 target_compile_options(test_vlbt
         PUBLIC
-        -Wall -pedantic -O3 -ffast-math -g
+        #-Wall -pedantic -O3 -ffast-math -g
         ${SIMD_FLAGS}
 )
 
@@ -102,5 +102,13 @@ add_executable(filter_pat_set scripts/filter_patset.cpp)
 target_compile_options(filter_pat_set
         PUBLIC
         -Wall -pedantic -O3 -ffast-math -g
+        ${SIMD_FLAGS}
+)
+
+add_executable(plain2grlbwt scripts/plain2grlbwt.cpp)
+target_compile_options(filter_pat_set
+        PUBLIC
+        -Wall -pedantic -O3 -ffast-math -g
+        ${SIMD_FLAGS}
 )
 #add_subdirectory(scripts/r-index)

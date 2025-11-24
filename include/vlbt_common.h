@@ -10,8 +10,8 @@ enum VLBT_TYPE{
     SRI_VALID_AREA=2,
 };
 
-//template parameters that were serialized
-//we used them to ensure the correct load of class templates from disk
+//template parameters that were serialized,
+//we used them to ensure the correct load of class templates from the disk
 struct temp_param_t {
     VLBT_TYPE tag;
     size_t b_size;

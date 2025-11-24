@@ -10,6 +10,8 @@
 #include <random>
 #include <filesystem>
 #include <unistd.h>
+#include <vector>
+#include <cstdint>
 
 #define INT_CEIL(a,b) (a>0? 1+(a-1)/b : 0)
 
@@ -147,7 +149,7 @@ void load_from_file(std::string const& file, data_type& dt){
 template<class data_type>
 size_t store_to_file(std::string const& file, data_type& dt){
     std::ofstream ofs(file, std::ios::binary);
-    size_t written_bytes = dt.serialize(ofs);
+    const size_t written_bytes = dt.serialize(ofs);
     ofs.close();
     return written_bytes;
 }

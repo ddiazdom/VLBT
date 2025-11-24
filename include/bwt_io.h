@@ -194,8 +194,6 @@ class bwt_buff_writer {
     std::function<size_t(size_t, size_t)> sub = [](size_t a, size_t b){ return a-b;};
     std::function<size_t(size_t, size_t)> add = [](size_t a, size_t b){ return a+b;};
 
-private:
-
     inline void mod_freq(size_t idx, size_t new_freq, std::function<size_t(size_t, size_t)>& op) {
 
         size_t start = (idx*bpr)+sb;
@@ -403,7 +401,7 @@ public:
         close();
     };
 
-    inline void read_run(size_t i, size_t& sym, size_t& freq) {
+    void read_run(size_t i, size_t& sym, size_t& freq) {
 
         assert(i<tot_runs);
         sym = 0;
@@ -446,7 +444,7 @@ public:
         memcpy(&freq, buffer+buff_start+sb, fb);
     }
 
-    inline void push_back(size_t sym, size_t freq) {
+    void push_back(size_t sym, size_t freq) {
 
         assert(sym<=max_sym && freq<=max_freq);
 
@@ -490,52 +488,52 @@ public:
         modified=true;
     }
 
-    inline void inc_freq(size_t idx, size_t val){
+    void inc_freq(size_t idx, size_t val){
         mod_freq(idx, val, add);
     }
 
-    inline void inc_freq_last(size_t val){
+    void inc_freq_last(size_t val){
         mod_freq(tot_runs-1, val, add);
     }
 
-    inline void dec_freq(size_t idx, size_t val){
+    void dec_freq(size_t idx, size_t val){
         mod_freq(idx, val, sub);
     }
 
-    inline size_t read_sym(size_t idx) {
+    size_t read_sym(size_t idx) {
         assert(idx<tot_runs);
         l_acc_sym = read(idx, 0, sb);
         return l_acc_sym;
     }
 
-    inline size_t read_freq(size_t idx) {
+    size_t read_freq(size_t idx) {
         assert(idx<tot_runs);
         return read(idx, sb, fb);
     }
 
-    inline void write_sym(size_t idx, size_t new_sym) {
+    void write_sym(size_t idx, size_t new_sym) {
         assert(idx<tot_runs && new_sym<=max_sym);
         write(idx, 0, sb, new_sym);
     }
 
-    inline void write_freq(size_t idx, size_t new_freq) {
+    void write_freq(size_t idx, size_t new_freq) {
         assert(idx<tot_runs && new_freq<=max_freq);
         write(idx, sb, fb, new_freq);
     }
 
-    inline size_t size() const {
+    size_t size() const {
         return tot_runs;
     }
 
-    inline size_t last_sym() const {
+    size_t last_sym() const {
         return l_sym;
     }
 
-    inline size_t last_acc_sym() const {
+    size_t last_acc_sym() const {
         return l_acc_sym;
     }
 
-    inline size_t last_freq() {
+    size_t last_freq() {
         return read_freq(tot_runs-1);
     }
 
@@ -616,7 +614,7 @@ inline void plain2grlbwt(const std::string& orig_bwt, const std::string& new_bwt
     bwt_out.close();
 }
 
-inline void grl2plain(std::string& rl_file, std::string& output_plain_file){
+inline void grl2plain(const std::string& rl_file, const std::string& output_plain_file){
     std::ofstream ofs(output_plain_file, std::ios::out | std::ios::binary);
     uint8_t buffer[1024]={0};
     bwt_buff_reader bwt_reader(rl_file);
@@ -627,14 +625,14 @@ inline void grl2plain(std::string& rl_file, std::string& output_plain_file){
         for(size_t j=0;j<freq;j++){
             buffer[k++] = sym;
             if(k==1024){
-                ofs.write((char *)buffer, 1024);
+                ofs.write(reinterpret_cast<char *>(buffer), 1024);
                 k=0;
             }
         }
         sym_freqs[sym]+=freq;
     }
     if(k!=0){
-        ofs.write((char *)buffer, (std::streamsize)k);
+        ofs.write(reinterpret_cast<char *>(buffer), static_cast<std::streamsize>(k));
     }
     bwt_reader.close();
     ofs.close();
