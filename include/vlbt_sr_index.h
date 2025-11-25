@@ -4,6 +4,7 @@
 
 #ifndef VLBT_SR_INDEX_H
 #define VLBT_SR_INDEX_H
+
 #include "vlbt_common.h"
 
 template<class bwt_dt_type, class phi_type>

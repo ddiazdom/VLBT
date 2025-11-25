@@ -6,13 +6,9 @@
 #define VLBT_PHI_H
 
 #include <cmath>
+#include "vlbt_common.h"
 #include "bit_stream.h"
 
-enum phi_variant {
-    NO_VALID_AREA = 0,
-    WITH_VALID_AREA = 1,
-    NO_SUBSAMPLING=2
-};
 
 template<phi_variant var, size_t b_size, size_t b_runs=64, size_t s_factor=4>
 struct vlbt_phi {

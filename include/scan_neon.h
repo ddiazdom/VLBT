@@ -1340,7 +1340,7 @@ static inline size_t first_run_neon_8x16(const uint8_t **stream, const uint8_t s
 
     //NOTE here I do not need to vbyte compress the block
     const uint8_t sigma_bits = sym_width(sigma);
-    uint8_t alpha_m = (1UL << sigma_bits)-1;
+    const uint8_t alpha_m = (1UL << sigma_bits)-1;
     const uint8x16_t alpha_mask = vdupq_n_u8(alpha_m);
     uint8x16_t sym_vec = vdupq_n_u8(symbol);
 
@@ -1370,7 +1370,7 @@ template<bool vbyte_compressed>
 static inline size_t first_run_neon_16x8(const uint8_t **stream, const uint8_t sigma, uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
-    uint16_t alpha_m = (1UL << sigma_bits)-1;
+    const uint16_t alpha_m = (1UL << sigma_bits)-1;
     const uint16x8_t alpha_mask = vdupq_n_u16(alpha_m);
     const uint16x8_t sym_vec = vdupq_n_u16(symbol);
 
@@ -1396,7 +1396,7 @@ template<bool vbyte_compressed, uint8_t bytes_per_run>
 static inline size_t first_run_neon_32x4(const uint8_t **stream, const uint8_t sigma, uint8_t symbol){
 
     const uint8_t sigma_bits = sym_width(sigma);
-    uint32_t alpha_m = (1UL << sigma_bits)-1;
+    const uint32_t alpha_m = (1UL << sigma_bits)-1;
     const uint32x4_t alpha_mask = vdupq_n_u32(alpha_m);
     const uint32x4_t sym_vec = vdupq_n_u32(symbol);
 

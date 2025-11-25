@@ -10,6 +10,12 @@ enum VLBT_TYPE{
     SRI_VALID_AREA=2,
 };
 
+enum phi_variant {
+    NO_VALID_AREA = 0,
+    WITH_VALID_AREA = 1,
+    NO_SUBSAMPLING=2
+};
+
 //template parameters that were serialized,
 //we used them to ensure the correct load of class templates from the disk
 struct temp_param_t {

@@ -1,24 +1,31 @@
 //
-// Created by Diaz, Diego on 17.10.2022.
+// Created by Diaz, Diego on 25.11.2025.
 //
-
 #include <iostream>
 #include <ostream>
 
+#ifdef __linux__
+#include <papi.h>
+#endif
+
 //==== VLBT framework
-#include "../include/vlbt_build_bwt.h"
-#include "../include/vlbt_build_phi.h"
-#include "../include/vlbt_build_sr_index.h"
 #include "../include/vlbt_bwt.h"
-#include "../include/vlbt_phi.h"
-#include "../include/vlbt_sr_index.h"
 //=====
 
-#include "simple_rlbwt.h"
 #include "r-index/internal/r_index.hpp"
-#include "../scripts/utils.h"
 #include <unordered_set>
 #include <random>
+
+//this function discards any data in the LD1 and LD2 caches
+void flush_cache() {
+    std::random_device rd;
+    std::mt19937_64 rng(rd());
+    std::uniform_int_distribution<uint8_t> dist_sym(0, std::numeric_limits<uint8_t>::max());
+    static constexpr size_t SIZE = 64*1024*1024; // 64 MB
+    volatile uint8_t* buf = new uint8_t[SIZE];
+    for (size_t i = 0; i < SIZE; i++) buf[i] = dist_sym(rng);
+    delete[] buf;
+}
 
 void print_histogram(std::vector<double>& times)  {
 
@@ -45,19 +52,19 @@ void print_histogram(std::vector<double>& times)  {
     std::vector bins(num_bins, 0);
     const double bin_width = (max_val - min_val) / num_bins;
 
-    for (double t : filtered) {
-        int bin = std::min(int((t - min_val) / bin_width), num_bins - 1);
+    for (const double t : filtered) {
+        const int bin = std::min(int((t - min_val) / bin_width), num_bins - 1);
         bins[bin]++;
     }
 
     // Print ASCII histogram
     std::cout << "Histogram of runtimes (microseconds):\n";
     for (int i = 0; i < num_bins; ++i) {
-        double bin_start = min_val + i * bin_width;
-        double bin_end = bin_start + bin_width;
+        const double bin_start = min_val + i * bin_width;
+        const double bin_end = bin_start + bin_width;
         std::cout << "[" << bin_start << ", " << bin_end << "): ";
 
-        int count = bins[i];
+        const int count = bins[i];
         for (int j = 0; j < static_cast<int>(count * 50 / filtered.size()); ++j) { // scale to max width 50
             std::cout << '#';
         }
@@ -65,7 +72,7 @@ void print_histogram(std::vector<double>& times)  {
     }
 }
 
-std::vector<uint64_t> sample_unique(uint64_t n, uint64_t x) {
+std::vector<uint64_t> sample_unique(const uint64_t n, uint64_t x) {
     if (x > n) throw std::invalid_argument("x cannot be larger than n");
 
     std::unordered_set<uint64_t> seen;
@@ -106,13 +113,12 @@ std::vector<std::pair<uint64_t, uint8_t>> compute_random_rank_queries(uint64_t t
     return {seen.begin(), seen.end()};
 }
 
-template<class my_bwt_type, class other_bwt_type>
+
+/*template<class my_bwt_type, class other_bwt_type>
 void test_count_with_sa_head(my_bwt_type& my_bwt, const std::string& my_dt_name,
                              other_bwt_type& other_index, const std::string& other_index_name,
                              const std::string& pat_file) {
-
     std::cout<<"Testing count with head (microsecs/pat and microsecs/occ)"<<std::endl;
-
     ulint n_pats, pat_len;
     std::vector<std::string> pat_list = file2pat_list(pat_file, n_pats, pat_len);
     std::cout<<"\tSearching for "<<n_pats<<" patterns of length "<<pat_len<<" each "<<std::endl;
@@ -344,7 +350,6 @@ void test_inverse_select(my_bwt_type& my_dt, std::string my_dt_name, other_bwt_t
                other_dt_ans[j].second==my_dt.eff2byte(my_dt_ans[j].second));
     }
 }
-
 void test_bwt(const std::string& input_prefix, const BWT_FORMAT bwt_file_fmt, const std::string& output_prefix){
 
     vlbt_rlbwt<4096> bwt_dt;
@@ -440,29 +445,6 @@ void test_bwt_th(std::string& input_prefix, const BWT_FORMAT bwt_file_fmt, size_
     test_count_with_sa_head(bwt_th_dt, "rlbwt_th_vlbt", ri, "r_index", query_pat_file);
 }
 
-template<class size_type>
-void test_phi(std::string& input_prefix, size_t ssamp_step, std::string& output_prefix){
-
-    std::string samp_sa_file = input_prefix+".sa_samples";
-    std::string str_ranges_file = input_prefix+".str_ranges";
-
-    std::string ssamp_heads_file = output_prefix+".ssamps_heads";
-    std::string ssamp_tails_file = output_prefix+".ssamps_tails";
-
-    subsample_sa_samples<size_type>(samp_sa_file, str_ranges_file, ssamp_step, ssamp_heads_file, ssamp_tails_file);
-
-    tmp_workspace tmp_ws("./", true);
-
-    using phi_type = vlbt_phi<NO_VALID_AREA, 65536>;
-    phi_type phi;
-    phi.subsamp_step = ssamp_step;
-    build_phi<phi_type, uint64_t>(phi, ssamp_tails_file, tmp_ws);
-
-    std::string output_file = output_prefix+".vlbt_phi";
-    size_t written_bytes = store_to_file(output_file, phi);
-    std::cout<<"We store "<<written_bytes<<" in "<<output_file<<std::endl;
-}
-
 template<class sa_samp_type>
 void test_sr_index(const std::string& input_prefix, BWT_FORMAT bwt_file_fmt, size_t sri_samp_val, const std::string& output_prefix){
 
@@ -471,12 +453,6 @@ void test_sr_index(const std::string& input_prefix, BWT_FORMAT bwt_file_fmt, siz
     std::string output_file = output_prefix+".sri_vlbt";
     size_t written_bytes = store_to_file(output_file, sr_index);
     std::cout<<"We store "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps) in "<<output_file<<std::endl;
-
-    //vlbt_sri_va<4096, 4096> sr_index;
-    //load_from_file( "covid_bug.sri_vlbt", sr_index);
-    //load_from_file( "../data/covid_failed_dataset/covid_sri_4096_4.sri_vlt", sr_index);
-    //load_from_file( "/home/ddiaz/covid_failed_datasets/covid_sri_4096_4.sri_vlt", sr_index);
-    //sr_index.locate("TAGGAGACATTATACTTAAACCAGCAAATAATAGTTTAAAAATTACAGAAGAGGTTGGCCACACAGATCTAANNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN");
 
     //=====
     //Create the RLBWT in case it does not exist
@@ -525,25 +501,63 @@ void test_sr_index(const std::string& input_prefix, BWT_FORMAT bwt_file_fmt, siz
     test_count(sr_index, "rlbwt_sri", ri, "r_index", query_pat_file);
     test_count_with_sa_head(sr_index, "rlbwt_sri", ri, "r_index", query_pat_file);
     test_locate(sr_index, "rlbwt_sri", ri, "r_index", query_pat_file);
+}*/
+
+template<class dt_type>
+void benchmark_access(dt_type &dt, const size_t n) {
+
+    //warm up the data structure to avoid page faults
+    std::mt19937_64 rng(std::random_device{}());
+    std::uniform_int_distribution<uint64_t> dist(0, n-1);
+    vector<uint64_t> query_pos(n);
+    size_t dummy = 0;
+
+    for (int k = 0; k < n; k++) {
+        query_pos[k] = dist(rng);
+    }
+
+    for (int k = 0; k < 5000; k++) {
+        dummy+=dt[dist(rng)];
+    }
+
+#ifdef __linux__
+    // Setup PAPI
+    int events[2] = {PAPI_L1_DCM, PAPI_L2_DCM};
+    long long counters[2] = {0, 0};
+
+    if(PAPI_start_counters(events, 2) != PAPI_OK){
+        cerr << "Error starting PAPI counters\n";
+        exit(1);
+    }
+
+    // MAIN MEASUREMENT LOOP
+    for (int k = 0; k < n; k++) {
+        dummy += dt[query_pos[k]];
+    }
+
+    if (PAPI_stop_counters(counters, 2) != PAPI_OK) {
+        cerr << "Error stopping PAPI counters\n";
+        exit(1);
+    }
+
+    // REPORT
+    cout << "L1 data cache misses: " << counters[0] << "\n";
+    cout << "L2 data cache misses: " << counters[1] << "\n";
+    cout << "Average L1 misses/query: " << static_cast<double>(counters[0]) /static_cast<double>(n) << "\n";
+    cout << "Average L2 misses/query: " << static_cast<double>(counters[1]) /static_cast<double>(n) << "\n";
+    cout << "Dummy checksum: " << dummy << "\n"; // avoids optimization removal
+#endif
 }
 
 int main(int argc, char** argv) {
 
     if(argc!=3){
-        std::cout<<"usage: ./test_vlbt input_prefix output_prefix"<<std::endl;
+        std::cout<<"usage: ./bench_cache_misses input_file"<<std::endl;
         exit(1);
     }
 
-    auto input_text = std::string(argv[1]);
-    const auto output_prefix = std::string(argv[2]);
-
-    //std::cout<<"Testing RLBWT"<<std::endl;
-    //test_bwt(input_text, PLAIN, output_prefix);
-
-    //std::cout<<"Testing RLBWT with toeholds"<<std::endl;
-    //test_bwt_th<uint64_t>(input_text, PLAIN, 4, output_prefix);
-
-    std::cout<<"Testing sr-index with valid area"<<std::endl;
-    test_sr_index<uint64_t>(input_text, PLAIN, 4, output_prefix);
-    //test_phi<uint64_t>(input_prefix, 4, output_prefix);
+    const auto input_index = std::string(argv[1]);
+    vlbt_rlbwt_th<4096> bwt_th_dt;
+    load_from_file(input_index, bwt_th_dt);
+    benchmark_access(bwt_th_dt, std::min<size_t>(1000000, bwt_th_dt.size()));
 }

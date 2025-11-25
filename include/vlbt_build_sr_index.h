@@ -35,11 +35,11 @@ void build_sr_index(sr_index_type& index, const std::string& input_prefix,
     const std::string sa_tails_subsamp_file = twd.get_file("esa_subsamp");
 
     std::cout<<"Subsapling "<<std::endl;
-    //uint64_t n = std::filesystem::file_size(bwt_file);//number of symbols in the BWT
+    uint64_t n = std::filesystem::file_size(bwt_file);//number of symbols in the BWT
 
     //TODO testing
-    uint64_t n = 267410983471;
-    std::cout<<"Fixed the number of symbols, retore it"<<std::endl;
+    //uint64_t n = 267410983471;
+    //std::cout<<"Fixed the number of symbols, retore it"<<std::endl;
     //
 
     subsample_sa_samples<sa_samp_type>(sa_heads_file, sa_tails_file, sri_samp_val, sa_heads_subsamp_file, sa_tails_subsamp_file, n);
