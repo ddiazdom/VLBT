@@ -4,10 +4,6 @@
 #include <iostream>
 #include <ostream>
 
-#ifdef __linux__
-#include <papi.h>
-#endif
-
 //==== VLBT framework
 #include "../include/vlbt_bwt.h"
 //=====
@@ -504,49 +500,31 @@ void test_sr_index(const std::string& input_prefix, BWT_FORMAT bwt_file_fmt, siz
 }*/
 
 template<class dt_type>
+void benchmark_access_int(dt_type &dt, const std::vector<uint64_t>& queries, size_t& dummy) {
+    for(unsigned long long querie : queries) {
+        dummy += dt[querie];
+    }
+}
+
+template<class dt_type>
 void benchmark_access(dt_type &dt, const size_t n) {
 
-    //warm up the data structure to avoid page faults
+    //fill in with random positions
     std::mt19937_64 rng(std::random_device{}());
     std::uniform_int_distribution<uint64_t> dist(0, n-1);
-    vector<uint64_t> query_pos(n);
+    std::vector<uint64_t> query_pos(n);
     size_t dummy = 0;
-
     for (int k = 0; k < n; k++) {
         query_pos[k] = dist(rng);
     }
+    //
 
+    //warmup
     for (int k = 0; k < 5000; k++) {
         dummy+=dt[dist(rng)];
     }
-
-#ifdef __linux__
-    // Setup PAPI
-    int events[2] = {PAPI_L1_DCM, PAPI_L2_DCM};
-    long long counters[2] = {0, 0};
-
-    if(PAPI_start_counters(events, 2) != PAPI_OK){
-        cerr << "Error starting PAPI counters\n";
-        exit(1);
-    }
-
-    // MAIN MEASUREMENT LOOP
-    for (int k = 0; k < n; k++) {
-        dummy += dt[query_pos[k]];
-    }
-
-    if (PAPI_stop_counters(counters, 2) != PAPI_OK) {
-        cerr << "Error stopping PAPI counters\n";
-        exit(1);
-    }
-
-    // REPORT
-    cout << "L1 data cache misses: " << counters[0] << "\n";
-    cout << "L2 data cache misses: " << counters[1] << "\n";
-    cout << "Average L1 misses/query: " << static_cast<double>(counters[0]) /static_cast<double>(n) << "\n";
-    cout << "Average L2 misses/query: " << static_cast<double>(counters[1]) /static_cast<double>(n) << "\n";
-    cout << "Dummy checksum: " << dummy << "\n"; // avoids optimization removal
-#endif
+    //
+    benchmark_access_int(dt, query_pos, dummy);
 }
 
 int main(int argc, char** argv) {
@@ -557,7 +535,7 @@ int main(int argc, char** argv) {
     }
 
     const auto input_index = std::string(argv[1]);
-    vlbt_rlbwt_th<4096> bwt_th_dt;
+    vlbt_rlbwt<4096> bwt_th_dt;
     load_from_file(input_index, bwt_th_dt);
     benchmark_access(bwt_th_dt, std::min<size_t>(1000000, bwt_th_dt.size()));
 }
