@@ -69,24 +69,22 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 endif()
 
 #test the VLBT suite
-add_executable(test_vlbt test_suite/test_suite.cpp)
-target_compile_options(test_vlbt
+add_executable(vlbt_test_functions test_suite/vlbt_test_functions.cpp)
+target_compile_options(vlbt_test_functions
         PUBLIC
         -Wall -pedantic -O3 -ffast-math -g
         ${SIMD_FLAGS}
 )
-target_link_libraries(test_vlbt LINK_PUBLIC ${LIBSDSL_LIBRARIES})
-target_include_directories(test_vlbt PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/r-index/internal)
+target_link_libraries(vlbt_test_functions LINK_PUBLIC ${LIBSDSL_LIBRARIES})
+target_include_directories(vlbt_test_functions PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/r-index/internal)
 
-#measure the cache misses
-add_executable(bench_cache_misses test_suite/bench_cache_misses.cpp)
-target_compile_options(bench_cache_misses
+#benchmark cache misses
+add_executable(vlbt_bench_cmisses test_suite/vlbt_bench_cmisses.cpp)
+target_compile_options(vlbt_bench_cmisses
         PUBLIC
         -Wall -pedantic -O3 -ffast-math -g
         ${SIMD_FLAGS}
 )
-target_link_libraries(bench_cache_misses LINK_PUBLIC ${LIBSDSL_LIBRARIES})
-target_include_directories(bench_cache_misses PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/r-index/internal)
 
 #the CLI of the library
 add_executable(vlbt-cli vlbt-cli.cpp)

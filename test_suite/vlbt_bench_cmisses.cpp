@@ -7,6 +7,7 @@
 
 #include "../include/vlbt_bwt.h"
 #include "../include/vlbt_sr_index.h"
+#include "../scripts/utils.h"
 
 #include <unordered_set>
 #include <random>
@@ -505,6 +506,44 @@ void test_sr_index(const std::string& input_prefix, BWT_FORMAT bwt_file_fmt, siz
 
 //isolate the function to count the number of LD1 and LD2 cache misses
 template<class dt_type>
+__attribute__((noinline)) void bench_iso_count(dt_type& dt, std::vector<std::string>& queries, size_t& dummy) {
+    for(const auto &query : queries) {
+        auto range = dt.count(query);
+        dummy += range.second-range.first+1;
+    }
+}
+template<class dt_type>
+void benchmark_count(dt_type &dt, const std::string& pat_file) {
+    ulint n_pats, pat_len;
+    std::vector<std::string> pat_list = file2pat_list(pat_file, n_pats, pat_len);
+    //std::cout<<"\tSearching for "<<n_pats<<" patterns of length "<<pat_len<<" each "<<std::endl;
+    size_t dummy = 0;
+
+    //warm up the data structure to avoid page faults
+    size_t warmup = std::min<size_t>(200, n_pats);
+    for (int k = 0; k < warmup; k++) {
+        auto range = dt.count(pat_list[k]);
+        dummy+=range.second-range.first+1;
+    }
+    //
+
+    //shuffle the list of patterns to prevent bias
+    auto rd = std::random_device {};
+    auto rng = std::default_random_engine {rd()};
+    std::shuffle(pat_list.begin(), pat_list.end(), rng);
+    //
+
+    //pollute LD1 and LD2 to evict the dt and start the analysis in cold
+    flush_cache();
+
+    //perform the benchmark
+    bench_iso_count(dt, pat_list, dummy);
+
+    std::cout<<"count dummy: "<<dummy<<std::endl;//print it to avoid optimizations
+}
+
+//isolate the function to count the number of LD1 and LD2 cache misses
+template<class dt_type>
 __attribute__((noinline)) void bench_iso_rank(dt_type& dt, const std::vector<std::pair<uint64_t, uint8_t>>& queries, size_t& dummy) {
     for(const auto &[pos ,sym] : queries) {
         dummy += dt.rank(pos, sym);
@@ -558,30 +597,31 @@ void benchmark_access(dt_type &dt, const size_t n) {
 }
 
 template<class dt_type>
-void bench_int2(const std::string& input_index, const size_t n_samp) {
+void bench_int2(const std::string& input_index, const size_t n_samp, const std::string& pat_file) {
     dt_type bwt_th_dt;
     load_from_file(input_index, bwt_th_dt);
     benchmark_access(bwt_th_dt, std::min<size_t>(n_samp, bwt_th_dt.size()));
     benchmark_rank(bwt_th_dt, std::min<size_t>(n_samp, bwt_th_dt.size()));
+    benchmark_count(bwt_th_dt, pat_file);
 }
 
 template<size_t b_size>
-void bench_int(const std::string& input_index, const size_t n_samp, VLBT_TYPE& tag) {
+void bench_int(const std::string& input_index, const size_t n_samp, VLBT_TYPE& tag, const std::string& pat_file) {
 
     std::cout<<"Using "<<n_samp<<" samples"<<std::endl;
 
     switch (tag) {
         case RLBWT:
             std::cout<<"Testing VLBT RLBWT with block size "<<b_size<<std::endl;
-            bench_int2<vlbt_rlbwt<b_size>>(input_index, n_samp);
+            bench_int2<vlbt_rlbwt<b_size>>(input_index, n_samp, pat_file);
             break;
         case RLBWT_WITH_TOEHOLDS:
             std::cout<<"Testing VLBT RLBWT with toeholds and block size "<<b_size<<std::endl;
-            bench_int2<vlbt_rlbwt_th<b_size>>(input_index, n_samp);
+            bench_int2<vlbt_rlbwt_th<b_size>>(input_index, n_samp, pat_file);
             break;
         case SRI_VALID_AREA:
             std::cout<<"Testing VLBT sr-index with valid area and block size "<<b_size<<std::endl;
-            bench_int2<vlbt_sri_va<b_size, b_size>>(input_index, n_samp);
+            bench_int2<vlbt_sri_va<b_size, b_size>>(input_index, n_samp, pat_file);
             break;
         default:
             std::cerr<<"Unknown index_type"<<std::endl;
@@ -590,34 +630,35 @@ void bench_int(const std::string& input_index, const size_t n_samp, VLBT_TYPE& t
 
 int main(int argc, char** argv) {
 
-    if(argc!=3){
-        std::cout<<"usage: ./bench_cmiss_vlbt input_dt n_samples"<<std::endl;
+    if(argc!=4){
+        std::cout<<"usage: ./bench_cmiss_vlbt <input_dt> <n_samples> <pat_file>"<<std::endl;
         exit(1);
     }
 
     const auto input_index = std::string(argv[1]);
     char *pend;
     long int n_samp = strtol(argv[2], &pend, 10);
+    const auto pat_file = std::string(argv[3]);
 
     temp_param_t tp = read_template_param(input_index);
     switch (tp.b_size) {
         case 1024:
-            bench_int<1024>(input_index, n_samp, tp.tag);
+            bench_int<1024>(input_index, n_samp, tp.tag, pat_file);
             break;
         case 4096:
-            bench_int<4096>(input_index, n_samp, tp.tag);
+            bench_int<4096>(input_index, n_samp, tp.tag, pat_file);
             break;
         case 16384:
-            bench_int<16384>(input_index, n_samp, tp.tag);
+            bench_int<16384>(input_index, n_samp, tp.tag, pat_file);
             break;
         case 65536:
-            bench_int<65536>(input_index, n_samp, tp.tag);
+            bench_int<65536>(input_index, n_samp, tp.tag, pat_file);
             break;
         case 262144:
-            bench_int<262144>(input_index, n_samp, tp.tag);
+            bench_int<262144>(input_index, n_samp, tp.tag, pat_file);
             break;
         case 1048576:
-            bench_int<1048576>(input_index, n_samp, tp.tag);
+            bench_int<1048576>(input_index, n_samp, tp.tag, pat_file);
             break;
         default:
             exit(1);
