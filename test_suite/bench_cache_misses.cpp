@@ -3,6 +3,7 @@
 //
 #include <iostream>
 #include <ostream>
+#include <algorithm>
 
 #include "../include/vlbt_bwt.h"
 #include "../include/vlbt_sr_index.h"
@@ -504,7 +505,7 @@ void test_sr_index(const std::string& input_prefix, BWT_FORMAT bwt_file_fmt, siz
 
 //isolate the function to count the number of LD1 and LD2 cache misses
 template<class dt_type>
-__attribute__((noinline)) void bench_int_rank(dt_type& dt, const std::vector<std::pair<uint64_t, uint8_t>>& queries, size_t& dummy) {
+__attribute__((noinline)) void bench_iso_rank(dt_type& dt, const std::vector<std::pair<uint64_t, uint8_t>>& queries, size_t& dummy) {
     for(const auto &[pos ,sym] : queries) {
         dummy += dt.rank(pos, sym);
     }
@@ -519,13 +520,13 @@ void benchmark_rank(dt_type &dt, const size_t n) {
     flush_cache();
 
     //perform the benchmarks
-    bench_int_rank(dt, queries, dummy);
+    bench_iso_rank(dt, queries, dummy);
     std::cout<<"rank dummy: "<<dummy<<std::endl;//print it to avoid optimizations
 }
 
 //isolate the function to count the number of LD1 and LD2 cache misses
 template<class dt_type>
-__attribute__((noinline)) void bench_int_access(dt_type& dt, const std::vector<uint64_t>& queries, size_t& dummy) {
+__attribute__((noinline)) void bench_iso_access(dt_type& dt, const std::vector<uint64_t>& queries, size_t& dummy) {
     for(unsigned long long query : queries) {
         dummy += dt[query];
     }
@@ -552,7 +553,7 @@ void benchmark_access(dt_type &dt, const size_t n) {
 
     //pollute the cache so the dt starts cold
     flush_cache();
-    bench_int_access(dt, query_pos, dummy);
+    bench_iso_access(dt, query_pos, dummy);
     std::cout<<"access dummy: "<<dummy<<std::endl;//print it to avoid optimizations
 }
 
