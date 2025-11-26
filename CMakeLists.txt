@@ -78,13 +78,22 @@ target_compile_options(vlbt_test_functions
 target_link_libraries(vlbt_test_functions LINK_PUBLIC ${LIBSDSL_LIBRARIES})
 target_include_directories(vlbt_test_functions PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/r-index/internal)
 
-#benchmark cache misses
+#benchmark cache misses in the VLBT
 add_executable(vlbt_bench_cmisses test_suite/vlbt_bench_cmisses.cpp)
 target_compile_options(vlbt_bench_cmisses
         PUBLIC
         -Wall -pedantic -O3 -ffast-math -g
         ${SIMD_FLAGS}
 )
+
+#benchmark cache misses in the RLBWTs of the SDSL
+add_executable(rlbwt_bench_cmisses test_suite/rlbwt_bench_cmisses.cpp)
+target_compile_options(rlbwt_bench_cmisses
+        PUBLIC
+        -Wall -pedantic -O3 -ffast-math -g
+)
+target_link_libraries(rlbwt_bench_cmisses LINK_PUBLIC ${LIBSDSL_LIBRARIES})
+target_include_directories(rlbwt_bench_cmisses PUBLIC ${LIBSDSL_INCLUDE_DIRS})
 
 #the CLI of the library
 add_executable(vlbt-cli vlbt-cli.cpp)

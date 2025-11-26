@@ -120,5 +120,10 @@ struct simple_rlbwt{
         return {l, r};
     }
 
+    [[nodiscard]] uint8_t eff2byte(const size_t cmp_sym) const {
+        uint8_t byte_sym=0;
+        while(cmp_sym!=byte2comp[byte_sym]) byte_sym++;
+        return byte_sym;
+    }
 };
 #endif //TEST_RL_BCR_BWT_FM_INDEX_H
