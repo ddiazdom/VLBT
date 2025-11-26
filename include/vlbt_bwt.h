@@ -2204,6 +2204,10 @@ public:
     [[nodiscard]] uint64_t size() const {
         return tot_syms;
     }
+
+    size_t alphabet_size() const {
+        return sigma;
+    }
 };
 
 template<size_t b_size>

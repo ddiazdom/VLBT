@@ -5,7 +5,8 @@
 #ifndef VLBT_SR_INDEX_H
 #define VLBT_SR_INDEX_H
 
-#include "vlbt_common.h"
+#include "vlbt_bwt.h"
+#include "vlbt_phi.h"
 
 template<class bwt_dt_type, class phi_type>
 struct vlbt_sr_index{
@@ -96,6 +97,10 @@ struct vlbt_sr_index{
 
     const std::vector<uint8_t>& get_packed_alpha(){
         return bwt.packed_alpha;
+    }
+
+    size_t alphabet_size() const {
+        return bwt.sigma;
     }
 
     const std::vector<uint8_t>& get_unpacked_alpha(){

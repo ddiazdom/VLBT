@@ -4,11 +4,9 @@
 #include <iostream>
 #include <ostream>
 
-//==== VLBT framework
 #include "../include/vlbt_bwt.h"
-//=====
+#include "../include/vlbt_sr_index.h"
 
-#include "r-index/internal/r_index.hpp"
 #include <unordered_set>
 #include <random>
 
@@ -92,7 +90,11 @@ namespace std {
     };
 }
 
-std::vector<std::pair<uint64_t, uint8_t>> compute_random_rank_queries(uint64_t text_size, uint8_t alphabet_size, uint64_t n_samps) {
+template<class dt_type>
+std::vector<std::pair<uint64_t, uint8_t>> compute_random_rank_queries(const dt_type& dt, uint64_t n_samps) {
+
+    const size_t text_size = dt.size();
+    const size_t alphabet_size = dt.alphabet_size();
 
     if(n_samps > text_size*alphabet_size) throw std::invalid_argument("invalid sample size");
 
@@ -103,7 +105,8 @@ std::vector<std::pair<uint64_t, uint8_t>> compute_random_rank_queries(uint64_t t
 
     while (seen.size() < n_samps) {
         uint64_t idx = dist_idx(rng);
-        uint64_t symbol = dist_sym(rng);
+        uint8_t symbol = dt.eff2byte(dist_sym(rng));
+        if (dt.rank(idx, symbol)<0)  continue;
         seen.insert({idx, symbol});
     }
     return {seen.begin(), seen.end()};
@@ -499,13 +502,34 @@ void test_sr_index(const std::string& input_prefix, BWT_FORMAT bwt_file_fmt, siz
     test_locate(sr_index, "rlbwt_sri", ri, "r_index", query_pat_file);
 }*/
 
+//isolate the function to count the number of LD1 and LD2 cache misses
 template<class dt_type>
-void benchmark_access_int(dt_type &dt, const std::vector<uint64_t>& queries, size_t& dummy) {
-    for(unsigned long long querie : queries) {
-        dummy += dt[querie];
+__attribute__((noinline)) void bench_int_rank(dt_type& dt, const std::vector<std::pair<uint64_t, uint8_t>>& queries, size_t& dummy) {
+    for(const auto &[pos ,sym] : queries) {
+        dummy += dt.rank(pos, sym);
     }
 }
+template<class dt_type>
+void benchmark_rank(dt_type &dt, const size_t n) {
 
+    std::vector<std::pair<uint64_t, uint8_t>> queries = compute_random_rank_queries(dt, n);
+    size_t dummy = 0;
+    //NOTE: no need to warmup because the computation of random queries calls ``dt.rank'' to check the answer is >0
+    //pollute the cache so the dt starts cold
+    flush_cache();
+
+    //perform the benchmarks
+    bench_int_rank(dt, queries, dummy);
+    std::cout<<"rank dummy: "<<dummy<<std::endl;//print it to avoid optimizations
+}
+
+//isolate the function to count the number of LD1 and LD2 cache misses
+template<class dt_type>
+__attribute__((noinline)) void bench_int_access(dt_type& dt, const std::vector<uint64_t>& queries, size_t& dummy) {
+    for(unsigned long long query : queries) {
+        dummy += dt[query];
+    }
+}
 template<class dt_type>
 void benchmark_access(dt_type &dt, const size_t n) {
 
@@ -520,22 +544,81 @@ void benchmark_access(dt_type &dt, const size_t n) {
     //
 
     //warmup
-    for (int k = 0; k < 5000; k++) {
+    size_t warmup = std::min<size_t>(5000, n);
+    for (int k = 0; k < warmup; k++) {
         dummy+=dt[dist(rng)];
     }
     //
-    benchmark_access_int(dt, query_pos, dummy);
+
+    //pollute the cache so the dt starts cold
+    flush_cache();
+    bench_int_access(dt, query_pos, dummy);
+    std::cout<<"access dummy: "<<dummy<<std::endl;//print it to avoid optimizations
+}
+
+template<class dt_type>
+void bench_int2(const std::string& input_index, const size_t n_samp) {
+    dt_type bwt_th_dt;
+    load_from_file(input_index, bwt_th_dt);
+    benchmark_access(bwt_th_dt, std::min<size_t>(n_samp, bwt_th_dt.size()));
+    benchmark_rank(bwt_th_dt, std::min<size_t>(n_samp, bwt_th_dt.size()));
+}
+
+template<size_t b_size>
+void bench_int(const std::string& input_index, const size_t n_samp, VLBT_TYPE& tag) {
+
+    std::cout<<"Using "<<n_samp<<" samples"<<std::endl;
+
+    switch (tag) {
+        case RLBWT:
+            std::cout<<"Testing VLBT RLBWT with block size "<<b_size<<std::endl;
+            bench_int2<vlbt_rlbwt<b_size>>(input_index, n_samp);
+            break;
+        case RLBWT_WITH_TOEHOLDS:
+            std::cout<<"Testing VLBT RLBWT with toeholds and block size "<<b_size<<std::endl;
+            bench_int2<vlbt_rlbwt_th<b_size>>(input_index, n_samp);
+            break;
+        case SRI_VALID_AREA:
+            std::cout<<"Testing VLBT sr-index with valid area and block size "<<b_size<<std::endl;
+            bench_int2<vlbt_sri_va<b_size, b_size>>(input_index, n_samp);
+            break;
+        default:
+            std::cerr<<"Unknown index_type"<<std::endl;
+    }
 }
 
 int main(int argc, char** argv) {
 
     if(argc!=3){
-        std::cout<<"usage: ./bench_cache_misses input_file"<<std::endl;
+        std::cout<<"usage: ./bench_cmiss_vlbt input_dt n_samples"<<std::endl;
         exit(1);
     }
 
     const auto input_index = std::string(argv[1]);
-    vlbt_rlbwt<4096> bwt_th_dt;
-    load_from_file(input_index, bwt_th_dt);
-    benchmark_access(bwt_th_dt, std::min<size_t>(1000000, bwt_th_dt.size()));
+    char *pend;
+    long int n_samp = strtol(argv[2], &pend, 10);
+
+    temp_param_t tp = read_template_param(input_index);
+    switch (tp.b_size) {
+        case 1024:
+            bench_int<1024>(input_index, n_samp, tp.tag);
+            break;
+        case 4096:
+            bench_int<4096>(input_index, n_samp, tp.tag);
+            break;
+        case 16384:
+            bench_int<16384>(input_index, n_samp, tp.tag);
+            break;
+        case 65536:
+            bench_int<65536>(input_index, n_samp, tp.tag);
+            break;
+        case 262144:
+            bench_int<262144>(input_index, n_samp, tp.tag);
+            break;
+        case 1048576:
+            bench_int<1048576>(input_index, n_samp, tp.tag);
+            break;
+        default:
+            exit(1);
+    }
 }
