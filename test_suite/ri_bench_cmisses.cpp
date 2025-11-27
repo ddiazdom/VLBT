@@ -48,8 +48,7 @@ void benchmark_locate(ri::r_index<>&dt, const std::string& pat_file) {
 
     //perform the benchmark
     bench_iso_locate(dt, pat_list, dummy);
-
-    std::cout<<"count dummy: "<<dummy<<std::endl;//print it to avoid optimizations
+    std::cout<<"locate dummy: "<<dummy<<std::endl;//print it to avoid optimizations
 }
 
 //isolate the function to count the number of LD1 and LD2 cache misses
@@ -90,7 +89,7 @@ void benchmark_count(ri::r_index<>&dt, const std::string& pat_file) {
 
 int main(int argc, char** argv) {
 
-    if(argc!=5){
+    if(argc!=3){
         std::cout<<"usage: ./ri_bench_cmisses <input_dt> <pat_file>"<<std::endl;
         exit(1);
     }
