@@ -146,7 +146,7 @@ void benchmark_locate(dt_type &dt, const std::string& pat_file) {
     flush_cache();
 
     //perform the benchmark
-    bench_iso_count(dt, pat_list, dummy);
+    bench_iso_locate(dt, pat_list, dummy);
     std::cout<<"locate dummy: "<<dummy<<std::endl;//print it to avoid optimizations
 }
 
