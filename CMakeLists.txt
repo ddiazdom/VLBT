@@ -95,6 +95,15 @@ target_compile_options(rlbwt_bench_cmisses
 target_link_libraries(rlbwt_bench_cmisses LINK_PUBLIC ${LIBSDSL_LIBRARIES})
 target_include_directories(rlbwt_bench_cmisses PUBLIC ${LIBSDSL_INCLUDE_DIRS})
 
+#benchmark cache misses in the r-index
+add_executable(ri_bench_cmisses test_suite/ri_bench_cmisses.cpp)
+target_compile_options(ri_bench_cmisses
+        PUBLIC
+        -Wall -pedantic -O3 -ffast-math -g
+)
+target_link_libraries(ri_bench_cmisses LINK_PUBLIC ${LIBSDSL_LIBRARIES})
+target_include_directories(ri_bench_cmisses PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/r-index/internal)
+
 #the CLI of the library
 add_executable(vlbt-cli vlbt-cli.cpp)
 target_compile_options(vlbt-cli
