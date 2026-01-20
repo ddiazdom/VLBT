@@ -55,7 +55,8 @@ message("Compiling with ${SIMD_FLAGS}")
 
 check_cxx_source_compiles("${NEON_CXX_CODE}" NEON_SUPPORT)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BCK}")
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/Modules")
+
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/test_suite/cmake/Modules")
 find_package(LibSDSL REQUIRED)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
@@ -70,70 +71,13 @@ endif()
 
 #test the VLBT suite
 add_executable(vlbt_test_functions test_suite/vlbt_test_functions.cpp)
-target_compile_options(vlbt_test_functions
-        PUBLIC
-        -Wall -pedantic -O3 -ffast-math -g
-        ${SIMD_FLAGS}
-)
+target_compile_options(vlbt_test_functions PUBLIC -Wall -pedantic -O3 -ffast-math -g ${SIMD_FLAGS} )
 target_link_libraries(vlbt_test_functions LINK_PUBLIC ${LIBSDSL_LIBRARIES})
 target_include_directories(vlbt_test_functions PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/r-index/internal)
-
-#benchmark cache misses in the VLBT
-add_executable(vlbt_bench_cmisses test_suite/vlbt_bench_cmisses.cpp)
-target_compile_options(vlbt_bench_cmisses
-        PUBLIC
-        -Wall -pedantic -O3 -ffast-math -g
-        ${SIMD_FLAGS}
-)
-
-#benchmark cache misses in the RLBWTs of the SDSL
-add_executable(rlbwt_bench_cmisses test_suite/rlbwt_bench_cmisses.cpp)
-target_compile_options(rlbwt_bench_cmisses
-        PUBLIC
-        -Wall -pedantic -O3 -ffast-math -g
-)
-target_link_libraries(rlbwt_bench_cmisses LINK_PUBLIC ${LIBSDSL_LIBRARIES})
-target_include_directories(rlbwt_bench_cmisses PUBLIC ${LIBSDSL_INCLUDE_DIRS})
-
-#benchmark cache misses in the r-index
-add_executable(ri_bench_cmisses test_suite/ri_bench_cmisses.cpp)
-target_compile_options(ri_bench_cmisses
-        PUBLIC
-        -Wall -pedantic -O3 -ffast-math -g
-)
-target_link_libraries(ri_bench_cmisses LINK_PUBLIC ${LIBSDSL_LIBRARIES})
-target_include_directories(ri_bench_cmisses PUBLIC ${LIBSDSL_INCLUDE_DIRS} scripts/r-index/internal)
 
 #the CLI of the library
 add_executable(vlbt-cli vlbt-cli.cpp)
 target_compile_options(vlbt-cli
-        PUBLIC
-        -Wall -pedantic -O3 -ffast-math -g
-        ${SIMD_FLAGS}
-)
-
-#generate random patterns from a text
-add_executable(gen_patterns scripts/gen_patterns.cpp)
-target_compile_options(gen_patterns PUBLIC -O3)
-
-#transform the patterns to fasta file
-add_executable(patfile2fasta scripts/patfile2fasta.cpp)
-target_compile_options(patfile2fasta
-        PUBLIC
-        -Wall -pedantic -O3 -ffast-math -g
-)
-
-#filter patterns by frequency
-add_executable(filter_pat_set scripts/filter_patset.cpp)
-target_compile_options(filter_pat_set
-        PUBLIC
-        -Wall -pedantic -O3 -ffast-math -g
-        ${SIMD_FLAGS}
-)
-
-#run-length encode a BWT
-add_executable(plain2grlbwt scripts/plain2grlbwt.cpp)
-target_compile_options(filter_pat_set
         PUBLIC
         -Wall -pedantic -O3 -ffast-math -g
         ${SIMD_FLAGS}
