@@ -41,10 +41,14 @@ When comparing their tradeoffs, they are at opposite ends of the Pareto frontier
 
 The key takeaway is this:
 
-Our VLBT-based CSA implementation strikes a balance between these methods: its space usage is comparable to the $sr$-index, but it is substantially faster. While the move data structure remains faster, it consumes significantly more space. This tradeoff makes VLBT practical for pangenomics and similar applications. In such scenarios, BWT-based CSAs remain the most efficient option for pattern matching in lossless compressed space.
-However, current data structures are still too large because pangenomes and metagenomes contain substantial variation, such as misassemblies and genetic diversity.
+Our VLBT-based CSA implementation strikes a balance between these methods: its space usage is comparable to the $sr$-index,
+but it is substantially faster. While the move data structure remains faster, it consumes significantly more space.
+This tradeoff makes VLBT practical for pangenomics and similar applications. In such scenarios, BWT-based CSAs remain
+the most efficient option for pattern matching in lossless compressed space. However, current data structures are still
+too large because pangenomes and metagenomes contain substantial variation, such as misassemblies and genetic diversity.
 
-VLBT is a promising alternative, as it can effectively handle variation to produce compact representations—essential for terabyte-scale inputs—while still supporting fast pattern-matching queries.
+VLBT is a promising alternative, as it can effectively handle variation to produce compact representations—essential for
+terabyte-scale inputs—while still supporting fast pattern-matching queries.
 
 ## Motivation
 
@@ -112,18 +116,17 @@ However, this behavior is not strict, as $\ell$ is only referencial and the cons
 changes its value according to the local run structure in the BWT. The performance of VLBT should not vary 
 substantially as we change $\ell$, assuming it is large enough. 
 
-We limited the range of $\ell$ to powers of $4$ in $4^{5}-4^{10}$. This range is fairly wide to cover repetitive
-and non-repetitive texts, even at a large scale.
+We limited $\ell$ in the implementation to powers of $4$ in $4^{5}-4^{10}$. This range is fairly wide to cover 
+repetitive and non-repetitive texts, even at a large scale.
 
 Here is a general rule of thumb to decide its value:
 
-* Text has near-identical sequences:
-* Text highly repetitive but with more variation (e.g, metagenomes):
-* Text is highly repetitive and has a large alphabet:
+* Text has near-identical sequences: X
+* Text highly repetitive but with more variation (e.g, metagenomes): X
+* Text is highly repetitive and has a large alphabet: X
 
-These values are referencial based on our experiments, and you can explore other values. In the future, we would 
-like to devise a mechanism to devise a suitable value $\ell$ based on the distribution of BWT runs, but that is future
-work.
+These values are referencial based on our experiments, and you can explore others. We would like to devise a mechanism to
+recomend a suitable $\ell$ based on the distribution of BWT runs, but that is future work.
 
 ## Building VLBT data structures
 
@@ -139,7 +142,7 @@ To create the run-length BWT, you have to run
 ```
 
 Where `mytext.txt.bwt` is the BWT of `mytext.txt` in one-byte-per-symbol encoding (i.e., plain). The `-b` option 
-specifies the block size, while the `-d` option specifies the VLBT structure we are building (0 means run-lenth BWT).
+specifies the block size, while the `-d` option specifies the structure we are building (0 means run-lenth BWT).
 The option `--help` gives more details about the CLI.
 
 ### BWT-based CSA 
@@ -151,13 +154,89 @@ In this case, you also have to have `mytext.txt.bwt` beforehand, but also the fi
 
 The first (`ssa` extension) stores the suffix array samples corresponding to BWT run heads, and the second (`esa` 
 extension) stores the suffix array samples corresponding to BWT run tails. Both files must store the samples using
-five bytes per symbol and must keep their suffix array order. Notice that if a BWT has length $1$, the corresponding
+five bytes per symbol and in suffix array order. Notice that if a BWT has length $1$, the corresponding
 suffix array value is simultaneously a head and a tail. In this case, this sample has to be in both files. 
 
 In the meantime, you can use [BigBWT](https://gitlab.com/manzai/Big-BWT) to produce these files. 
 
+The command to build the CSA is 
+
+```
+./vlbt-cli build mytext.txt -b 4096 -d 2 -s 5 
+```
+
+where `-d 2` indicates that we are building the CSA and `s` is the subsampling parameter of the $sr$-index. The CLI 
+will look for files `mytext.txt.bwt` and `mytext.txt.ssa` and `mytext.txt.esa` in the same directory as `mytext.txt`.
+Our VLB-based CSA for the moment uses the same block size $\ell$ for both the BWT and $\phi^{-1}$. This may change in the future.  
+
 ## Querying an index:
 
+To *count* the occurrences of a pattern in a indexed text, use the command 
+
+```
+./vlbt-cli count index.vlbt pat_file
+```
+
+where `index.vlbt` is the VLBT index (run-length BWT or CSA) and `pat_file` is the pattern file in
+[Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c) 
+format.
+
+To *locate* the occurrences of a pattern, use 
+
+```
+./vlbt-cli locate index.vlbt pat_file
+```
+The input index in this case must be a VLBT CSA.
+
 ## Including the library in another project: 
+
+It is also possible to include VLBT as a library in your own project. Copy the `include` directory into your
+project and add the following line to your source files:
+
+Run-length BWT:
+```C++
+#include "include/vlbt_build_bwt.h"
+#include "include/vlbt_bwt.h"
+
+int main() {
+    
+    //build the index and save it to disk
+    vlbt_rlbwt<4096> bwt; //block size as a template parameter
+    build_bwt(bwt, bwt_file, PLAIN, "/tmp/folder");//PLAIN means BWT format
+    store_to_file("/path/to/bwt_index", bwt);
+    
+    //count occurrences
+    std::string pattern = "atggagag";
+    size_t count = bwt.count(pattern); 
+    
+    vlbt_rlbwt<4096> bwt2; //block size as a template parameter
+    load_from_file("/path/to/bwt_index", csa2);//make sure template parameters match 
+}
+```
+
+CSA:
+```C++
+#include "include/vlbt_sr_index.h"
+#include "include/vlbt_build_sr_index.h"
+
+int main() {
+    size_t s = 5;//subsampling parameter
+    vlbt_sri_va<4096, 4096> csa;//left is block size for the BWT and right for $\phi^{-1}$
+    build_sr_index<uint64_t>(csa, bwt_file, PLAIN, s, "/tmp/folder");//SA samples are stored in uint64_t cells
+    store_to_file(output_file, csa);
+
+    std::string pattern = "atggagag";
+    
+    //count
+    size_t count = csa.count(pattern); 
+    //locate
+    std::vector<size_t> positions = csa.locate(pattern);
+    
+    //load from disk
+    vlbt_sri_va<4096, 4096> csa2;
+    load_from_file(output_file, csa2);//make sure template parameters match 
+
+}
+```
 
 ## How to cite
