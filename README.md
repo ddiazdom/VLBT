@@ -1,9 +1,8 @@
 # VLBT: an adaptive encoding for BWTs and compressed suffix arrays
 
-This repository provides implementations of encodings for the run-length BWT and BWT-based compressed suffix array 
-(CSA), leveraging
-variable-length blocking (VLB), a novel technique that exploits the skew distribution of BWT runs to balance
-space usage and query speed.
+This repository provides implementations of run-length BWTs and BWT-based compressed suffix arrays 
+(CSA) leveraging *variable-length blocking* (VLB), a novel technique that exploits the skew distribution of BWT 
+runs to balance space usage and query speed.
 
 VLB constructs an unbalanced tree over the run-length BWT (the VLB-tree). Compressible BWT areas (i.e.,
 few runs spanning a large segment) are fast to operate, so the tree stores little indexing information for them. The
@@ -24,9 +23,8 @@ The VLB-tree can also place suffix array samples near their corresponding BWT ru
 the lexicographically smallest occurrence of the queried pattern.
 
 Additionally, the VLB-tree can be used to encode the function $\phi^{-1}(S\!A[j])=S\!A[j+1]$, necessary to decode
-the rest of the occurrences. Both trees (from the BWT and $\phi^{-1}$) form a fully-functional compressed suffix
-array. We also provide an implementation of the $sr$-index, the fast variant storing valid index areas to speed up the
-query time.
+the rest of the occurrences. Both trees (from the BWT and $\phi^{-1}$) form a fully functional CSA. We also provide an 
+implementation of the $sr$-index, with the fast variant that speeds up locate queries.
 
 ## TL;DR
 
@@ -34,8 +32,8 @@ We implement two data structures: the run-length BWT and the fast variant of the
 
 State of the art in practical CSAs:
 
-* The $sr$-index is the most space-efficient BWT-based CSA variant in the literature.
-* The move data structure is the most query-efficient BWT-based CSA variant.
+* The $sr$-index is the most space-efficient BWT-based CSA.
+* The move data structure is the most query-efficient BWT-based CSA.
 
 When comparing their tradeoffs, they are at opposite ends of the Pareto frontier.
 
@@ -45,7 +43,8 @@ Our VLBT-based CSA implementation strikes a balance between these methods: its s
 but it is substantially faster. While the move data structure remains faster, it consumes significantly more space.
 This tradeoff makes VLBT practical for pangenomics and similar applications. In such scenarios, BWT-based CSAs remain
 the most efficient option for pattern matching in lossless compressed space. However, current data structures are still
-too large because pangenomes and metagenomes contain substantial variation, such as misassemblies and genetic diversity.
+too large because pangenomes and metagenomes contain significant variation, such as misassemblies, sequencing errors, 
+and genetic diversity.
 
 VLBT is a promising alternative, as it can effectively handle variation to produce compact representations—essential for
 terabyte-scale inputs—while still supporting fast pattern-matching queries.
@@ -87,12 +86,7 @@ other platforms, yet.
 
 ## External repositories
 
-* [CLI]()
-* [r-index]()
-* [sr-index]()
-* [fixed-block boosting]()
-* [move]()
-* [rl-BWT]()
+* [CLI](https://github.com/CLIUtils/CLI11)
 
 ## How to build
 
@@ -106,7 +100,8 @@ $ make
 ```
 
 This process will generate a binary called `vlbt-cli` (among other things) in the `build` directory. The CLI is a
-command-line tool that allows building and querying indexes.
+command-line tool that allows building and querying indexes. This binary is **not** a full-fledged sequence aligner. 
+It is meant to be used for indexing and testing the performance of $count$ and $locate$ queries. 
 
 ## Block size
 
@@ -116,17 +111,17 @@ However, this behavior is not strict, as $\ell$ is only referencial and the cons
 changes its value according to the local run structure in the BWT. The performance of VLBT should not vary 
 substantially as we change $\ell$, assuming it is large enough. 
 
-We limited $\ell$ in the implementation to powers of $4$ in $4^{5}-4^{10}$. This range is fairly wide to cover 
+We limited $\ell$ in the implementation to powers of $4$ in $4^{5}–4^{10}$. This range is fairly wide to cover 
 repetitive and non-repetitive texts, even at a large scale.
 
 Here is a general rule of thumb to decide its value:
 
 * Text has near-identical sequences: X
-* Text highly repetitive but with more variation (e.g, metagenomes): X
+* Text highly repetitive but with more variation (e.g., metagenomes): X
 * Text is highly repetitive and has a large alphabet: X
 
 These values are referencial based on our experiments, and you can explore others. We would like to devise a mechanism to
-recomend a suitable $\ell$ based on the distribution of BWT runs, but that is future work.
+ recommend a suitable $\ell$ based on the distribution of BWT runs, but that is future work.
 
 ## Building VLBT data structures
 
@@ -165,13 +160,13 @@ The command to build the CSA is
 ./vlbt-cli build mytext.txt -b 4096 -d 2 -s 5 
 ```
 
-where `-d 2` indicates that we are building the CSA and `s` is the subsampling parameter of the $sr$-index. The CLI 
+Where `-d 2` indicates that we are building the CSA and `s` is the subsampling parameter of the $sr$-index. The CLI 
 will look for files `mytext.txt.bwt` and `mytext.txt.ssa` and `mytext.txt.esa` in the same directory as `mytext.txt`.
 Our VLB-based CSA for the moment uses the same block size $\ell$ for both the BWT and $\phi^{-1}$. This may change in the future.  
 
 ## Querying an index:
 
-To *count* the occurrences of a pattern in a indexed text, use the command 
+To *count* the occurrences of a pattern in an indexed text, use the command 
 
 ```
 ./vlbt-cli count index.vlbt pat_file
@@ -188,7 +183,7 @@ To *locate* the occurrences of a pattern, use
 ```
 The input index in this case must be a VLBT CSA.
 
-## Including VLBT to your project: 
+## Including VLBT in your project: 
 
 It is also possible to include VLBT as a library in your own project. Copy the `include` folder and add the following 
 lines to your source files:
@@ -257,34 +252,33 @@ belonging to the same species are highly repetitive, while strings from differen
 * COVID: $4{,}494{,}508$ SARS-CoV-2 genomes downloaded from the [NCBI](https://uud.ncbi.nlm.nih.gov/home/genomes) genome
   portal. These sequences are short and near-identical, with an average length of $29{,}748$.
 
-* HUM: genome assemblies of 40 individuals from the Human Pangenome Reference Consortium (HPRC)~\cite{hprc}. 
+* HUM: genome assemblies of 40 individuals from the Human Pangenome Reference Consortium (HPRC).
   Individual genomes are near-identical, but assembly differences introduced variability.
 
 * KERNEL: $2{,}609{,}417$ versions of the [Linux kernel](https://github.com/torvalds/linux) repository. This dataset is
   highly repetitive and has a large alphabet.
 
-In DNA collections (BAC,COVID, and HUM), we also considered the DNA reverse complement of each string (as is standard in
+In DNA collections (BAC, COVID, and HUM), we also considered the DNA reverse complement of each string (as is standard in
 bioinformatics). The numbers presented in Table~\ref{tab:datasets} already consider these extra sequences.
 
-| Dataset| Size (GB) | Alphabet | $n/r$  | Longest run (MB)|
-|--------|-----------|----------|--------|-----------------|
-| BAC    | 133.12    | 7        | 116.77 | 0.23            |
-| COVID  | 267.41    | 17       | 940.49 | 4.11            |
-| HUM    | 241.24    | 7        | 61.82  | 6.66            |
-| KERNEL | 54.45     | 190      | 263.11 | 70.6            |
+| Dataset | Size (GB) | Alphabet | $n/r$  | Longest run (MB) |
+|---------|-----------|----------|--------|------------------|
+| BAC     | 133.12    | 7        | 116.77 | 0.23             |
+| COVID   | 267.41    | 17       | 940.49 | 4.11             |
+| HUM     | 241.24    | 7        | 61.82  | 6.66             |
+| KERNEL  | 54.45     | 190      | 263.11 | 70.6             |
 
 ### Competitor tools
 
- * [mn](https://github.com/simongog/sdsl-lite/blob/master/include/sdsl/wt_rlmn.hpp) (release 2.1.1)}: 
- the run-length BWT of M\"akinen and Navarro as implemented in the [SDSL library](https://github.com/simongog/sdsl-lite).
+ * [mn](https://github.com/simongog/sdsl-lite/blob/master/include/sdsl/wt_rlmn.hpp) (release 2.1.1): 
+ the run-length BWT of Mäkinen and Navarro as implemented in the [SDSL library](https://github.com/simongog/sdsl-lite).
  * [fbb](https://github.com/dominikkempa/faster-minuter) (commit 9238178): BWT encoding using 
    fixed block boosting.
  * [movc]() and [movl](https://github.com/LukasNalbach/Move-r) (commit bed2fe9): optimized 
    implementations of the move data structure. The variant [movc]() encodes only the BWT, while [movl]() also 
    includes $r$-suffix array samples.
  * [ri](https://github.com/nicolaprezza/r-index) (commit 7009b53): the original $r$-index.
-   {g2018op} .
- * [sriva](https://github.com/duscob/sr-index) (commit f99b54a}: the original $sr$-index with 
+ * [sri-va](https://github.com/duscob/sr-index) (commit f99b54a): the original $sr$-index with 
    valid $\phi^{-1}$ areas (i.e., fast variant). We varied the sampling $s$ across values $8,12,16,20$.
 
 ### Count queries:
