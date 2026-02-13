@@ -188,10 +188,10 @@ To *locate* the occurrences of a pattern, use
 ```
 The input index in this case must be a VLBT CSA.
 
-## Including the library in another project: 
+## Including VLBT to your project: 
 
-It is also possible to include VLBT as a library in your own project. Copy the `include` and add the following line to
-your source files:
+It is also possible to include VLBT as a library in your own project. Copy the `include` folder and add the following 
+lines to your source files:
 
 Run-length BWT:
 ```C++
@@ -243,5 +243,57 @@ int main() {
     load_from_file("/output/csa/index", csa2);//make sure template parameters match 
 }
 ```
+
+We have not tested using VLBT as a library yet, but in principle it should work. If not, please open an issue. The 
+fix should be straightforward.
+
+## Experimental results
+
+### Datasets:
+
+* BAC: genome assemblies of 30 bacterial species from the [AllTheBacteria]() collection. Strings 
+belonging to the same species are highly repetitive, while strings from different species are dissimilar.
+ 
+* COVID: $4{,}494{,}508$ SARS-CoV-2 genomes downloaded from the [NCBI](https://uud.ncbi.nlm.nih.gov/home/genomes) genome
+  portal. These sequences are short and near-identical, with an average length of $29{,}748$.
+
+* HUM: genome assemblies of 40 individuals from the Human Pangenome Reference Consortium (HPRC)~\cite{hprc}. 
+  Individual genomes are near-identical, but assembly differences introduced variability.
+
+* KERNEL: $2{,}609{,}417$ versions of the [Linux kernel](https://github.com/torvalds/linux) repository. This dataset is
+  highly repetitive and has a large alphabet.
+
+In DNA collections (BAC,COVID, and HUM), we also considered the DNA reverse complement of each string (as is standard in
+bioinformatics). The numbers presented in Table~\ref{tab:datasets} already consider these extra sequences.
+
+| Dataset| Size (GB) | Alphabet | $n/r$  | Longest run (MB)|
+|--------|-----------|----------|--------|-----------------|
+| BAC    | 133.12    | 7        | 116.77 | 0.23            |
+| COVID  | 267.41    | 17       | 940.49 | 4.11            |
+| HUM    | 241.24    | 7        | 61.82  | 6.66            |
+| KERNEL | 54.45     | 190      | 263.11 | 70.6            |
+
+### Competitor tools
+
+ * [mn](https://github.com/simongog/sdsl-lite/blob/master/include/sdsl/wt_rlmn.hpp) (release 2.1.1)}: 
+ the run-length BWT of M\"akinen and Navarro as implemented in the [SDSL library](https://github.com/simongog/sdsl-lite).
+ * [fbb](https://github.com/dominikkempa/faster-minuter) (commit 9238178): BWT encoding using 
+   fixed block boosting.
+ * [movc]() and [movl](https://github.com/LukasNalbach/Move-r) (commit bed2fe9): optimized 
+   implementations of the move data structure. The variant [movc]() encodes only the BWT, while [movl]() also 
+   includes $r$-suffix array samples.
+ * [ri](https://github.com/nicolaprezza/r-index) (commit 7009b53): the original $r$-index.
+   {g2018op} .
+ * [sriva](https://github.com/duscob/sr-index) (commit f99b54a}: the original $sr$-index with 
+   valid $\phi^{-1}$ areas (i.e., fast variant). We varied the sampling $s$ across values $8,12,16,20$.
+
+### Count queries:
+
+The following table shows the average time (in seconds) to count and locate $10^{10}$ occurrences of a pattern in the
+
+### Locate queries:
+
+The following table shows the average time (in seconds) to count and locate $10^{10}$ occurrences of a pattern in the 
+datasets.
 
 ## How to cite
