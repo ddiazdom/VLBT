@@ -132,7 +132,7 @@ void test_locate(std::string input_file, std::string& pat_file, std::string inde
     //std::cout<<"\t"<<double(acc_time)/double(acc_count)<<" microsecs/occ"<<std::endl;
 }
 
-static void parse_app(CLI::App& app, struct arguments& args){
+static void parse_app(CLI::App& app, arguments& args){
     
 	auto fmt = std::make_shared<MyFormatter>();
 

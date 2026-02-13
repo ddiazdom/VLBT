@@ -107,17 +107,17 @@ int main(int argc, char** argv) {
 
     if(ext=="sri") {
         sri::SrIndex<> sri;
-        sdsl::load_from_file(sri, index_file);
+        load_from_file(sri, index_file);
         benchmark_count(sri, pat_file);
         benchmark_locate(sri, pat_file);
     } else if (ext=="sri_vm") {
         sri::SrIndexValidMark<> sri;
-        sdsl::load_from_file(sri, index_file);
+        load_from_file(sri, index_file);
         benchmark_count(sri, pat_file);
         benchmark_locate(sri, pat_file);
     } else if (ext=="sri_va") {
         sri::SrIndexValidArea<> sri;
-        sdsl::load_from_file(sri, index_file);
+        load_from_file(sri, index_file);
         benchmark_count(sri, pat_file);
         benchmark_locate(sri, pat_file);
     }else {
