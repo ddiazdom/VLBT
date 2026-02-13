@@ -190,8 +190,8 @@ The input index in this case must be a VLBT CSA.
 
 ## Including the library in another project: 
 
-It is also possible to include VLBT as a library in your own project. Copy the `include` directory into your
-project and add the following line to your source files:
+It is also possible to include VLBT as a library in your own project. Copy the `include` and add the following line to
+your source files:
 
 Run-length BWT:
 ```C++
@@ -201,16 +201,19 @@ Run-length BWT:
 int main() {
     
     //build the index and save it to disk
-    vlbt_rlbwt<4096> bwt; //block size as a template parameter
-    build_bwt(bwt, bwt_file, PLAIN, "/tmp/folder");//PLAIN means BWT format
+    vlbt_rlbwt<4096> bwt;//block size as a template parameter
+    build_bwt(bwt, input_bwt_file, PLAIN, "/tmp/folder");//PLAIN means BWT format
+    
+    //store the index to disk
     store_to_file("/path/to/bwt_index", bwt);
     
     //count occurrences
     std::string pattern = "atggagag";
     size_t count = bwt.count(pattern); 
-    
-    vlbt_rlbwt<4096> bwt2; //block size as a template parameter
-    load_from_file("/path/to/bwt_index", csa2);//make sure template parameters match 
+   
+    //load from disk
+    vlbt_rlbwt<4096> bwt2;
+    load_from_file("/path/to/bwt_index", bwt2);//make sure template parameters match 
 }
 ```
 
@@ -220,10 +223,13 @@ CSA:
 #include "include/vlbt_build_sr_index.h"
 
 int main() {
+    
     size_t s = 5;//subsampling parameter
     vlbt_sri_va<4096, 4096> csa;//left is block size for the BWT and right for $\phi^{-1}$
     build_sr_index<uint64_t>(csa, bwt_file, PLAIN, s, "/tmp/folder");//SA samples are stored in uint64_t cells
-    store_to_file(output_file, csa);
+    
+    //store to disk
+    store_to_file("/output/csa/index", csa);
 
     std::string pattern = "atggagag";
     
@@ -234,8 +240,7 @@ int main() {
     
     //load from disk
     vlbt_sri_va<4096, 4096> csa2;
-    load_from_file(output_file, csa2);//make sure template parameters match 
-
+    load_from_file("/output/csa/index", csa2);//make sure template parameters match 
 }
 ```
 
