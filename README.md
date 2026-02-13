@@ -78,7 +78,7 @@ applicability in terabyte-scale applications.
 * C++17 compiler
 * CMake
 
-So far, we have tested VLBT on Linux and macOS,  using GCC x and Clang x. We do not guarantee that VLBT will work on 
+So far, we have tested VLBT on Linux and macOS, using GCC x and Clang x. We do not guarantee that VLBT will work on 
 other platforms, yet.
 
 ## External repositories
@@ -106,10 +106,24 @@ command-line tool that allows building and querying indexes.
 
 ## Block size
 
-VLBT uses a block size $\ell$ that controls the shape of the tree. In general, small values of $\ell$ should 
-increase the space usage and makes queries faster, while increasing the block size should have the opposite effect. 
-However, this behavior is not strict, as the input block size is only referencial and the construction algorithm may 
-vary depending on the local run structure in the BWT. 
+VLBT uses a block size $\ell$ that controls the shape of the tree. In general, small values should 
+increase the space but improve query speed, while large values should have the opposite effect. 
+However, this behavior is not strict, as $\ell$ is only referencial and the construction algorithm  
+changes its value according to the local run structure in the BWT. The performance of VLBT should not vary 
+substantially as we change $\ell$, assuming it is large enough. 
+
+We limited the range of $\ell$ to powers of $4$ in $4^{5}-4^{10}$. This range is fairly wide to cover repetitive
+and non-repetitive texts, even at a large scale.
+
+Here is a general rule of thumb to decide its value:
+
+* Text has near-identical sequences:
+* Text highly repetitive but with more variation (e.g, metagenomes):
+* Text is highly repetitive and has a large alphabet:
+
+These values are referencial based on our experiments, and you can explore other values. In the future, we would 
+like to devise a mechanism to devise a suitable value $\ell$ based on the distribution of BWT runs, but that is future
+work.
 
 ## Building VLBT data structures
 
@@ -124,9 +138,9 @@ To create the run-length BWT, you have to run
 ./vlbt-cli build mytext.txt.bwt -b 4096 -d 0 
 ```
 
-Where `mytext.txt.bwt` is the the BWT of `mytext.txt` in one-byte-per-symbol encoding (i.e., plain). The `-b` option 
-specifies the block size, which has to be a power of $4$, in the range $4^{5}-4^{10}$ (4096=4^{6}). The `-d` option
-specifies the VLBT structure we are building (0 means run-lenth BWT). The option `--help` gives more details about the CLI.
+Where `mytext.txt.bwt` is the BWT of `mytext.txt` in one-byte-per-symbol encoding (i.e., plain). The `-b` option 
+specifies the block size, while the `-d` option specifies the VLBT structure we are building (0 means run-lenth BWT).
+The option `--help` gives more details about the CLI.
 
 ### BWT-based CSA 
 
@@ -137,7 +151,7 @@ In this case, you also have to have `mytext.txt.bwt` beforehand, but also the fi
 
 The first (`ssa` extension) stores the suffix array samples corresponding to BWT run heads, and the second (`esa` 
 extension) stores the suffix array samples corresponding to BWT run tails. Both files must store the samples using
-five bytes per symbol, and must keep their suffix array order. Notice that if a BWT has length $1$, the corresponding
+five bytes per symbol and must keep their suffix array order. Notice that if a BWT has length $1$, the corresponding
 suffix array value is simultaneously a head and a tail. In this case, this sample has to be in both files. 
 
 In the meantime, you can use [BigBWT](https://gitlab.com/manzai/Big-BWT) to produce these files. 
