@@ -1,6 +1,7 @@
 # VLBT: an adaptive encoding for BWTs and compressed suffix arrays
 
-This repository provides implementations of encodings for the run-length BWT and BWT-based compressed suffix array, leveraging
+This repository provides implementations of encodings for the run-length BWT and BWT-based compressed suffix array 
+(CSA), leveraging
 variable-length blocking (VLB), a novel technique that exploits the skew distribution of BWT runs to balance
 space usage and query speed.
 
@@ -22,9 +23,9 @@ think of the VLB-tree as a B-tree-like structure tailored for the skew distribut
 The VLB-tree can also place suffix array samples near their corresponding BWT runs, so you can efficiently get
 the lexicographically smallest occurrence of the queried pattern.
 
-Additionally, the VLB-tree can be used to encode the function $\phi^{-1}(S!A[j])=S!A[j+1]$, necessary to decode
+Additionally, the VLB-tree can be used to encode the function $\phi^{-1}(S\!A[j])=S\!A[j+1]$, necessary to decode
 the rest of the occurrences. Both trees (from the BWT and $\phi^{-1}$) form a fully-functional compressed suffix
-array. We also provide an implementation of the sr-index, the fast variant storing valid index areas to speed up the
+array. We also provide an implementation of the $sr$-index, the fast variant storing valid index areas to speed up the
 query time.
 
 ## TL;DR
@@ -47,7 +48,7 @@ VLBT is a promising alternative, as it can effectively handle variation to produ
 
 ## Motivation
 
-A compressed suffix array is a data structure that stores a text in compressed form, which allows counting and
+A compressed suffix array (CSA) is a data structure that stores a text in compressed form, which allows counting and
 locating occurrences of a given pattern in the text.
 
 This idea takes many forms, but the most popular are those based on the Burrows-Wheeler Transform (BWT).
@@ -55,19 +56,94 @@ Combining the BWT of the text with some samples of the suffix array allows build
 algorithmic workhorse behind popular bioinformatics tools such as BWA-MEM and Bowtie2.
 
 In practical implementations, the FM index usually uses space proportional to the plain text, which is not ideal for
-large texts. So, Gagie et al. created the r-index, a compressed version of the FM index whose space cost is
+large texts. So, Gagie et al. created the $r$-index, a compressed version of the FM index whose space cost is
 proportional to the number of runs in the BWT. When the text is highly compressible (say, copies of nearly identical
-sequences), the r-index can be much smaller than the FM index, thus motivating its use in pangenomics applications.
+sequences), the $r$-index can be much smaller than the FM index, thus motivating its use in pangenomics applications.
 
-However, the r-index has an important limitation: the number of runs in the BWT is highly sensitive to edits, meaning
-that as soon as we introduce more variation to the text, the size of the r-index inflates quickly to reach the
-size of the FM index. The sr-index addresses this problem by partially removing information from the index that is
+However, the $r$-index has an important limitation: the number of runs in the BWT is highly sensitive to edits, meaning
+that as soon as we introduce more variation to the text, the size of the $r$-index inflates quickly to reach the
+size of the FM index. The $sr$-index addresses this problem by partially removing information from the index that is
 later recomputed on the fly during query time, showing a significant improvement in space under not-so-repetitive
 scenarios.
 
-Another relevant problem is that performing pattern matching on the r-index (and sr-index) requires the
+Another relevant problem is that performing pattern matching on the $r$-index (and $sr$-index) requires the
 interplay of multiple composition data structures that lack spatial locality, making the process relatively slow
 compared to plain alternatives. More recent encodings (the move data structure) partially alleviate the locality problem,
 using a much more straightforward layout that sacrifices space efficiency for speed. Overall, state-of-the-art
-encodings for BWT-based compressed suffix arrays either prioritize space efficiency or speed, limiting their
+encodings for BWT-based CSAs either prioritize space efficiency or speed, limiting their
 applicability in terabyte-scale applications.
+
+## Dependencies
+
+* C++17 compiler
+* CMake
+
+So far, we have tested VLBT on Linux and macOS,  using GCC x and Clang x. We do not guarantee that VLBT will work on 
+other platforms, yet.
+
+## External repositories
+
+* [CLI]()
+* [r-index]()
+* [sr-index]()
+* [fixed-block boosting]()
+* [move]()
+* [rl-BWT]()
+
+## How to build
+
+Enter the repository directory and run:
+
+```
+$ mkdir build
+$ cd build
+$ cmake ..
+$ make
+```
+
+This process will generate a binary called `vlbt-cli` (among other things) in the `build` directory. The CLI is a
+command-line tool that allows building and querying indexes.
+
+## Block size
+
+VLBT uses a block size $\ell$ that controls the shape of the tree. In general, small values of $\ell$ should 
+increase the space usage and makes queries faster, while increasing the block size should have the opposite effect. 
+However, this behavior is not strict, as the input block size is only referencial and the construction algorithm may 
+vary depending on the local run structure in the BWT. 
+
+## Building VLBT data structures
+
+For the moment, we do not provide a mechanism to compute the BWT and/or the $2r$ suffix array samples. These components 
+are necessary but have to be computed externally.
+
+### Run-length BWT
+
+To create the run-length BWT, you have to run
+
+```
+./vlbt-cli build mytext.txt.bwt -b 4096 -d 0 
+```
+
+Where `mytext.txt.bwt` is the the BWT of `mytext.txt` in one-byte-per-symbol encoding (i.e., plain). The `-b` option 
+specifies the block size, which has to be a power of $4$, in the range $4^{5}-4^{10}$ (4096=4^{6}). The `-d` option
+specifies the VLBT structure we are building (0 means run-lenth BWT). The option `--help` gives more details about the CLI.
+
+### BWT-based CSA 
+
+In this case, you also have to have `mytext.txt.bwt` beforehand, but also the files 
+
+* `mytext.txt.ssa`
+* `mytext.txt.esa`
+
+The first (`ssa` extension) stores the suffix array samples corresponding to BWT run heads, and the second (`esa` 
+extension) stores the suffix array samples corresponding to BWT run tails. Both files must store the samples using
+five bytes per symbol, and must keep their suffix array order. Notice that if a BWT has length $1$, the corresponding
+suffix array value is simultaneously a head and a tail. In this case, this sample has to be in both files. 
+
+In the meantime, you can use [BigBWT](https://gitlab.com/manzai/Big-BWT) to produce these files. 
+
+## Querying an index:
+
+## Including the library in another project: 
+
+## How to cite
