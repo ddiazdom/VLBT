@@ -115,7 +115,7 @@ increase the space but improve query speed, while large values should have the o
 However, this behavior is not strict because the construction algorithm adapts its value to the local run 
 structure in the BWT. The performance should not vary substantially as we change $\ell$, assuming it is large enough. 
 
-We limited $\ell$ in the implementation to powers of $4$ in $4^{5}–4^{10}$. This range is fairly wide to cover 
+We limited $\ell$ in our implementation to powers of $4$ in $4^{5}–4^{10}$. This range is fairly wide to cover 
 repetitive and non-repetitive texts, even at a large scale.
 
 Here is a general rule of thumb to decide its value:
@@ -131,7 +131,7 @@ mechanism to recommend a suitable $\ell$ based on the distribution of BWT runs, 
 
 For the moment, we do not provide a mechanism to compute the BWT and/or the $2r$ suffix array samples. These components 
 are necessary but have to be computed externally. In the meantime, you can use [BigBWT](https://gitlab.com/manzai/Big-BWT)
-to produce these files. Our cli expects input files in their format. 
+to produce these files. Our cli uses a compatible format. 
 
 ### Run-length BWT
 
