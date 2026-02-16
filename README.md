@@ -189,7 +189,7 @@ To $locate$ the occurrences of a pattern, use
 The input index in this case must be a VLBT CSA.
 
 **Note:** this interface performs the queries, but it only reports statistics (speed, number of occurrences, 
-etc.). The purpose is testing the performance of VLBT. See below how to actually get the $locate$ results. 
+etc.). See below how to actually get the $locate$ results. 
 
 ## Including VLBT in your project: 
 
@@ -203,7 +203,7 @@ Run-length BWT:
 
 int main() {
     
-    //build the index and save it to disk
+    //build the index
     vlbt_rlbwt<4096> bwt;//block size as a template parameter
     build_bwt(bwt, input_bwt_file, PLAIN, "/tmp/folder");//PLAIN means BWT format
     
@@ -219,6 +219,8 @@ int main() {
     load_from_file("/path/to/bwt_index", bwt2);//make sure template parameters match 
 }
 ```
+
+The construction algorithm will place temporary files in `/tmp/folder`. It then will delete them. 
 
 CSA:
 ```C++
@@ -267,14 +269,14 @@ belonging to the same species are highly repetitive, while strings from differen
   highly repetitive and has a large alphabet.
 
 In DNA collections (BAC, COVID, and HUM), we also considered the DNA reverse complement of each string (as is standard in
-bioinformatics). The numbers presented in Table~\ref{tab:datasets} already consider these extra sequences.
+bioinformatics). The numbers presented in the table below already consider these extra sequences.
 
-| Dataset | Size (GB) | Alphabet | $n/r$  | Longest run (MB) |
-|---------|-----------|----------|--------|------------------|
-| BAC     | 133.12    | 7        | 116.77 | 0.23             |
-| COVID   | 267.41    | 17       | 940.49 | 4.11             |
-| HUM     | 241.24    | 7        | 61.82  | 6.66             |
-| KERNEL  | 54.45     | 190      | 263.11 | 70.6             |
+| Dataset | Size (GB) | Alphabet | $n/r$  | Longest BWT run (MB) |
+|---------|-----------|----------|--------|----------------------|
+| BAC     | 133.12    | 7        | 116.77 | 0.23                 |
+| COVID   | 267.41    | 17       | 940.49 | 4.11                 |
+| HUM     | 241.24    | 7        | 61.82  | 6.66                 |
+| KERNEL  | 54.45     | 190      | 263.11 | 70.6                 |
 
 ### Competitor tools
 
@@ -287,11 +289,23 @@ bioinformatics). The numbers presented in Table~\ref{tab:datasets} already consi
    includes $r$-suffix array samples.
  * [ri](https://github.com/nicolaprezza/r-index) (commit 7009b53): the original $r$-index.
  * [sri-va](https://github.com/duscob/sr-index) (commit f99b54a): the original $sr$-index with 
-   valid $\phi^{-1}$ areas (i.e., fast variant). We varied the sampling $s$ across values $8,12,16,20$.
+   valid $\phi^{-1}$ areas. We varied the sampling $s$ across values $8,12,16,20$.
 
 ### Count queries:
 
-The following table shows the average time (in seconds) to count and locate $10^{10}$ occurrences of a pattern in the
+Random patterns of length 105 were generated using [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c).
+The table shows the average query time (in $\mu$secs/pattern) and index space usage in bits per symbol (bps). 
+
+| Data structure    | 30bac |         30bac | 40hum |         40hum | covid |         covid | kernel |        kernel |
+|:------------------|------:|--------------:|------:|--------------:|------:|--------------:|-------:|--------------:|
+|                   |   bps | $\mu$secs/pat |   bps | $\mu$secs/pat |   bps | $\mu$secs/pat |    bps | $\mu$secs/pat |
+| vlbt-bwt_b_4096   | 0.142 |         45.83 | 0.332 |         52.99 | 0.024 |         33.27 |  0.172 |         44.85 |
+| vlbt-bwt_b_16384  | 0.133 |         53.72 | 0.317 |         75.52 | 0.017 |         34.14 |  0.127 |         39.62 |
+| vlbt-bwt_b_65536  | 0.129 |         72.25 | 0.313 |         91.02 | 0.016 |         41.08 |  0.109 |         49.93 |
+| vlbt-bwt_b_262144 | 0.128 |         83.05 | 0.313 |        101.44 | 0.015 |         49.85 |  0.104 |         60.65 |
+| fbb               | 0.232 |        102.33 | 0.273 |        121.73 | 0.069 |         71.73 |  0.179 |         69.77 |
+| mn                | 0.192 |        190.25 | 0.331 |        204.25 | 0.031 |        184.80 |  0.115 |        204.06 |
+| movec             | 0.962 |         17.99 |    NA |            NA | 0.125 |         11.96 |  0.438 |         15.53 |
 
 ### Locate queries:
 
