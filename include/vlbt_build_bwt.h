@@ -1,6 +1,11 @@
-//
-// Created by Diaz, Diego on 17.4.2025.
-//
+/*
+* VLBT – Variable-Length Blocking Trees
+ *
+ * Copyright (c) 2026 University of Helsinki
+ *
+ * This file is part of the VLBT software and is distributed under the
+ * BSD 3-Clause License. See the LICENSE file for details.
+ */
 
 #ifndef RLBWT_VLB_CONSTRUCT_RLBWT_VLB_H
 #define RLBWT_VLB_CONSTRUCT_RLBWT_VLB_H
