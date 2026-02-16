@@ -341,7 +341,7 @@ Our VLBT-based $sri$-va index uses the same structure, but adds the block size f
 | vlbt-sri-va-b8-s16 | 0.306 |  0.248 | 0.583 |  0.457 | 0.096 |  0.354 |  0.215 |   0.282 |
 | vlbt-sri-va-b9-s16 | 0.305 |  0.279 | 0.582 |  0.513 | 0.095 |  0.467 |  0.210 |   0.342 |
 
-## ⚠️Disclaimer
+## ⚠️ Disclaimer
 
 Experimental code
 
