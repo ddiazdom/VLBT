@@ -291,12 +291,12 @@ bioinformatics). The numbers presented in the table below already consider these
  * [sri-va](https://github.com/duscob/sr-index) (commit f99b54a): the original $sr$-index with 
    valid $\phi^{-1}$ areas. We varied the sampling $s$ across values $8,12,16,20$.
 
-### Count queries:
+### Count queries in run-length BWTs:
 
 Random patterns of length 105 were generated using [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c).
-The table shows the speed in microseconds per pattern (μs/pat) and the index space usage in bits per symbol (bps). 
+The table shows query speed in microseconds per pattern (μs/pat) and index space usage in bits per symbol (bps). 
 
-| Data structure    | 30bac |   30bac | 40hum |  40hum | covid |  covid | kernel | kernel |
+| run-length BWT    | 30bac |   30bac | 40hum |  40hum | covid |  covid | kernel | kernel |
 |:------------------|------:|--------:|------:|-------:|------:|-------:|-------:|-------:|
 |                   |   bps |  μs/pat |   bps | μs/pat |   bps | μs/pat |    bps | μs/pat |
 | vlbt-bwt_b_4096   | 0.142 |   45.83 | 0.332 |  52.99 | 0.024 |  33.27 |  0.172 |  44.85 |
@@ -305,11 +305,31 @@ The table shows the speed in microseconds per pattern (μs/pat) and the index sp
 | vlbt-bwt_b_262144 | 0.128 |   83.05 | 0.313 | 101.44 | 0.015 |  49.85 |  0.104 |  60.65 |
 | fbb               | 0.232 |  102.33 | 0.273 | 121.73 | 0.069 |  71.73 |  0.179 |  69.77 |
 | mn                | 0.192 |  190.25 | 0.331 | 204.25 | 0.031 | 184.80 |  0.115 | 204.06 |
-| movec             | 0.962 |   17.99 |    NA |     NA | 0.125 |  11.96 |  0.438 |  15.53 |
+| movc              | 0.962 |   17.99 |    NA |     NA | 0.125 |  11.96 |  0.438 |  15.53 |
 
 ### Locate queries:
 
 The following table shows the average time (in seconds) to count and locate $10^{10}$ occurrences of a pattern in the 
-datasets.
+datasets. 
+
+| CSA                | 30bac |  30bac |   hum |    hum | covid |  covid | kernel |  kernel |
+|:-------------------|------:|-------:|------:|-------:|------:|-------:|-------:|--------:|
+|                    |   bps | μs/occ |   bps | μs/occ |   bps | μs/occ |    bps |  μs/occ |
+| movloc             | 2.038 |  0.092 |    NA |     NA | 0.255 |  0.148 |  0.946 |   0.105 |
+| ri                 | 0.824 |  1.406 | 1.552 |  1.545 | 0.109 |  0.741 |  0.381 |   2.544 |
+| sri-s8             | 0.363 |  0.765 | 0.627 |  1.086 | 0.096 |  0.600 |  0.232 |   1.543 |
+| sri-vm-s8          | 0.365 |  0.771 | 0.632 |  1.089 | 0.097 |  0.612 |  0.233 |   1.543 |
+| sri-va-s8          | 0.397 |  0.754 | 0.685 |  1.028 | 0.098 |  0.609 |  0.258 |   1.490 |
+| vlbt-sri-va-b6-s8  | 0.392 |  0.337 | 0.762 |  0.344 | 0.117 |  0.415 |  0.341 |   0.342 |
+| vlbt-sri-va-b7-s8  | 0.378 |  0.250 | 0.742 |  0.387 | 0.104 |  0.362 |  0.291 |   0.273 |
+| vlbt-sri-va-b8-s8  | 0.373 |  0.262 | 0.737 |  0.454 | 0.101 |  0.357 |  0.271 |   0.283 |
+| vlbt-sri-va-b9-s8  | 0.372 |  0.292 | 0.736 |  0.510 | 0.100 |  0.473 |  0.266 |   0.335 |
+| sri-s16            | 0.300 |  0.691 | 0.492 |  1.307 | 0.091 |  0.647 |  0.182 |   1.675 |
+| sri-vm-s16         | 0.301 |  0.703 | 0.495 |  1.093 | 0.092 |  0.627 |  0.183 |   1.674 |
+| sri-va-s16         | 0.322 |  0.648 | 0.528 |  1.044 | 0.094 |  0.616 |  0.203 |   1.461 |
+| vlbt-sri-va-b6-s16 | 0.325 |  0.317 | 0.607 |  0.345 | 0.112 |  0.411 |  0.285 |   0.340 |
+| vlbt-sri-va-b7-s16 | 0.311 |  0.237 | 0.587 |  0.387 | 0.099 |  0.365 |  0.234 |   0.276 |
+| vlbt-sri-va-b8-s16 | 0.306 |  0.248 | 0.583 |  0.457 | 0.096 |  0.354 |  0.215 |   0.282 |
+| vlbt-sri-va-b9-s16 | 0.305 |  0.279 | 0.582 |  0.513 | 0.095 |  0.467 |  0.210 |   0.342 |
 
 ## How to cite
