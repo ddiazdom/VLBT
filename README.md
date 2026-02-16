@@ -1,6 +1,6 @@
 # VLBT: an adaptive encoding for BWTs and compressed suffix arrays
 
-This repository provides implementations of run-length BWTs (rl-BWT) and BWT-based compressed suffix arrays 
+This repository provides implementations of run-length BWTs and BWT-based compressed suffix arrays 
 (CSA) leveraging *variable-length blocking* (VLB), a novel technique that exploits the skew distribution of BWT 
 runs to balance space usage and query speed.
 
@@ -13,8 +13,10 @@ State of the art in practical CSAs:
 
 When comparing their time and space tradeoffs, they are at opposite ends of the Pareto frontier.
 
-This repository implements two data structures: the rl-BWT and the fast variant of the $sr$-index. Notice the $sr$-index 
-is the rl-BWT plus some suffix array samples. 
+This repository implements two data structures:
+
+* A run-length BWT with support for $count$ queries.
+* The fast variant of the $sr$-index (valid areas). 
 
 The key takeaway is this:
 
@@ -22,31 +24,30 @@ Our VLBT-based CSA implementation strikes a balance: its space usage is comparab
 but it is substantially faster. While the move data structure remains faster, it consumes significantly more space.
 This tradeoff makes VLBT practical for pangenomics and similar applications. In such scenarios, BWT-based CSAs remain
 the most efficient option for pattern matching in lossless compressed space. However, current data structures are still
-too large because pangenomes and metagenomes as the sequence variation in these collections inflate the index space 
-quickly.
+too large because small variations in pangenomes and metagenomes inflate the index space quickly.
 
 VLBT is a promising alternative, as it can effectively handle variation to produce compact representations—essential for
 terabyte-scale inputs—while still supporting fast pattern-matching queries.
 
 ## Motivation
 
-A compressed suffix array (CSA) is a data structure that stores a text in compressed form, and allows counting and
+A compressed suffix array (CSA) is a data structure that stores a text in compressed form and allows counting and
 locating occurrences of a given pattern in the text.
 
 This idea takes many forms, but the most popular are those based on the Burrows-Wheeler Transform (BWT).
 Combining the BWT of the text with some samples of the suffix array allows building the so-called FM index, the
-algorithmic workhorse behind popular bioinformatics tools such as BWA-MEM and Bowtie2.
+algorithmic workhorse behind popular bioinformatics tools such as [BWA-MEM](https://github.com/lh3/bwa) and
+[Bowtie2](https://github.com/BenLangmead/bowtie2).
 
 In practical implementations, the FM index usually uses space proportional to the plain text, which is not ideal for
 large texts. So, Gagie et al. created the $r$-index, a compressed version of the FM index whose space cost is
 proportional to the number of runs in the BWT. When the text is highly compressible (say, copies of nearly identical
 sequences), the $r$-index can be much smaller than the FM index, thus motivating its use in pangenomics applications.
 
-However, the $r$-index has an important limitation: the number of runs in the BWT is highly sensitive to edits, meaning
-that as soon as we introduce more variation to the text, the size of the $r$-index inflates quickly to reach the
-size of the FM index. The $sr$-index addresses this problem by partially removing information from the index that is
-later recomputed on the fly during query time, showing a significant improvement in space under not-so-repetitive
-scenarios.
+However, the $r$-index has an important limitation: the number of runs in the BWT is sensitive to edits, meaning
+that as soon as we introduce variation to the text, the size of the $r$-index inflates quickly to reach the
+size of the FM index. The $sr$-index addresses this problem by partially removing information that is later recomputed
+on the fly during query time, showing a significant improvement in space under not-so-repetitive scenarios.
 
 Another relevant problem is that performing pattern matching on the $r$-index (and $sr$-index) requires the
 interplay of multiple internal data structures that lack spatial locality, making the process relatively slow
@@ -57,8 +58,8 @@ applications.
 
 ## Design principle
 
-A way to deal with the space issue is to group runs in the BWT into blocks, keep global indexing information about the 
-blocks, and recompute the missing information on the fly during query time. This idea, in principle, should keep the 
+A way to deal with the space issue is to group BWT runs into blocks, storing global indexing information about the 
+blocks, and recomputing the missing information on the fly during query time. This idea, in principle, should keep the 
 space overhead introduced by variation controlled. The challenge is to find a suitable way to distribute the indexing 
 information across the runs such that we still achieve good query performance.
 
@@ -110,10 +111,10 @@ It is meant to be used for indexing and testing the performance of $count$ and $
 
 ## Block size
 
-VLBT uses a block size $\ell$ that controls the shape of the tree. In general, small values should 
+We use a block size $\ell$ that guides the shape of the VLB-tree. In general, small values should 
 increase the space but improve query speed, while large values should have the opposite effect. 
-However, this behavior is not strict, as $\ell$ is only referencial and the construction algorithm  
-changes its value according to the local run structure in the BWT. The performance of VLBT should not vary 
+However, this behavior is not strict, as $\ell$ is a reference value that the construction algorithm  
+changes with the local run structure in the BWT. The performance of VLBT should not vary 
 substantially as we change $\ell$, assuming it is large enough. 
 
 We limited $\ell$ in the implementation to powers of $4$ in $4^{5}–4^{10}$. This range is fairly wide to cover 
@@ -125,8 +126,8 @@ Here is a general rule of thumb to decide its value:
 * Text highly repetitive but with more variation (e.g., metagenomes): X
 * Text is highly repetitive and has a large alphabet: X
 
-These values are referencial based on our experiments, and you can explore others. We would like to devise a mechanism to
- recommend a suitable $\ell$ based on the distribution of BWT runs, but that is future work.
+These values are rough and based on our experiments. You can explore others. We would like to devise a 
+mechanism to recommend a suitable $\ell$ based on the distribution of BWT runs, but that is future work.
 
 ## Building VLBT data structures
 
@@ -154,8 +155,8 @@ In this case, you also have to have `mytext.txt.bwt` beforehand, but also the fi
 
 The first (`ssa` extension) stores the suffix array samples corresponding to BWT run heads, and the second (`esa` 
 extension) stores the suffix array samples corresponding to BWT run tails. Both files must store the samples using
-five bytes per symbol and in suffix array order. Notice that if a BWT has length $1$, the corresponding
-suffix array value is simultaneously a head and a tail. In this case, this sample has to be in both files. 
+five bytes per symbol and in suffix array order. Notice that if a BWT has length $1$, it is simultaneously a head and a 
+tail. In this case, the corresponding suffix array sample has to be in both files. 
 
 In the meantime, you can use [BigBWT](https://gitlab.com/manzai/Big-BWT) to produce these files. 
 
@@ -167,7 +168,8 @@ The command to build the CSA is
 
 Where `-d 2` indicates that we are building the CSA and `s` is the subsampling parameter of the $sr$-index. The CLI 
 will look for files `mytext.txt.bwt`, `mytext.txt.ssa`, and `mytext.txt.esa` in the same directory as `mytext.txt`.
-Our VLB-based CSA for the moment uses the same block size $\ell$ for both the BWT and $\phi^{-1}$. This may change in the future.  
+Our VLB-based CSA for the moment uses the same block size $\ell$ for both the BWT and $\phi^{-1}$. This may change in
+the future.  
 
 ## Querying an index:
 
@@ -187,6 +189,9 @@ To *locate* the occurrences of a pattern, use
 ./vlbt-cli locate index.vlbt pat_file
 ```
 The input index in this case must be a VLBT CSA.
+
+**Note:** this interface performs the queries, but it only reports statistics (speed, number of occurrences, 
+etc.). The purpose is testing the performance of VLBT. See below how to actually get the $locate$ results. 
 
 ## Including VLBT in your project: 
 
@@ -244,7 +249,7 @@ int main() {
 }
 ```
 
-We have not tested using VLBT as a library yet, but in principle it should work. If not, please open an issue. The 
+We have not tested using VLBT as a library yet, but it should work. If not, please open an issue. The 
 fix should be straightforward.
 
 ## Experimental results
