@@ -20,11 +20,10 @@ This repository implements two data structures:
 
 The key takeaway is this:
 
-Our VLBT-based CSA implementation strikes a balance: its space usage is comparable to the $sr$-index,
-but it is substantially faster. While the move data structure remains faster, it consumes significantly more space.
-This tradeoff makes VLBT practical for pangenomics and similar applications. In such scenarios, BWT-based CSAs remain
-the most efficient option for pattern matching in lossless compressed space. However, current data structures are still
-too large because small variations in pangenomes and metagenomes inflate the index space quickly.
+Our VLB framework strikes a balance: its space usage is comparable to the $sr$-index,
+but it is substantially faster. On the other hand, it remains slower than move-based structures while consuming 
+significantly less space. This tradeoff makes VLBT practical for pangenomics and similar applications, where the input
+text is highly repetitive, but sequence variation affects BWT compressibility.
 
 VLBT is a promising alternative, as it can effectively handle variation to produce compact representations—essential for
 terabyte-scale inputs—while still supporting fast pattern-matching queries.
@@ -59,8 +58,8 @@ applications.
 ## Design principle
 
 A way to deal with the space issue is to group BWT runs into blocks, storing global indexing information about the 
-blocks, and recomputing the missing information on the fly during query time. This idea, in principle, should keep the 
-space overhead introduced by variation controlled. The challenge is to find a suitable way to distribute the indexing 
+blocks, and recomputing the missing information on the fly during query time. This idea, in principle, should keep 
+variation-related space overhead controlled. The challenge is to find a suitable way to distribute the indexing 
 information across the runs such that we still achieve good query performance.
 
 VLB constructs an *unbalanced shallow* tree over the run-length BWT (the VLB-tree), where the leaves encode
