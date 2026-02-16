@@ -294,18 +294,18 @@ bioinformatics). The numbers presented in the table below already consider these
 ### Count queries:
 
 Random patterns of length 105 were generated using [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c).
-The table shows the average query time (in $\mu$secs/pattern) and index space usage in bits per symbol (bps). 
+The table shows the speed in microseconds per pattern (μs/pat) and the index space usage in bits per symbol (bps). 
 
-| Data structure    | 30bac |         30bac | 40hum |         40hum | covid |         covid | kernel |        kernel |
-|:------------------|------:|--------------:|------:|--------------:|------:|--------------:|-------:|--------------:|
-|                   |   bps | $\mu$secs/pat |   bps | $\mu$secs/pat |   bps | $\mu$secs/pat |    bps | $\mu$secs/pat |
-| vlbt-bwt_b_4096   | 0.142 |         45.83 | 0.332 |         52.99 | 0.024 |         33.27 |  0.172 |         44.85 |
-| vlbt-bwt_b_16384  | 0.133 |         53.72 | 0.317 |         75.52 | 0.017 |         34.14 |  0.127 |         39.62 |
-| vlbt-bwt_b_65536  | 0.129 |         72.25 | 0.313 |         91.02 | 0.016 |         41.08 |  0.109 |         49.93 |
-| vlbt-bwt_b_262144 | 0.128 |         83.05 | 0.313 |        101.44 | 0.015 |         49.85 |  0.104 |         60.65 |
-| fbb               | 0.232 |        102.33 | 0.273 |        121.73 | 0.069 |         71.73 |  0.179 |         69.77 |
-| mn                | 0.192 |        190.25 | 0.331 |        204.25 | 0.031 |        184.80 |  0.115 |        204.06 |
-| movec             | 0.962 |         17.99 |    NA |            NA | 0.125 |         11.96 |  0.438 |         15.53 |
+| Data structure    | 30bac |   30bac | 40hum |  40hum | covid |  covid | kernel | kernel |
+|:------------------|------:|--------:|------:|-------:|------:|-------:|-------:|-------:|
+|                   |   bps |  μs/pat |   bps | μs/pat |   bps | μs/pat |    bps | μs/pat |
+| vlbt-bwt_b_4096   | 0.142 |   45.83 | 0.332 |  52.99 | 0.024 |  33.27 |  0.172 |  44.85 |
+| vlbt-bwt_b_16384  | 0.133 |   53.72 | 0.317 |  75.52 | 0.017 |  34.14 |  0.127 |  39.62 |
+| vlbt-bwt_b_65536  | 0.129 |   72.25 | 0.313 |  91.02 | 0.016 |  41.08 |  0.109 |  49.93 |
+| vlbt-bwt_b_262144 | 0.128 |   83.05 | 0.313 | 101.44 | 0.015 |  49.85 |  0.104 |  60.65 |
+| fbb               | 0.232 |  102.33 | 0.273 | 121.73 | 0.069 |  71.73 |  0.179 |  69.77 |
+| mn                | 0.192 |  190.25 | 0.331 | 204.25 | 0.031 | 184.80 |  0.115 | 204.06 |
+| movec             | 0.962 |   17.99 |    NA |     NA | 0.125 |  11.96 |  0.438 |  15.53 |
 
 ### Locate queries:
 
