@@ -23,7 +23,7 @@ The key takeaway is this:
 Our VLB framework strikes a balance: its space usage is comparable to the $sr$-index,
 but it is substantially faster. On the other hand, it remains slower than move-based structures while consuming 
 significantly less space. This tradeoff makes VLBT practical for pangenomics and similar applications, where the input
-text is highly repetitive, but sequence variation affects BWT compressibility.
+text is highly repetitive but sequence variation affects BWT compressibility.
 
 VLBT is a promising alternative, as it can effectively handle variation to produce compact representations—essential for
 terabyte-scale inputs—while still supporting fast pattern-matching queries.
@@ -78,8 +78,8 @@ The VLB-tree can also place suffix array samples near their corresponding BWT ru
 the lexicographically smallest occurrence of the queried pattern.
 
 Additionally, the VLB-tree can be used to encode the function $\phi^{-1}(SA[j])=SA[j+1]$, necessary to decode
-the rest of the occurrences. Both trees (from the BWT and $\phi^{-1}$) form a fully functional CSA. We also provide an
-implementation of the $sr$-index, with the fast variant that speeds up $locate$ queries.
+the rest of the occurrences. The combination of Both trees (from the BWT and $\phi^{-1}$) forms a fully functional CSA.
+We also provide an implementation of the $sr$-index, with the fast variant that speeds up $locate$ queries.
 
 ## Dependencies
 
@@ -106,15 +106,14 @@ $ make
 
 This process will generate a binary called `vlbt-cli` (among other things) in the `build` directory, which allows
 building and querying indexes. This binary is **not** a full-fledged sequence aligner. It is meant to be used for
-indexing and testing the performance of $count$ and $locate$ queries. 
+testing the performance of our framework. 
 
 ## Block size
 
-We use a block size $\ell$ that guides the shape of the VLB-tree. In general, small values should 
+We use a *reference* block size $\ell$ to guide the construction of the VLB-tree. In general, small values should 
 increase the space but improve query speed, while large values should have the opposite effect. 
-However, this behavior is not strict, as $\ell$ is a reference value that the construction algorithm changes with the
-local run structure in the BWT. The performance should not vary substantially as we change $\ell$, assuming it
-is large enough. 
+However, this behavior is not strict because the construction algorithm adapts its value to the local run 
+structure in the BWT. The performance should not vary substantially as we change $\ell$, assuming it is large enough. 
 
 We limited $\ell$ in the implementation to powers of $4$ in $4^{5}–4^{10}$. This range is fairly wide to cover 
 repetitive and non-repetitive texts, even at a large scale.
