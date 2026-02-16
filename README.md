@@ -366,6 +366,14 @@ please open an issue in this repository and include:
 * your environment (OS, compiler version, etc.)
 * any relevant logs or error messages
 
-## How to cite
+## Citation and use
 
-Citation information will be provided soon.
+VLBT is released as open-source software for research and educational purposes.
+Commercial use is permitted under the terms of the BSD 3-Clause License.
+
+If you use this software or its ideas in academic work, **please cite**
+the associated paper or this repository.
+
+Proper citation helps support and sustain academic research.
+
+**Article pending**
