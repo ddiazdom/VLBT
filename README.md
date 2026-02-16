@@ -11,7 +11,7 @@ State of the art in practical CSAs:
 * The $sr$-index is the most space-efficient BWT-based CSA.
 * The move data structure is the most query-efficient BWT-based CSA.
 
-When comparing their time and space tradeoffs, they are at opposite ends of the Pareto frontier.
+In terms of time–space trade-offs, they lie at opposite ends of the Pareto frontier.
 
 This repository implements two data structures:
 
@@ -34,8 +34,8 @@ A compressed suffix array (CSA) is a data structure that stores a text in compre
 locating occurrences of a given pattern in the text.
 
 This idea takes many forms, but the most popular are those based on the Burrows-Wheeler Transform (BWT).
-Combining the BWT of the text with some samples of the suffix array allows building the so-called FM index, the
-algorithmic workhorse behind popular bioinformatics tools such as [BWA-MEM](https://github.com/lh3/bwa) and
+Combining the BWT of a text with samples of the suffix array yields the so-called FM-index, the algorithmic
+workhorse behind popular bioinformatics tools such as [BWA-MEM](https://github.com/lh3/bwa) and
 [Bowtie2](https://github.com/BenLangmead/bowtie2).
 
 In practical implementations, the FM index usually uses space proportional to the plain text, which is not ideal for
@@ -55,21 +55,21 @@ using a much more straightforward layout that sacrifices space efficiency for sp
 encodings for BWT-based CSAs either prioritize space efficiency or speed, limiting their applicability in terabyte-scale
 applications.
 
-## Design principle
+## Design principles
 
 A way to deal with the space issue is to group BWT runs into blocks, storing global indexing information about the 
 blocks, and recomputing the missing information on the fly during query time. This idea, in principle, should keep 
 variation-related space overhead controlled. The challenge is to find a suitable way to distribute the indexing 
 information across the runs such that we still achieve good query performance.
 
-VLB constructs an *unbalanced shallow* tree over the run-length BWT (the VLB-tree), where the leaves encode
+VLB constructs an *unbalanced, shallow* tree over the run-length BWT (the VLB-tree), where the leaves encode
 variable-length BWT blocks and the internal nodes store indexing information that speeds up access to those blocks.
 Answering rank and successor queries (core operations in pattern matching) involves descending the tree until a leaf is
 reached and then performing a cache-friendly scan of a bounded number of runs in the leaf.
 
 The key feature of our design is that compressible areas are placed near the tree root and are fast to access 
 (close to one cache miss), while incompressible areas are placed at deeper levels. Incompressible areas contain many 
-shorts that are more costly to access with a linear scan. However, the indexing information in the 
+short runs that are more costly to access with a linear scan. However, the indexing information in the 
 internal nodes of the path allows skipping many runs, improving the query performance. Deeper nodes trigger more cache 
 misses, but they are still faster than a linear scan. You can think of the VLB-tree as a data structure that 
 relocates space from compressible BWT areas to incompressible ones. 
@@ -86,8 +86,8 @@ implementation of the $sr$-index, with the fast variant that speeds up $locate$ 
 * C++17 compiler
 * CMake
 
-So far, we have tested VLBT on Linux and macOS, using GCC x and Clang x. We do not guarantee that VLBT will work on 
-other platforms, yet.
+So far, we have tested VLBT on Linux and macOS, using GCC 13.3 and Clang 17. We do not guarantee that VLBT will 
+work on other platforms, yet.
 
 ## External repositories
 
@@ -252,6 +252,14 @@ int main() {
 We have not tested using VLBT as a library yet, but it should work. If not, please open an issue. The 
 fix should be straightforward.
 
+### ⚙️ Architecture-specific notes
+
+On x86-64 systems (Intel/AMD), the code relies on SIMD instructions and should be compiled with the `-msse4.2` flag.
+Failing to enable this flag may result in compilation errors or degraded performance.
+
+On ARM architectures supporting NEON (e.g., Apple Silicon / M1–M3), no additional compiler flags are required.
+
+
 ## Experimental results
 
 ### Datasets:
@@ -343,23 +351,23 @@ Our VLBT-based $sri$-va index uses the same structure, but adds the block size f
 
 ## ⚠️ Disclaimer
 
-Experimental code
+**Experimental code**
 
 This repository contains experimental research code.
 
-The software is provided “as is”, without any warranty of any kind, express or implied.
+The software is provided **“as is”**, without any warranty of any kind, express or implied.
 The authors make no guarantees regarding correctness, performance, or fitness for any particular purpose.
 Use at your own risk.
 
-## Reports bugs and issues
+## Reporting bugs and issues
 
 If you encounter bugs, unexpected behavior, or have suggestions for improvement,
 please open an issue in this repository and include:
 
 * a minimal reproducible example (if possible)
-* your environment (OS, compiler/R version, etc.)
+* your environment (OS, compiler version, etc.)
 * any relevant logs or error messages
 
 ## How to cite
 
-We will soon add a reference to cite.
+Citation information will be provided soon.
