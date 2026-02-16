@@ -288,29 +288,38 @@ bioinformatics). The numbers presented in the table below already consider these
    implementations of the move data structure. The variant [movc]() encodes only the BWT, while [movl]() also 
    includes $r$-suffix array samples.
  * [ri](https://github.com/nicolaprezza/r-index) (commit 7009b53): the original $r$-index.
- * [sri-va](https://github.com/duscob/sr-index) (commit f99b54a): the original $sr$-index with 
-   valid $\phi^{-1}$ areas. We varied the sampling $s$ across values $8,12,16,20$.
+ * [sri](https://github.com/duscob/sr-index) (commit f99b54a): the original $sr$-index. We varied the sampling $s$ 
+   across values $8,12,16,20$.
+
+### Pattens
+
+Random patterns of length 105 were generated using [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c).
 
 ### Count queries in run-length BWTs:
 
-Random patterns of length 105 were generated using [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c).
-The table shows query speed in microseconds per pattern (μs/pat) and index space usage in bits per symbol (bps). 
+The table shows $count$ speed in microseconds per pattern (μs/pat) and index space usage in bits per symbol (bps).
+The suffix `bx` in `vlbt-bwt` instances indicates the block size used for the VLBT tree. For instance, `b6` means 
+that the tree was built using a block size of $4^{6}=4{,}096$.
 
-| run-length BWT    | 30bac |   30bac | 40hum |  40hum | covid |  covid | kernel | kernel |
-|:------------------|------:|--------:|------:|-------:|------:|-------:|-------:|-------:|
-|                   |   bps |  μs/pat |   bps | μs/pat |   bps | μs/pat |    bps | μs/pat |
-| vlbt-bwt_b_4096   | 0.142 |   45.83 | 0.332 |  52.99 | 0.024 |  33.27 |  0.172 |  44.85 |
-| vlbt-bwt_b_16384  | 0.133 |   53.72 | 0.317 |  75.52 | 0.017 |  34.14 |  0.127 |  39.62 |
-| vlbt-bwt_b_65536  | 0.129 |   72.25 | 0.313 |  91.02 | 0.016 |  41.08 |  0.109 |  49.93 |
-| vlbt-bwt_b_262144 | 0.128 |   83.05 | 0.313 | 101.44 | 0.015 |  49.85 |  0.104 |  60.65 |
-| fbb               | 0.232 |  102.33 | 0.273 | 121.73 | 0.069 |  71.73 |  0.179 |  69.77 |
-| mn                | 0.192 |  190.25 | 0.331 | 204.25 | 0.031 | 184.80 |  0.115 | 204.06 |
-| movc              | 0.962 |   17.99 |    NA |     NA | 0.125 |  11.96 |  0.438 |  15.53 |
+| run-length BWT | 30bac |   30bac | 40hum |  40hum | covid |  covid | kernel | kernel |
+|:---------------|------:|--------:|------:|-------:|------:|-------:|-------:|-------:|
+|                |   bps |  μs/pat |   bps | μs/pat |   bps | μs/pat |    bps | μs/pat |
+| vlbt-bwt-b6    | 0.142 |   45.83 | 0.332 |  52.99 | 0.024 |  33.27 |  0.172 |  44.85 |
+| vlbt-bwt-b7    | 0.133 |   53.72 | 0.317 |  75.52 | 0.017 |  34.14 |  0.127 |  39.62 |
+| vlbt-bwt-b8    | 0.129 |   72.25 | 0.313 |  91.02 | 0.016 |  41.08 |  0.109 |  49.93 |
+| vlbt-bwt-b9    | 0.128 |   83.05 | 0.313 | 101.44 | 0.015 |  49.85 |  0.104 |  60.65 |
+| fbb            | 0.232 |  102.33 | 0.273 | 121.73 | 0.069 |  71.73 |  0.179 |  69.77 |
+| mn             | 0.192 |  190.25 | 0.331 | 204.25 | 0.031 | 184.80 |  0.115 | 204.06 |
+| movc           | 0.962 |   17.99 |    NA |     NA | 0.125 |  11.96 |  0.438 |  15.53 |
 
-### Locate queries:
 
-The following table shows the average time (in seconds) to count and locate $10^{10}$ occurrences of a pattern in the 
-datasets. 
+### Locate queries in CSAs:
+
+The table shows $locate$ speed in microseconds per occurrence (μs/occ) and index space in bits per symbol (bps). In 
+this case, the queries were performed on patterns of length 105 that occurred at most 50,000 times in the indexed text.
+The suffix in `sri` instances indicates the index variant (va=valid area, vm=valid mark) and the subsampling parameter 
+$s$. Thus, `sri-va-s8` means that the index was built using `valid area` variant with subsampling parameter of $s=8$.
+Our VLBT-based $sri$-va index uses the same structure, but adds the block size for the VLBT tree.
 
 | CSA                | 30bac |  30bac |   hum |    hum | covid |  covid | kernel |  kernel |
 |:-------------------|------:|-------:|------:|-------:|------:|-------:|-------:|--------:|
@@ -332,4 +341,25 @@ datasets.
 | vlbt-sri-va-b8-s16 | 0.306 |  0.248 | 0.583 |  0.457 | 0.096 |  0.354 |  0.215 |   0.282 |
 | vlbt-sri-va-b9-s16 | 0.305 |  0.279 | 0.582 |  0.513 | 0.095 |  0.467 |  0.210 |   0.342 |
 
+## ⚠️Disclaimer
+
+Experimental code
+
+This repository contains experimental research code.
+
+The software is provided “as is”, without any warranty of any kind, express or implied.
+The authors make no guarantees regarding correctness, performance, or fitness for any particular purpose.
+Use at your own risk.
+
+## Reports bugs and issues
+
+If you encounter bugs, unexpected behavior, or have suggestions for improvement,
+please open an issue in this repository and include:
+
+* a minimal reproducible example (if possible)
+* your environment (OS, compiler/R version, etc.)
+* any relevant logs or error messages
+
 ## How to cite
+
+We will soon add a reference to cite.
