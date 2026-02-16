@@ -1,57 +1,36 @@
 # VLBT: an adaptive encoding for BWTs and compressed suffix arrays
 
-This repository provides implementations of run-length BWTs and BWT-based compressed suffix arrays 
+This repository provides implementations of run-length BWTs (rl-BWT) and BWT-based compressed suffix arrays 
 (CSA) leveraging *variable-length blocking* (VLB), a novel technique that exploits the skew distribution of BWT 
 runs to balance space usage and query speed.
 
-VLB constructs an unbalanced tree over the run-length BWT (the VLB-tree). Compressible BWT areas (i.e.,
-few runs spanning a large segment) are fast to operate, so the tree stores little indexing information for them. The
-tree “reallocates” this spared space to add more indexing information in incompressible BWT areas (many short runs
-covering a short segment), where operating is more costly. In the tree, answering rank and successor queries (core
-operations in pattern matching) involves descending the tree until a leaf is reached and then performing a
-cache-friendly scan of a bounded number of BWT runs in the leaf.
-
-Compressible areas are placed near the tree root and are fast to access (close to one cache miss),
-while incompressible areas are placed at deeper levels. Although deeper levels may trigger more cache misses during a
-descent, they contain information that speeds up the access to specific BWT positions in incompressible areas.
-Additionally, cache locality improves at deeper levels of the tree.
-
-The VLB-tree is a shallow tree, and its maximum height is bounded by a logarithmic factor (large base). You can
-think of the VLB-tree as a B-tree-like structure tailored for the skew distribution of BWT runs.
-
-The VLB-tree can also place suffix array samples near their corresponding BWT runs, so you can efficiently get
-the lexicographically smallest occurrence of the queried pattern.
-
-Additionally, the VLB-tree can be used to encode the function $\phi^{-1}(S\!A[j])=S\!A[j+1]$, necessary to decode
-the rest of the occurrences. Both trees (from the BWT and $\phi^{-1}$) form a fully functional CSA. We also provide an 
-implementation of the $sr$-index, with the fast variant that speeds up locate queries.
-
 ## TL;DR
-
-We implement two data structures: the run-length BWT and the fast variant of the $sr$-index.
 
 State of the art in practical CSAs:
 
 * The $sr$-index is the most space-efficient BWT-based CSA.
 * The move data structure is the most query-efficient BWT-based CSA.
 
-When comparing their tradeoffs, they are at opposite ends of the Pareto frontier.
+When comparing their time and space tradeoffs, they are at opposite ends of the Pareto frontier.
+
+This repository implements two data structures: the rl-BWT and the fast variant of the $sr$-index. Notice the $sr$-index 
+is the rl-BWT plus some suffix array samples. 
 
 The key takeaway is this:
 
-Our VLBT-based CSA implementation strikes a balance between these methods: its space usage is comparable to the $sr$-index,
+Our VLBT-based CSA implementation strikes a balance: its space usage is comparable to the $sr$-index,
 but it is substantially faster. While the move data structure remains faster, it consumes significantly more space.
 This tradeoff makes VLBT practical for pangenomics and similar applications. In such scenarios, BWT-based CSAs remain
 the most efficient option for pattern matching in lossless compressed space. However, current data structures are still
-too large because pangenomes and metagenomes contain significant variation, such as misassemblies, sequencing errors, 
-and genetic diversity.
+too large because pangenomes and metagenomes as the sequence variation in these collections inflate the index space 
+quickly.
 
 VLBT is a promising alternative, as it can effectively handle variation to produce compact representations—essential for
 terabyte-scale inputs—while still supporting fast pattern-matching queries.
 
 ## Motivation
 
-A compressed suffix array (CSA) is a data structure that stores a text in compressed form, which allows counting and
+A compressed suffix array (CSA) is a data structure that stores a text in compressed form, and allows counting and
 locating occurrences of a given pattern in the text.
 
 This idea takes many forms, but the most popular are those based on the Burrows-Wheeler Transform (BWT).
@@ -70,11 +49,37 @@ later recomputed on the fly during query time, showing a significant improvement
 scenarios.
 
 Another relevant problem is that performing pattern matching on the $r$-index (and $sr$-index) requires the
-interplay of multiple composition data structures that lack spatial locality, making the process relatively slow
+interplay of multiple internal data structures that lack spatial locality, making the process relatively slow
 compared to plain alternatives. More recent encodings (the move data structure) partially alleviate the locality problem,
 using a much more straightforward layout that sacrifices space efficiency for speed. Overall, state-of-the-art
-encodings for BWT-based CSAs either prioritize space efficiency or speed, limiting their
-applicability in terabyte-scale applications.
+encodings for BWT-based CSAs either prioritize space efficiency or speed, limiting their applicability in terabyte-scale
+applications.
+
+## Design principle
+
+A way to deal with the space issue is to group runs in the BWT into blocks, keep global indexing information about the 
+blocks, and recompute the missing information on the fly during query time. This idea, in principle, should keep the 
+space overhead introduced by variation controlled. The challenge is to find a suitable way to distribute the indexing 
+information across the runs such that we still achieve good query performance.
+
+VLB constructs an *unbalanced shallow* tree over the run-length BWT (the VLB-tree), where the leaves encode
+variable-length BWT blocks and the internal nodes store indexing information that speeds up access to those blocks.
+Answering rank and successor queries (core operations in pattern matching) involves descending the tree until a leaf is
+reached and then performing a cache-friendly scan of a bounded number of runs in the leaf.
+
+The key feature of our design is that compressible areas are placed near the tree root and are fast to access 
+(close to one cache miss), while incompressible areas are placed at deeper levels. Incompressible areas contain many 
+shorts that are more costly to access with a linear scan. However, the indexing information in the 
+internal nodes of the path allows skipping many runs, improving the query performance. Deeper nodes trigger more cache 
+misses, but they are still faster than a linear scan. You can think of the VBL-tree as a data structure that 
+relocates space from compressible BWT areas to incompressible ones. 
+
+The VLB-tree can also place suffix array samples near their corresponding BWT runs, so you can efficiently get
+the lexicographically smallest occurrence of the queried pattern.
+
+Additionally, the VLB-tree can be used to encode the function $\phi^{-1}(S\!A[j])=S\!A[j+1]$, necessary to decode
+the rest of the occurrences. Both trees (from the BWT and $\phi^{-1}$) form a fully functional CSA. We also provide an
+implementation of the $sr$-index, with the fast variant that speeds up locate queries.
 
 ## Dependencies
 
@@ -161,7 +166,7 @@ The command to build the CSA is
 ```
 
 Where `-d 2` indicates that we are building the CSA and `s` is the subsampling parameter of the $sr$-index. The CLI 
-will look for files `mytext.txt.bwt` and `mytext.txt.ssa` and `mytext.txt.esa` in the same directory as `mytext.txt`.
+will look for files `mytext.txt.bwt`, `mytext.txt.ssa`, and `mytext.txt.esa` in the same directory as `mytext.txt`.
 Our VLB-based CSA for the moment uses the same block size $\ell$ for both the BWT and $\phi^{-1}$. This may change in the future.  
 
 ## Querying an index:
