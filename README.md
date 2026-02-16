@@ -71,13 +71,13 @@ The key feature of our design is that compressible areas are placed near the tre
 (close to one cache miss), while incompressible areas are placed at deeper levels. Incompressible areas contain many 
 shorts that are more costly to access with a linear scan. However, the indexing information in the 
 internal nodes of the path allows skipping many runs, improving the query performance. Deeper nodes trigger more cache 
-misses, but they are still faster than a linear scan. You can think of the VBL-tree as a data structure that 
+misses, but they are still faster than a linear scan. You can think of the VLB-tree as a data structure that 
 relocates space from compressible BWT areas to incompressible ones. 
 
 The VLB-tree can also place suffix array samples near their corresponding BWT runs, so you can efficiently get
 the lexicographically smallest occurrence of the queried pattern.
 
-Additionally, the VLB-tree can be used to encode the function $\phi^{-1}(S\!A[j])=S\!A[j+1]$, necessary to decode
+Additionally, the VLB-tree can be used to encode the function $\phi^{-1}(SA[j])=SA[j+1]$, necessary to decode
 the rest of the occurrences. Both trees (from the BWT and $\phi^{-1}$) form a fully functional CSA. We also provide an
 implementation of the $sr$-index, with the fast variant that speeds up locate queries.
 
@@ -91,7 +91,7 @@ other platforms, yet.
 
 ## External repositories
 
-* [CLI](https://github.com/CLIUtils/CLI11)
+* [CLI](https://github.com/CLIUtils/CLI11) (already included in the repository)
 
 ## How to build
 
@@ -104,17 +104,17 @@ $ cmake ..
 $ make
 ```
 
-This process will generate a binary called `vlbt-cli` (among other things) in the `build` directory. The CLI is a
-command-line tool that allows building and querying indexes. This binary is **not** a full-fledged sequence aligner. 
-It is meant to be used for indexing and testing the performance of $count$ and $locate$ queries. 
+This process will generate a binary called `vlbt-cli` (among other things) in the `build` directory, which allows
+building and querying indexes. This binary is **not** a full-fledged sequence aligner. It is meant to be used for
+indexing and testing the performance of $count$ and $locate$ queries. 
 
 ## Block size
 
 We use a block size $\ell$ that guides the shape of the VLB-tree. In general, small values should 
 increase the space but improve query speed, while large values should have the opposite effect. 
-However, this behavior is not strict, as $\ell$ is a reference value that the construction algorithm  
-changes with the local run structure in the BWT. The performance of VLBT should not vary 
-substantially as we change $\ell$, assuming it is large enough. 
+However, this behavior is not strict, as $\ell$ is a reference value that the construction algorithm changes with the
+local run structure in the BWT. The performance should not vary substantially as we change $\ell$, assuming it
+is large enough. 
 
 We limited $\ell$ in the implementation to powers of $4$ in $4^{5}–4^{10}$. This range is fairly wide to cover 
 repetitive and non-repetitive texts, even at a large scale.
@@ -131,7 +131,8 @@ mechanism to recommend a suitable $\ell$ based on the distribution of BWT runs, 
 ## Building VLBT data structures
 
 For the moment, we do not provide a mechanism to compute the BWT and/or the $2r$ suffix array samples. These components 
-are necessary but have to be computed externally.
+are necessary but have to be computed externally. In the meantime, you can use [BigBWT](https://gitlab.
+com/manzai/Big-BWT) to produce these files. Our cli expects input files in their format. 
 
 ### Run-length BWT
 
@@ -143,7 +144,7 @@ To create the run-length BWT, you have to run
 
 Where `mytext.txt.bwt` is the BWT of `mytext.txt` in one-byte-per-symbol encoding (i.e., plain). The `-b` option 
 specifies the block size, while the `-d` option specifies the structure we are building (0 means run-lenth BWT).
-The option `--help` gives more details about the CLI.
+The option `--help` gives more details.
 
 ### BWT-based CSA 
 
@@ -157,7 +158,6 @@ extension) stores the suffix array samples corresponding to BWT run tails. Both 
 five bytes per symbol and in suffix array order. Notice that if a BWT has length $1$, it is simultaneously a head and a 
 tail. In this case, the corresponding suffix array sample has to be in both files. 
 
-In the meantime, you can use [BigBWT](https://gitlab.com/manzai/Big-BWT) to produce these files. 
 
 The command to build the CSA is 
 
