@@ -118,11 +118,10 @@ structure in the BWT. The performance should not vary substantially as we change
 We limited $\ell$ in our implementation to powers of $4$ in $4^{5}–4^{10}$. This range is fairly wide to cover 
 repetitive and non-repetitive texts, even at a large scale.
 
-Here is a general rule of thumb to decide its value:
+This should be a reasonable choice for most applications:
 
-* Text has near-identical sequences: X
-* Text highly repetitive but with more variation (e.g., metagenomes): X
-* Text is highly repetitive and has a large alphabet: X
+* Text has near-identical sequences: 16,384 or 65,536 
+* Text highly repetitive but with variation (e.g., metagenomes or pangenomes with some noise): 4,096 or 16,384 
 
 These values are rough and based on our experiments. You can explore others. We would like to devise a 
 mechanism to recommend a suitable $\ell$ based on the distribution of BWT runs, but that is future work.
@@ -296,7 +295,7 @@ bioinformatics). The numbers presented in the table below already consider these
    includes $r$-suffix array samples.
  * [ri](https://github.com/nicolaprezza/r-index) (commit 7009b53): the original $r$-index.
  * [sri](https://github.com/duscob/sr-index) (commit f99b54a): the original $sr$-index. We varied the sampling $s$ 
-   across values $8,12,16,20$.
+   across values $8,16$.
 
 ### Pattens
 
@@ -325,8 +324,8 @@ that the tree was built using a block size of $4^{6}=4{,}096$.
 The table shows $locate$ speed in microseconds per occurrence (μs/occ) and index space in bits per symbol (bps). In 
 this case, the queries were performed on patterns of length 105 that occurred at most 50,000 times in the indexed text.
 The suffix in `sri` instances indicates the index variant (va=valid area, vm=valid mark) and the subsampling parameter 
-$s$. Thus, `sri-va-s8` means that the index was built using `valid area` variant with subsampling parameter of $s=8$.
-Our VLBT-based $sri$-va index uses the same structure, but adds the block size for the VLBT tree.
+$s$. Thus, `sri-va-s8` means that the index was built using the `valid area` variant with subsampling parameter of 
+$s=8$. Our VLBT-based $sri$-va index uses the same structure, but adds the block size for the VLBT tree.
 
 | CSA                | 30bac |  30bac |   hum |    hum | covid |  covid | kernel |  kernel |
 |:-------------------|------:|-------:|------:|-------:|------:|-------:|-------:|--------:|
