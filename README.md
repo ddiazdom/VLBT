@@ -79,7 +79,7 @@ the lexicographically smallest occurrence of the queried pattern.
 
 Additionally, the VLB-tree can be used to encode the function $\phi^{-1}(SA[j])=SA[j+1]$, necessary to decode
 the rest of the occurrences. Both trees (from the BWT and $\phi^{-1}$) form a fully functional CSA. We also provide an
-implementation of the $sr$-index, with the fast variant that speeds up locate queries.
+implementation of the $sr$-index, with the fast variant that speeds up $locate$ queries.
 
 ## Dependencies
 
@@ -155,9 +155,8 @@ In this case, you also have to have `mytext.txt.bwt` beforehand, but also the fi
 
 The first (`ssa` extension) stores the suffix array samples corresponding to BWT run heads, and the second (`esa` 
 extension) stores the suffix array samples corresponding to BWT run tails. Both files must store the samples using
-five bytes per symbol and in suffix array order. Notice that if a BWT has length $1$, it is simultaneously a head and a 
-tail. In this case, the corresponding suffix array sample has to be in both files. 
-
+five bytes per symbol and in suffix array order. Notice that if a BWT run has length $1$, it is simultaneously a head 
+and a tail. In this case, the corresponding suffix array sample has to be in both files. 
 
 The command to build the CSA is 
 
@@ -172,7 +171,7 @@ the future.
 
 ## Querying an index:
 
-To *count* the occurrences of a pattern in an indexed text, use the command 
+To $count$ the occurrences of a pattern in an indexed text, use the command 
 
 ```
 ./vlbt-cli count index.vlbt pat_file
@@ -182,7 +181,7 @@ where `index.vlbt` is the VLBT index (run-length BWT or CSA) and `pat_file` is t
 [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c) 
 format.
 
-To *locate* the occurrences of a pattern, use 
+To $locate$ the occurrences of a pattern, use 
 
 ```
 ./vlbt-cli locate index.vlbt pat_file
