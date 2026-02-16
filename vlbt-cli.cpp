@@ -1,6 +1,7 @@
 //
 // Created by Diaz, Diego on 17.11.2025.
 //
+
 #include "CLI11.hpp"
 #include "scripts/utils.h"
 #include "include/vlbt_build_bwt.h"
@@ -243,28 +244,8 @@ static void parse_app(CLI::App& app, arguments& args){
     locate->add_option("INDEX", args.input_file, "Index file")->check(CLI::ExistingFile)->required();
     locate->add_option("PAT_FILE", args.pat_file, "List of patterns")->check(CLI::ExistingFile)->required();
 
-    //auto * bkdown = app.add_subcommand("breakdown");
-    //bkdown->add_option("INDEX", args.input_file, "Index to be read")->check(CLI::ExistingFile)->required();
-    //bkdown->add_option("-i,--index-type", args.index_type, "Subsample r-index variant (0=standard, 1=valid_marks, 2=valid_area)")->required();
     app.require_subcommand(1,1);
 }
-
-/*template<class index_type>
-void breakdown_int(std::string input_index){
-    index_type index;
-    sdsl::load_from_file(index, input_index);
-    std::vector<std::pair<std::string, size_t>> parts = index.breakdown();
-    std::cout<<"Index file: "<<input_index<<std::endl;
-    std::cout<<"Subsampling parameter: "<<index.SubsampleRate()<<std::endl;
-    size_t acc=0;
-    for(auto const& part : parts){
-        acc+=part.second;
-    }
-    for(auto const& part : parts){
-        std::cout<<"\t"<<part.first<<": "<<part.second<<" bytes ("<<100*(double)part.second/(double)acc<<"%)"<<std::endl;
-    }
-    std::cout<<"Total: "<<acc<<" bytes"<<std::endl;
-}*/
 
 int main(int argc, char** argv) {
 
@@ -281,26 +262,7 @@ int main(int argc, char** argv) {
         count_int(args.input_file, args.pat_file);
     } else if(app.got_subcommand("locate")){
         locate_int(args.input_file, args.pat_file);
-    } /*else if(app.got_subcommand("breakdown")){
-        switch (args.index_type) {
-            case SRI_INDEX:
-                std::cout<<"Index type: sri"<<std::endl;
-                breakdown_int<sri::SrIndex<>>(args.input_file);
-                break;
-            case SRI_VALID_MARKS:
-                std::cout<<"Index type: sri_valid_marks"<<std::endl;
-                breakdown_int<sri::SrIndexValidMark<>>(args.input_file);
-                break;
-            case SRI_VALID_AREA:
-                std::cout<<"Index type: sri_valid_area"<<std::endl;
-                breakdown_int<sri::SrIndexValidArea<>>(args.input_file);
-                break;
-            default:
-                std::cerr<<"Unknown subsample r-index type"<<std::endl;
-                exit(1);
-        }
-    }*/
-    else {
+    } else {
         std::cerr<<" Unknown command "<<std::endl;
         exit(1);
     }
