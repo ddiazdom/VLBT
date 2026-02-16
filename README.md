@@ -131,8 +131,8 @@ mechanism to recommend a suitable $\ell$ based on the distribution of BWT runs, 
 ## Building VLBT data structures
 
 For the moment, we do not provide a mechanism to compute the BWT and/or the $2r$ suffix array samples. These components 
-are necessary but have to be computed externally. In the meantime, you can use [BigBWT](https://gitlab.
-com/manzai/Big-BWT) to produce these files. Our cli expects input files in their format. 
+are necessary but have to be computed externally. In the meantime, you can use [BigBWT](https://gitlab.com/manzai/Big-BWT)
+to produce these files. Our cli expects input files in their format. 
 
 ### Run-length BWT
 
