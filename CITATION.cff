@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: >
+  If you use this software in academic work, please cite the
+  associated paper or this software repository.
+authors:
+- family-names: "Díaz-Domínguez"
+  given-names: "Diego"
+- family-names: "Mäkinen"
+  given-names: "Veli"
+title: "VLBT: adaptive encodings for compressed suffix arrays"
+version: 1.0.0
+date-released: 2026-02-16
+url: "https://github.com/ddiazdom/VLBT"
+license: BSD-3-Clause
+
