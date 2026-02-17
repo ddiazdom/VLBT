@@ -165,7 +165,7 @@ The command to build the CSA is
 ```
 
 Where `-d 2` indicates that we are building the CSA and `s` is the subsampling parameter of the $sr$-index. The 
-command line interface will look for input files in the same directory as `example_text.txt`. Our VLB-based CSA for
+command line interface will look for the input files in the same directory as `example_text.txt`. Our VLB-based CSA for
 the moment uses the same block size $\ell$ for both the BWT and $\phi^{-1}$. This may change in the future.  
 
 ## Querying an index:
