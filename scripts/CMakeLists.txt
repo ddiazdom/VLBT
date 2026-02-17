@@ -1,67 +1,21 @@
-cmake_minimum_required(VERSION 3.16.3)
-
-project(VLBT)
+cmake_minimum_required(VERSION 3.16)
+project(VLBT-scripts)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_MESSAGE_LOG_LEVEL DEBUG)
 
-set(CMAKE_CXX_FLAGS_BCK "${CMAKE_CXX_FLAGS}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -mavx2 -msse4.2")
+# modules to detect SIMD compilations flags
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
+include(CheckSIMDInstructions)
+#
 
-include(CheckCXXSourceCompiles)
-set(SSE42_CXX_CODE "
-        #include <x86intrin.h>
-        int main(){
-        #if __SSE4_2__
-        return 0;
-        #else
-        #error \"SSE4.2 is not supported\"
-        #endif
-        }
-")
-
-set(AVX2_CXX_CODE "
-        #include <immintrin.h>
-        int main(){
-        #if __AVX2__
-        return 0;
-        #else
-        #error \"AVX2 is not supported\"
-        #endif
-        }
-")
-
-set(NEON_CXX_CODE "
-        #include <arm_neon.h>
-        int main(){
-        #if __ARM_NEON__
-        return 0;
-        #else
-        #error \"NEON is not supported\"
-        #endif
-        }
-")
-
+# check the available CPU instructions
 set(SIMD_FLAGS)
-check_cxx_source_compiles("${AVX2_CXX_CODE}" AVX2_SUPPORT)
-#if(AVX2_SUPPORT)
-#    list(APPEND SIMD_FLAGS -mavx2)
-#endif()
-
-check_cxx_source_compiles("${SSE42_CXX_CODE}" SSE42_SUPPORT)
-if(SSE42_SUPPORT)
-    list(APPEND SIMD_FLAGS -msse4.2)
-endif()
-message("Compiling with ${SIMD_FLAGS}")
-
-check_cxx_source_compiles("${NEON_CXX_CODE}" NEON_SUPPORT)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BCK}")
-
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/test_suite/cmake/Modules")
-find_package(LibSDSL REQUIRED)
+check_neon_flags(SIMD_FLAGS)
+check_sse42_flags(SIMD_FLAGS)
+#
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    message(STATUS "Adding -march=native compiler flag due to ${CMAKE_CXX_COMPILER_ID}")
-    add_compile_options(-march=native)
     #for the file_system functionality on Linux
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS_EQUAL "9.1")
         message(STATUS "GCC version is <=9.1, adding the compiler flag stdc++fs")
@@ -69,18 +23,20 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     endif()
 endif()
 
+#SOME useful scripts for developing/testing VLBT
+
 #generate random patterns from a text
-add_executable(gen_patterns scripts/gen_patterns.cpp)
+add_executable(gen_patterns gen_patterns.cpp)
 target_compile_options(gen_patterns PUBLIC -O3)
 
 #transform the patterns to fasta file
-add_executable(patfile2fasta scripts/patfile2fasta.cpp)
-target_compile_options(patfile2fasta PUBLIC -Wall -pedantic -O3 -ffast-math -g)
+add_executable(patfile2fasta patfile2fasta.cpp)
+target_compile_options(patfile2fasta PUBLIC -Wall -pedantic -O3 -g)
 
 #filter patterns by frequency
-add_executable(filter_pat_set scripts/filter_patset.cpp)
-target_compile_options(filter_pat_set PUBLIC -Wall -pedantic -O3 -ffast-math -g ${SIMD_FLAGS})
+add_executable(filter_pat_set filter_patset.cpp)
+target_compile_options(filter_pat_set PUBLIC -Wall -pedantic -O3 -g ${SIMD_FLAGS})
 
 #run-length encode a BWT
-add_executable(plain2grlbwt scripts/plain2grlbwt.cpp)
-target_compile_options(plain2grlbwt PUBLIC -Wall -pedantic -O3 -ffast-math -g)
+add_executable(plain2grlbwt plain2grlbwt.cpp)
+target_compile_options(plain2grlbwt PUBLIC -Wall -pedantic -O3 -g)

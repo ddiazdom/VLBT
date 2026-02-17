@@ -2028,7 +2028,7 @@ public:
             //  the width of the SA values and the number of runs (int_pt_width + run_width)
             //  a bit stream marking each run with a sampled SA value,
             //  the sampled SA values
-            if(bool has_sample = stream.read_bit(bit_pos + int_pt_width +  ans.sa_samp)) {
+            if(stream.read_bit(bit_pos + int_pt_width +  ans.sa_samp)) {
                 ans.sa_samp = decode_sa_value(bit_pos, ans.sa_samp, n_runs);//ans.sa_samp is the run_id where i lies in the runs
             }else{
                 ans.sa_samp = -1;

@@ -2,8 +2,8 @@
 // Created by Diaz, Diego on 21.5.2025.
 //
 #include<iostream>
-#include "../include/bwt_io.h"
 #include <thread>
+#include "../include/bwt_io.h"
 #include "../include/utils.h"
 #include "../test_suite/custom_wt_rlmn.hpp"
 
