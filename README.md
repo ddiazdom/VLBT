@@ -134,57 +134,58 @@ to produce these files. Our cli uses a compatible format.
 
 ### Run-length BWT
 
-To create the run-length BWT, you have to run
+To create the run-length BWT, you can run
 
 ```
-./vlbt-cli build mytext.txt.bwt -b 4096 -d 0 
+./vlbt-cli build test_data/example_text.txt -b 4096 -d 0 
 ```
-
-Where `mytext.txt.bwt` is the BWT of `mytext.txt` in one-byte-per-symbol encoding (i.e., plain). The `-b` option 
-specifies the block size, while the `-d` option specifies the structure we are building (0 means run-lenth BWT).
-The option `--help` gives more details.
+The command above will search for the file `text_data/example_text.txt.bwt` (BWT of `example_text.txt`) and build
+the VLBT index. The input BWT has to be in one-byte-per-symbol encoding (i.e., plain). The `-b` option specifies the
+block size, while the `-d` option specifies the structure we are building (0 means run-lenth BWT). The option `--help`
+gives more details.
 
 ### BWT-based CSA 
 
-In this case, you also have to have `mytext.txt.bwt` beforehand, but also the files 
+In this case, you also have to have `exaple_text.txt.bwt` beforehand, but also the files 
 
-* `mytext.txt.ssa`
-* `mytext.txt.esa`
+* `example_text.txt.ssa`
+* `example_text.txt.esa`
 
 The first (`ssa` extension) stores the suffix array samples corresponding to BWT run heads, and the second (`esa` 
 extension) stores the suffix array samples corresponding to BWT run tails. Both files must store the samples using
 five bytes per symbol and in suffix array order. Notice that if a BWT run has length $1$, it is simultaneously a head 
 and a tail. In this case, the corresponding suffix array sample has to be in both files. 
 
+The folder `test_data` contains an example of such files.
+
 The command to build the CSA is 
 
 ```
-./vlbt-cli build mytext.txt -b 4096 -d 2 -s 5 
+./vlbt-cli build test_data/example_text.txt -b 4096 -d 2 -s 5 
 ```
 
-Where `-d 2` indicates that we are building the CSA and `s` is the subsampling parameter of the $sr$-index. The CLI 
-will look for files `mytext.txt.bwt`, `mytext.txt.ssa`, and `mytext.txt.esa` in the same directory as `mytext.txt`.
-Our VLB-based CSA for the moment uses the same block size $\ell$ for both the BWT and $\phi^{-1}$. This may change in
-the future.  
+Where `-d 2` indicates that we are building the CSA and `s` is the subsampling parameter of the $sr$-index. The 
+command line interface will look for input files in the same directory as `example_text.txt`. Our VLB-based CSA for
+the moment uses the same block size $\ell$ for both the BWT and $\phi^{-1}$. This may change in the future.  
 
 ## Querying an index:
 
 To $count$ the occurrences of a pattern in an indexed text, use the command 
 
 ```
-./vlbt-cli count index.vlbt pat_file
+./vlbt-cli count example_text.rlbwt_vlbt test_data/example_text.pat
 ```
 
-where `index.vlbt` is the VLBT index (run-length BWT or CSA) and `pat_file` is the pattern file in
-[Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c) 
-format.
+where `example_text.pat` is the VLBT index (run-length BWT or CSA) and `pat_file` is the pattern file in
+[Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c) format.
 
 To $locate$ the occurrences of a pattern, use 
 
 ```
-./vlbt-cli locate index.vlbt pat_file
+./vlbt-cli locate example_text.sri_vlbt test_data/example_text.pat
 ```
-The input index in this case must be a VLBT CSA.
+The input index in this case must be a VLBT CSA. The program will automatically detect the template parameters 
+from the file header.
 
 **Note:** this interface performs the queries, but it only reports statistics (speed, number of occurrences, 
 etc.). See below how to actually get the $locate$ results. 

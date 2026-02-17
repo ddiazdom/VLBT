@@ -6,7 +6,6 @@
  * This file is part of the VLBT software and is distributed under the
  * BSD 3-Clause License. See the LICENSE file for details.
  */
-
 #include "CLI11.hpp"
 #include "scripts/utils.h"
 #include "include/vlbt_build_bwt.h"
