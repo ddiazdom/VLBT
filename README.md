@@ -86,8 +86,8 @@ We also provide an implementation of the $sr$-index, with the fast variant that 
 * C++17 compiler
 * CMake
 
-So far, we have tested VLBT on Linux and macOS, using GCC 13.3 and Clang 17. We do not guarantee that VLBT will 
-work on other platforms, yet.
+So far, we have tested VLBT on Linux (GCC >=8.2) and OSx (Clang 17). We do not guarantee that VLBT 
+will work on other platforms. We will keep testing on more platforms as we develop the code. 
 
 ## External repositories
 

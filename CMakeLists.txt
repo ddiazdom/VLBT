@@ -15,16 +15,6 @@ check_neon_flags(SIMD_FLAGS)
 check_sse42_flags(SIMD_FLAGS)
 #
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    message(STATUS "Adding -march=native compiler flag due to ${CMAKE_CXX_COMPILER_ID}")
-    add_compile_options(-march=native)
-    #for the file_system functionality on Linux
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS_EQUAL "9.1")
-        message(STATUS "GCC version is <=9.1, adding the compiler flag stdc++fs")
-        add_compile_options(stdc++fs)
-    endif()
-endif()
-
 #the command line interface of the library
 add_executable(vlbt-cli vlbt-cli.cpp)
 target_compile_options(vlbt-cli
@@ -32,3 +22,14 @@ target_compile_options(vlbt-cli
         -Wall -pedantic -O3 -g
         ${SIMD_FLAGS}
 )
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    message(STATUS "Adding -march=native compiler flag due to ${CMAKE_CXX_COMPILER_ID}")
+    target_compile_options(vlbt-cli PUBLIC -march=native)
+
+    # for the file_system functionality on Linux
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS_EQUAL "9.1")
+        message(STATUS "GCC version is <=9.1, linking stdc++fs library")
+        target_link_libraries(vlbt-cli PUBLIC stdc++fs)
+    endif()
+endif()
