@@ -1,4 +1,4 @@
-# VLBT: an adaptive encoding for BWTs and compressed suffix arrays
+# VLBT: a small and fast encoding for BWTs and suffix arrays
 
 This repository provides implementations of run-length BWTs and BWT-based compressed suffix arrays 
 (CSA) leveraging *variable-length blocking* (VLB), a novel technique that exploits the skew distribution of BWT 
