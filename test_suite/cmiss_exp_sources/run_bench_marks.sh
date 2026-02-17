@@ -10,12 +10,11 @@ bench_vlbt_rlbwt() {
 	#running the experiments for the VLBT RLBWT
 	rlbwt_prefix=( "30bac" "covid" "40hum" "kernel" )
 	block_sizes=( 4096 16384 65536 262144 )
-	rlbwt_dir=/home/ddiaz/gsa/ddiaz/vlbt_experiments/VLBT/build/rlbwt_dts
+	rlbwt_dir=/path/to/folder/vlbt_experiments/VLBT/build/rlbwt_dts
 	truncate -s 0 vlbt_rlbwt_experiments.txt
 	for (( j=0; j<4; j++ ));
 	do
-	        #pat_file=/home/ddiaz/gsa/ddiaz/vlbt_experiments/datasets/patterns/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
-	        pat_file=/home/ddiaz/gsa/ddiaz/vlbt_experiments/VLBT/build/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
+	        pat_file=/path/to/folder/vlbt_experiments/VLBT/build/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
 	        for (( i=0; i<4; i++ ));
 	        do
 	                file_id=vlbt_rlbwt_${rlbwt_prefix[$j]}_${block_sizes[$i]}
@@ -37,12 +36,11 @@ bench_mn_kp_rlbwt() {
 	#running the experiments for the RLBWTs
 	rlbwt_prefix=( "30bac" "covid" "40humans" "linux_kernel" )
 	rlbwt_types=( "mn" "kp" )
-	rlbwt_dir=/home/ddiaz/gsa/ddiaz/vlbt_experiments/rlbwts/build
+	rlbwt_dir=/path/to/folder/vlbt_experiments/rlbwts/build
 	truncate -s 0 mn_kp_rlbwt_experiments.txt
 	for (( j=0; j<4; j++ ));
 	do
-	        #pat_file=/home/ddiaz/gsa/ddiaz/vlbt_experiments/datasets/patterns/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
-	        pat_file=/home/ddiaz/gsa/ddiaz/vlbt_experiments/VLBT/build/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
+	        pat_file=/path/to/folder/vlbt_experiments/VLBT/build/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
 		for(( k=0; k<2; k++ ));
 		do
 			file_id=rlbwt_${rlbwt_types[$k]}_${rlbwt_prefix[$j]}
@@ -65,11 +63,11 @@ bench_vlbt_sri() {
 	sri_prefix=( "30bac" "covid" "40hum" "kernel" )
 	block_sizes=( 4096 16384 65536 262144 )
 	sri_subsamp=( 4 8 16 32 )
-	sri_dir=/home/ddiaz/gsa/ddiaz/vlbt_experiments/VLBT/build/sri_dts
+	sri_dir=/path/to/folder/vlbt_experiments/VLBT/build/sri_dts
 	truncate -s 0 vlbt_sri_experiments.txt 
 	for (( j=0; j<4; j++ ));
 	do
-	        pat_file=/home/ddiaz/gsa/ddiaz/vlbt_experiments/VLBT/build/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
+	        pat_file=/path/to/folder/vlbt_experiments/VLBT/build/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
 	        for (( i=0; i<4; i++ ));
 	        do
 			for (( l=0; l<4; l++ ));
@@ -94,12 +92,11 @@ bench_vlbt_sri() {
 bench_ri() {
 	#running the experiments for the RLBWTs
 	ri_prefix=( "30bac" "covid" "40humans" "linux_kernel" )
-	ri_dir=/home/ddiaz/gsa/ddiaz/vlbt_experiments/r-index-exp/build
+	ri_dir=/path/to/folder/vlbt_experiments/r-index-exp/build
 	truncate -s 0 ri_experiments.txt 
 	for (( j=0; j<4; j++ ));
 	do
-	        #pat_file=/home/ddiaz/gsa/ddiaz/vlbt_experiments/datasets/patterns/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
-      		pat_file=/home/ddiaz/gsa/ddiaz/vlbt_experiments/VLBT/build/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
+      		pat_file=/path/to/folder/vlbt_experiments/VLBT/build/${pat_prefix[$j]}_patlen_105_npats_fil_50k.pat
 		file_id=r_index_${ri_prefix[$j]}
 		input_file=${file_id}.ri
 	        echo ./ri_bench_cmiss+pat ${ri_dir}/${input_file} ${pat_file}
@@ -121,10 +118,10 @@ bench_sri() {
 	index_type=( 0 1 2 )
 	ext=( "sri" "sri_vm" "sri_va" )
 	truncate -s 0 sri_experiments.txt 
-	sri_dir=/home/ddiaz/gsa/ddiaz/vlbt_experiments/sr-index/build
+	sri_dir=/path/to/folder/vlbt_experiments/sr-index/build
 	for (( i=0; i<4; i++ ));
 	do
-      		pat_file=/home/ddiaz/gsa/ddiaz/vlbt_experiments/VLBT/build/${pat_prefix[$i]}_patlen_105_npats_fil_50k.pat
+      		pat_file=/path/to/folder/vlbt_experiments/VLBT/build/${pat_prefix[$i]}_patlen_105_npats_fil_50k.pat
 		for (( j=0; j<4; j++ ));
 		do
 			for (( k=0; k<3; k++ ));
@@ -144,7 +141,6 @@ bench_sri() {
 	done
 	sed 's/2.sri_va/va/' sri_experiments.txt | sed 's/1.sri_vm/vm/' | sed 's/0.sri /sri /' | sed 's/40humans/40hum/' | sed 's/_/ /g' | awk '{print "sr-index", $3"_"$5,$1,$8,$9,$10}' | sort -k4,4 -t' ' > sri_experiments_parsed.txt
 }
-
 
 bench_vlbt_rlbwt
 bench_mn_kp_rlbwt

@@ -10,7 +10,7 @@ bench_vlbt_rlbwt() {
 	#running the experiments for the VLBT RLBWT
 	rlbwt_prefix=( "30bac" "covid" "40hum" "kernel" )
 	block_sizes=( 4096 16384 65536 262144 )
-	rlbwt_dir=/home/ddiaz/gsa/ddiaz/vlbt_experiments/VLBT/build/rlbwt_dts
+	rlbwt_dir=/path/to/folder/vlbt_experiments/VLBT/build/rlbwt_dts
 	for (( j=0; j<4; j++ ));
 	do
 	        for (( i=0; i<4; i++ ));
@@ -27,7 +27,7 @@ bench_mn_kp_rlbwt() {
 	#running the experiments for the RLBWTs
 	rlbwt_prefix=( "30bac" "covid" "40humans" "linux_kernel" )
 	rlbwt_types=( "mn" "kp" )
-	rlbwt_dir=/home/ddiaz/gsa/ddiaz/vlbt_experiments/rlbwts/build
+	rlbwt_dir=/path/to/folder/vlbt_experiments/rlbwts/build
 
 	for (( j=0; j<4; j++ ));
 	do
@@ -46,7 +46,7 @@ bench_vlbt_sri() {
 	sri_prefix=( "30bac" "covid" "40hum" "kernel" )
 	block_sizes=( 4096 16384 65536 262144 )
 	sri_subsamp=( 4 8 16 32 )
-	sri_dir=/home/ddiaz/gsa/ddiaz/vlbt_experiments/VLBT/build/sri_dts
+	sri_dir=/path/to/folder/vlbt_experiments/VLBT/build/sri_dts
 	for (( j=0; j<4; j++ ));
 	do
 	        for (( i=0; i<4; i++ ));
@@ -65,7 +65,7 @@ bench_vlbt_sri() {
 bench_ri() {
 	#running the experiments for the RLBWTs
 	ri_prefix=( "30bac" "covid" "40humans" "linux_kernel" )
-	ri_dir=/home/ddiaz/gsa/ddiaz/vlbt_experiments/r-index-exp/build
+	ri_dir=/path/to/folder/vlbt_experiments/r-index-exp/build
 	for (( j=0; j<4; j++ ));
 	do
 		file_id=r_index_${ri_prefix[$j]}
@@ -82,7 +82,7 @@ bench_sri() {
 	index_type=( 0 1 2 )
 	ext=( "sri" "sri_vm" "sri_va" )
 	tp=( "sri" "vm" "va" )
-	sri_dir=/home/ddiaz/gsa/ddiaz/vlbt_experiments/sr-index/build
+	sri_dir=/path/to/folder/vlbt_experiments/sr-index/build
 	for (( i=0; i<4; i++ ));
 	do
 		for (( j=0; j<4; j++ ));
