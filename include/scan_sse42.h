@@ -32,7 +32,7 @@
         _mm_cmpeq_epi64(_mm_max_epu64(a, b), a)
 #define _mm_cmple_epu64(a, b) _mm_cmpge_epu64(b, a)
 
-static void print8x16(__m128i vec) {
+[[maybe_unused]] static void print8x16(__m128i vec) {
     uint8_t values[16];
     _mm_storeu_si128((__m128i*)values, vec); // Unaligned store
     for (int i = 0; i < 16; ++i) {
@@ -41,7 +41,7 @@ static void print8x16(__m128i vec) {
     std::cout<<""<<std::endl;
 }
 
-static void print16x8(__m128i vec) {
+[[maybe_unused]] static void print16x8(__m128i vec) {
     uint16_t values[8];
     _mm_storeu_si128((__m128i*)values, vec); // Unaligned store
     for (int i = 0; i < 8; ++i) {
@@ -50,7 +50,7 @@ static void print16x8(__m128i vec) {
     std::cout<<""<<std::endl;
 }
 
-static void print32x4(__m128i vec) {
+[[maybe_unused]] static void print32x4(__m128i vec) {
     uint32_t values[4];
     _mm_storeu_si128((__m128i*)values, vec); // Unaligned store
     for (int i = 0; i < 4; ++i) {
@@ -59,7 +59,7 @@ static void print32x4(__m128i vec) {
     std::cout<<""<<std::endl;
 }
 
-static void print64x2(__m128i vec) {
+[[maybe_unused]] static void print64x2(__m128i vec) {
     uint64_t values[2];
     _mm_storeu_si128((__m128i*)values, vec); // Unaligned store
     for (int i = 0; i < 2; ++i) {
@@ -111,7 +111,7 @@ static __m128i shift_right_epi32(const __m128i& input, const int shift) {
     }
 }
 
-static __m128i shift_right_epi64(const __m128i& input, const int shift) {
+[[maybe_unused]] static __m128i shift_right_epi64(const __m128i& input, const int shift) {
     switch (shift) {
         case 0: return input;
         case 1: return _mm_srli_epi64(input, 1);
@@ -250,7 +250,7 @@ static uint32_t hsum_epi32(const __m128i& input) {
     return _mm_cvtsi128_si32(sum2);
 }
 
-static uint64_t hsum_sum_epi64(const __m128i& input) {
+[[maybe_unused]] static uint64_t hsum_sum_epi64(const __m128i& input) {
     const __m128i sum = _mm_add_epi32(input, _mm_srli_si128(input, 8));
     return _mm_cvtsi128_si64(sum);
 }

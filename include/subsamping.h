@@ -337,7 +337,7 @@ std::vector<size_type> decode_samples(const std::string& samples_file, const siz
         ifs_sa_first.read(buffer.data(), floor_buff);
         const std::streamsize bytes_read = ifs_sa_first.gcount();
 
-        for (size_t i = bytes_per_elm; i < bytes_read; i+=bytes_pair) {
+        for (std::streamsize i = bytes_per_elm; i < bytes_read; i+=bytes_pair) {
             uint64_t sa_val = 0; //clean the values, just in case
             memcpy(&sa_val, buffer.data() + i, bytes_per_elm);//skipping j as we only need SA[j]
             assert(sa_val<n);
