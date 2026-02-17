@@ -176,7 +176,7 @@ To $count$ the occurrences of a pattern in an indexed text, use the command
 ./vlbt-cli count example_text.rlbwt_vlbt test_data/example_text.pat
 ```
 
-where `example_text.pat` is the VLBT index (run-length BWT or CSA) and `pat_file` is the pattern file in
+where `example_text.rlbwt_vlbt` is the VLBT index (run-length BWT or CSA) and `example_text.pat` is the pattern file in
 [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c) format.
 
 To $locate$ the occurrences of a pattern, use 
