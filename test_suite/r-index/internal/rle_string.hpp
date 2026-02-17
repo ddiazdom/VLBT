@@ -234,7 +234,7 @@ public:
 
 		assert(pos <= i);
 
-		ulint dist = i-pos;
+		//ulint dist = i-pos;
 
 		//otherwise, scan at most B runs
 		while(pos < i){
@@ -242,7 +242,7 @@ public:
 			pos += run_at(current_run);
 			current_run++;
 
-			if(pos<=i) dist = i-pos;
+			//if(pos<=i) dist = i-pos;
 
 		}
 

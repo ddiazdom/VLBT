@@ -1,6 +1,11 @@
-//
-// Created by Diaz, Diego on 17.10.2022.
-//
+/*
+* VLBT – Variable-Length Blocking Trees
+ *
+ * Copyright (c) 2026 University of Helsinki
+ *
+ * This file is part of the VLBT software and is distributed under the
+ * BSD 3-Clause License. See the LICENSE file for details.
+ */
 
 #include <iostream>
 #include <ostream>
@@ -141,7 +146,7 @@ void test_count_with_sa_head(my_bwt_type& my_bwt, const std::string& my_dt_name,
 
     std::cout<<"\t"<<my_dt_name<<": ("<<my_acc_time/double(n_pats)<<", "<<my_acc_time/double(my_acc_count)<<"), ";
     //std::cout<<"\t"<<other_index_name<<": ("<<other_acc_time/double(n_pats)<<", "<<other_acc_time/double(other_acc_count)<<")"<<std::endl;;
-    std::cout<<"\tTotal occurrences: "<<my_acc_count<<"="<<other_acc_count<<std::endl;
+    std::cout<<"\tTotal occurrences: "<<my_acc_count<<"="<<other_acc_count<<" "<<other_acc_time<<std::endl;
 
     for(size_t i=0;i<pat_list.size();i++){
         if(std::get<2>(my_ans[i])!=head[i]){
@@ -471,12 +476,6 @@ void test_sr_index(const std::string& input_prefix, BWT_FORMAT bwt_file_fmt, siz
     std::string output_file = output_prefix+".sri_vlbt";
     size_t written_bytes = store_to_file(output_file, sr_index);
     std::cout<<"We store "<<written_bytes<<" bytes ("<< double(written_bytes*8)/double(sr_index.size())<<" bps) in "<<output_file<<std::endl;
-
-    //vlbt_sri_va<4096, 4096> sr_index;
-    //load_from_file( "covid_bug.sri_vlbt", sr_index);
-    //load_from_file( "../data/covid_failed_dataset/covid_sri_4096_4.sri_vlt", sr_index);
-    //load_from_file( "/home/ddiaz/covid_failed_datasets/covid_sri_4096_4.sri_vlt", sr_index);
-    //sr_index.locate("TAGGAGACATTATACTTAAACCAGCAAATAATAGTTTAAAAATTACAGAAGAGGTTGGCCACACAGATCTAANNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN");
 
     //=====
     //Create the RLBWT in case it does not exist
