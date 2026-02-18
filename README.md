@@ -300,7 +300,7 @@ bioinformatics). The numbers presented in the table below already consider these
 
 ### Patterns
 
-Random patterns of length 105 were generated using [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c).
+Random patterns of length 105 were generated using the script `genpatterns` of [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c).
 
 ### Count queries in run-length BWTs:
 
