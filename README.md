@@ -34,7 +34,7 @@ A compressed suffix array (CSA) is a data structure that stores a text in compre
 locating occurrences of a given pattern in the text.
 
 This idea takes many forms, but the most popular are those based on the Burrows-Wheeler Transform (BWT).
-Combining the BWT of a text with samples of the suffix array yields the so-called FM-index, the algorithmic
+Combining the BWT of a text with samples of the suffix array yields the so-called FM index, the algorithmic
 workhorse behind popular bioinformatics tools such as [BWA-MEM](https://github.com/lh3/bwa) and
 [Bowtie2](https://github.com/BenLangmead/bowtie2).
 
@@ -176,7 +176,7 @@ To $count$ the occurrences of a pattern in an indexed text, use the command
 ./vlbt-cli count example_text.rlbwt_vlbt test_data/example_text.pat
 ```
 
-where `example_text.rlbwt_vlbt` is the run-length BWT and `example_text.pat` is the pattern file in
+Where `example_text.rlbwt_vlbt` is the run-length BWT and `example_text.pat` is the pattern file in
 [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c) format. The same ideas apply to the $sr$-index.
 
 To $locate$ the occurrences of a pattern, use 
@@ -298,7 +298,7 @@ bioinformatics). The numbers presented in the table below already consider these
  * [sri](https://github.com/duscob/sr-index) (commit f99b54a): the original $sr$-index. We varied the sampling $s$ 
    across values $8,16$.
 
-### Pattens
+### Patterns
 
 Random patterns of length 105 were generated using [Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c).
 
@@ -326,7 +326,7 @@ The table shows $locate$ speed in microseconds per occurrence (μs/occ) and inde
 this case, the queries were performed on patterns of length 105 that occurred at most 50,000 times in the indexed text.
 The suffix in `sri` instances indicates the index variant (va=valid area, vm=valid mark) and the subsampling parameter 
 $s$. Thus, `sri-va-s8` means that the index was built using the `valid area` variant with subsampling parameter of 
-$s=8$. Our VLBT-based $sri$-va index uses the same structure, but adds the block size for the VLBT tree.
+$s=8$. Our VLBT-based $sri$-va index uses the same structure but adds the block size for the VLBT tree.
 
 | CSA                | 30bac |  30bac |   hum |    hum | covid |  covid | kernel |  kernel |
 |:-------------------|------:|-------:|------:|-------:|------:|-------:|-------:|--------:|
