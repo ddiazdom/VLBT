@@ -17,7 +17,7 @@ check_bmi2_flags(CMP_FLAGS)
 #
 
 if(CMP_FLAGS)
-    message("Extra compilation flags ${CMP_FLAGS}")
+    message(STATUS "Extra compilation flags ${CMP_FLAGS}")
 endif()
 
 #the command line interface of the library
