@@ -256,7 +256,10 @@ fix should be straightforward.
 On x86-64 systems (Intel/AMD), the code relies on SIMD instructions and should be compiled with the `-msse4.2` flag.
 Failing to enable this flag may result in compilation errors or degraded performance.
 
-On ARM architectures supporting NEON (e.g., Apple Silicon / M1–M3), no additional compiler flags are required.
+On ARM architectures supporting NEON (e.g., Apple Silicon / M1–M3), no additional compiler flags are required for 
+SIMD instructions to be enabled.
+
+It may also be convenient to use the `-mbmi2` flag to optimize some bitwise operations.
 
 
 ## Experimental results

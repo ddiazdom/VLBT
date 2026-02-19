@@ -1,6 +1,5 @@
 include(CheckCXXSourceCompiles)
-
-
+include(CheckCXXCompilerFlag)
 
 function(check_sse42_flags SIMD_FLAGS)
     set(CMAKE_CXX_FLAGS_BCK "${CMAKE_CXX_FLAGS}")
@@ -43,6 +42,14 @@ function(check_avx2_flags SIMD_FLAGS)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BCK}")
 endfunction()
 
+function(check_bmi2_flags SIMD_FLAGS)
+    check_cxx_compiler_flag("-mbmi2" BMI2_SUPPORT)
+    if(BMI2_SUPPORT)
+        list(APPEND SIMD_FLAGS -mbmi2)
+        message("Adding BMI2 as compilation flag")
+    endif()
+endfunction()
+
 function(check_neon_flags SIMD_FLAGS)
     set(CMAKE_CXX_FLAGS_BCK "${CMAKE_CXX_FLAGS}")
     set(CMAKE_CXX_FLAGS "")
@@ -57,5 +64,6 @@ function(check_neon_flags SIMD_FLAGS)
         }"
     )
     check_cxx_source_compiles("${NEON_CXX_CODE}" NEON_SUPPORT)
+    ##TODO do something here
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BCK}")
 endfunction()

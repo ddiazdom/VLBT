@@ -10,17 +10,22 @@ include(CheckSIMDInstructions)
 #
 
 # check the available CPU instructions
-set(SIMD_FLAGS)
-check_neon_flags(SIMD_FLAGS)
-check_sse42_flags(SIMD_FLAGS)
+set(CMP_FLAGS)#compilation flags
+check_neon_flags(CMP_FLAGS)
+check_sse42_flags(CMP_FLAGS)
+check_bmi2_flags(CMP_FLAGS)
 #
+
+if(CMP_FLAGS)
+    message("Extra compilation flags ${CMP_FLAGS}")
+endif()
 
 #the command line interface of the library
 add_executable(vlbt-cli vlbt-cli.cpp)
 target_compile_options(vlbt-cli
         PUBLIC
         -Wall -pedantic -O3 -g
-        ${SIMD_FLAGS}
+        ${CMP_FLAGS}
 )
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
