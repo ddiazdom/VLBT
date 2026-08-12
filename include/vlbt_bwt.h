@@ -897,6 +897,14 @@ public:
 
             assert(is_leaf);
             i = i_branches[following_pred] + following_pred;//small hack due to the encoding of the leaves
+#ifdef VLBT_TRACE_RANK
+            //the leaf covers bk_sz symbols, so scanning beyond that reads whatever follows it
+            if(i > bk_sz){
+                fprintf(stderr, "[trace] *** leaf scan out of range: i=%zu but the leaf covers %zu symbols "
+                                "(i_branches[1]=%zu, following_pred=%d)\n",
+                        i, bk_sz, i_branches[1], (int)following_pred);
+            }
+#endif
 
             const uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
             symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//only works because bit_stream[bit_pos+symbol] is true
