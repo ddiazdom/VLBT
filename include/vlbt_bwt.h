@@ -891,6 +891,11 @@ public:
 
             //start reading the header of child (there is no ext succ/pred info)
             is_leaf = stream.read_bit(bit_pos++);
+#ifdef VLBT_TRACE_RANK
+            fprintf(stderr, "[trace]   -> descend to child=%zu via pointer p=%zu (p_width=%zu, %zu pointers), "
+                            "child bit_pos=%zu, is_leaf=%d, bk_sz=%zu\n",
+                    child, p, (size_t)p_width, n_children, bit_pos-1, (int)is_leaf, bk_sz);
+#endif
         }
 
         if(!rank_complete) {
