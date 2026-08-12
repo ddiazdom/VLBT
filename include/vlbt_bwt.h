@@ -430,6 +430,13 @@ public:
             }else {
                 rank_j = subtree_rank(bit_pos_j, j-child_j*block_size, symbol, sigma, rank_width, block_size, is_leaf, false);
             }
+#ifdef VLBT_TRACE_RANK
+            fprintf(stderr, "[trace] different blocks: block_i=%llu (offset %llu) block_j=%llu (offset %llu) "
+                            "j_has_symbol=%d -> rank_i=%llu rank_j=%llu\n",
+                    (unsigned long long)child_i, (unsigned long long)(i-child_i*block_size),
+                    (unsigned long long)child_j, (unsigned long long)(j-child_j*block_size),
+                    (int)has_symbol, (unsigned long long)rank_i, (unsigned long long)rank_j);
+#endif
             return std::make_pair(rank_i, rank_j);
         }
 
@@ -851,6 +858,15 @@ public:
             child_info |= 1<<scale_factor; //avoid corner cases
             n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
             i_branches[1] = bk_sz*n_real_lsib-1;
+#ifdef VLBT_TRACE_RANK
+            fprintf(stderr, "[trace] subtree_rank  bk_sz=%zu  child=%zu pred=%zu start=%zu n_real_lsib=%zu "
+                            "child_info=0x%llx pred_info=0x%llx  following_pred=%d->%d  "
+                            "i_branches=[%zu,%zu]  rank_so_far=%lld  rank_complete=%d\n",
+                    bk_sz, child, pred, start, n_real_lsib,
+                    (unsigned long long)child_info, (unsigned long long)pred_info,
+                    (int)following_pred, (int)(following_pred | (pred<child)),
+                    i_branches[0], i_branches[1], (long long)rank, (int)rank_complete);
+#endif
             following_pred |= pred<child;
             child = pred;
             bit_pos+=new_sigma*n_children;//skip int succ/pred info
