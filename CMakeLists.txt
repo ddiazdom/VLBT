@@ -16,6 +16,27 @@ check_sse42_flags(CMP_FLAGS)
 check_bmi2_flags(CMP_FLAGS)
 #
 
+# load useful helper scripts
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/utils.cmake)
+#
+
+#get git info
+get_git_commit(GIT_COMMIT)
+#
+
+#create header with program metadata
+configure_file(
+        ${CMAKE_SOURCE_DIR}/version.h.in
+        ${CMAKE_BINARY_DIR}/generated/version.h
+)
+#
+
+#make metadata header visible
+include_directories(myprogram PRIVATE
+        ${CMAKE_BINARY_DIR}/generated
+)
+#
+
 if(CMP_FLAGS)
     message(STATUS "Extra compilation flags ${CMP_FLAGS}")
 endif()

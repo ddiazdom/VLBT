@@ -38,5 +38,5 @@ add_executable(filter_pat_set filter_patset.cpp)
 target_compile_options(filter_pat_set PUBLIC -Wall -pedantic -O3 -g ${SIMD_FLAGS})
 
 #run-length encode a BWT
-add_executable(plain2grlbwt plain2grlbwt.cpp)
-target_compile_options(plain2grlbwt PUBLIC -Wall -pedantic -O3 -g)
+add_executable(plain2rle plain2vbyte_rle.cpp)
+target_compile_options(plain2rle PUBLIC -Wall -pedantic -O3 -g)

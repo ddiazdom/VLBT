@@ -10,15 +10,20 @@
 #ifndef VLBT_UTILS_H
 #define VLBT_UTILS_H
 
+#include "logger.h"
 #include <iostream>
 #include <fstream>
 #include <random>
 #include <filesystem>
 #include <unistd.h>
 #include <vector>
+#include <cstring>
+#include <cerrno>
+#include <cassert>
 #include <cstdint>
 
-#define INT_CEIL(a,b) (a>0? 1+(a-1)/b : 0)
+#define INT_CEIL(a,b) ((a)>0? 1+((a)-1)/(b) : 0)
+#define LOG_BASE(base, val) (log(val) / log(base))
 
 inline uint8_t sym_width(unsigned long val){
     if(val==0) return 0;
@@ -43,9 +48,8 @@ inline bool is_power_of_two(unsigned long val){
 inline bool file_exists(const std::filesystem::path& p, std::filesystem::file_status const& s = std::filesystem::file_status{}){
     if(std::filesystem::status_known(s) ? std::filesystem::exists(s) : std::filesystem::exists(p)){
         return true;
-    }else{
-        return false;
     }
+    return false;
 }
 
 inline std::string random_string(size_t length){
@@ -71,15 +75,22 @@ struct tmp_workspace{
                            const bool rem_all=true,
                            std::string const& prefix="tmp") : remove_all(rem_all) {
 
-        std::string tmp_path = std::filesystem::canonical(std::filesystem::path(base_folder)) / std::string(prefix+".XXXXXX");
-        char temp[200] = {0};
-        tmp_path.copy(temp, tmp_path.size() + 1);
-        temp[tmp_path.size() + 1] = '\0';
-        auto res = mkdtemp(temp);
-        if (res == nullptr) {
-            std::cout << "Error trying to create a temporal folder" << std::endl;
+        std::error_code ec;
+        const std::filesystem::path base = std::filesystem::canonical(std::filesystem::path(base_folder), ec);
+        if (ec) {
+            LOG_ERROR("Cannot resolve working folder "+base_folder+" : "+ec.message());
+            exit(1);
         }
-        tmp_folder = std::string(temp);
+
+        const std::string tmp_path = (base / std::string(prefix+".XXXXXX")).string();
+        std::vector templ(tmp_path.begin(), tmp_path.end());
+        templ.push_back('\0');
+
+        if (mkdtemp(templ.data()) == nullptr) {
+            LOG_ERROR("Cannot create temporary folder in "+base.string()+": "+strerror(errno));
+            exit(1);
+        }
+        tmp_folder = std::string(templ.data());
         ext = random_string(3);
     }
 
@@ -97,9 +108,8 @@ struct tmp_workspace{
 
     void remove_file(std::string const& prefix) const {
         std::filesystem::path file =  std::filesystem::path(tmp_folder) / std::string(prefix+"_"+ext);
-        bool res = remove(file);
-        if(!res){
-            std::cout<<"Error trying to remove "<<file<<std::endl;
+        if(!remove(file)){
+            LOG_ERROR("Cannot remove "+file.string());
             exit(1);
         }
     }
@@ -118,9 +128,8 @@ struct tmp_workspace{
 inline size_t round_to_power_of_two(unsigned long val){
     if(is_power_of_two(val)){
         return val;
-    }else{
-        return next_power_of_two(val);
     }
+    return next_power_of_two(val);
 }
 
 template<class vector_t>

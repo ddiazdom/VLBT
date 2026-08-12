@@ -13,6 +13,8 @@
 #include <cmath>
 #include "vlbt_common.h"
 #include "bit_stream.h"
+#include "def_scan.h"//defines the GET_PHI_RUN_* macros used below
+#include "logger.h"
 
 
 template<phi_variant var, size_t b_size, size_t b_runs=64, size_t s_factor=4>
@@ -40,13 +42,10 @@ struct vlbt_phi {
     uint8_t levels = 0; //maximum number of levels
     stream_type stream; //stream with the data
 
-    vlbt_phi(): levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1) {
-        //TODO static asserts in block_size, scale_factor, and b_runs
-        // logarithm function to calculate value
-        float lg = log(b_size) / log(s_factor);
-        assert(lg==floor(lg));
-        float lg2 = log(b_runs) / log(s_factor);
-        assert(lg2==floor(lg2));
+    vlbt_phi(): levels(static_cast<size_t>(ceil(LOG_BASE(s_factor, b_size)) - ceil(LOG_BASE(s_factor, b_runs))) + 1){
+        // static asserts in block_size, scale_factor, and b_runs
+        assert(LOG_BASE(s_factor, b_size)==floor(LOG_BASE(s_factor, b_size)));
+        assert(LOG_BASE(s_factor, b_runs)==floor(LOG_BASE(s_factor, b_runs)));
     }
 
     size_t serialize(std::ostream &ofs) const {
@@ -70,7 +69,15 @@ struct vlbt_phi {
         load_elm(ifs, header_bytes);
         load_elm(ifs, subsamp_step);
         load_elm(ifs, levels);
+        if(!ifs){
+            LOG_ERROR("The index file is truncated or corrupt");
+            exit(1);
+        }
         stream.load(ifs);
+        if(!ifs){
+            LOG_ERROR("The index file is truncated or corrupt");
+            exit(1);
+        }
     }
 
     void find_path_to_leaf(uint64_t &bit_pos, size_t& i) const {
@@ -257,7 +264,7 @@ struct vlbt_phi {
                 //runs use 7 bytes (vbyte)
                 break;
             default:
-                std::cout << "Undefined encoding" << std::endl;
+                LOG_ERROR("Undefined encoding");
                 exit(1);
         }
 

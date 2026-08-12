@@ -15,6 +15,7 @@
 #include "bit_stream.h"
 #include "def_scan.h"
 #include "vlbt_common.h"
+#include "logger.h"
 
 template<VLBT_TYPE var, size_t b_size, size_t b_runs=64, size_t s_factor=4>
 class vlbt_bwt  {
@@ -81,13 +82,10 @@ public:
     stream_type stream;//stream with the data
 
     vlbt_bwt():
-        levels(size_t(ceil(log(b_size) / log(s_factor)) - ceil(log(b_runs) / log(s_factor))) + 1){
-        //TODO static asserts in block_size, scale_factor, and b_runs
-        // logarithm function to calculate value
-        float lg = log(b_size) / log(s_factor);
-        assert(lg==floor(lg));
-        float lg2 = log(b_runs) / log(s_factor);
-        assert(lg2==floor(lg2));
+        levels(static_cast<size_t>(ceil(LOG_BASE(s_factor, b_size)) - ceil(LOG_BASE(s_factor, b_runs))) + 1){
+        // static asserts in block_size, scale_factor, and b_runs
+        assert(LOG_BASE(s_factor, b_size)==floor(LOG_BASE(s_factor, b_size)));
+        assert(LOG_BASE(s_factor, b_runs)==floor(LOG_BASE(s_factor, b_runs)));
     }
 
     const std::vector<uint8_t>& get_packed_alpha(){
@@ -131,10 +129,18 @@ public:
 
         VLBT_TYPE tag_tmp;
         load_elm(ifs, tag_tmp);
-        assert(tag_tmp==tag);
+        if (tag_tmp!=tag) {
+            LOG_ERROR("Index type mismatch: the file holds type "+std::to_string(tag_tmp)+
+                      ", but type "+std::to_string(tag)+" was requested");
+            exit(1);
+        }
         size_t b_size_tmp;
         load_elm(ifs, b_size_tmp);
-        assert(b_size_tmp==block_size);
+        if (b_size_tmp!=block_size) {
+            LOG_ERROR("Block size mismatch: the index was built with "+std::to_string(b_size_tmp)+
+                      ", but "+std::to_string(block_size)+" was requested");
+            exit(1);
+        }
 
         load_elm(ifs, tot_syms);
         load_elm(ifs, orig_runs);
@@ -149,11 +155,21 @@ public:
             load_elm(ifs, subsamp_step);
         }
 
+        if(!ifs){
+            LOG_ERROR("The index file is truncated or corrupt");
+            exit(1);
+        }
+
         load_plain_vector(ifs, C);
         load_plain_vector(ifs, packed_alpha);
         load_plain_vector(ifs, unpacked_alpha);
 
         stream.load(ifs);
+
+        if(!ifs){
+            LOG_ERROR("The index file is truncated or corrupt");
+            exit(1);
+        }
     }
 
     void find_prev_bit_pos(uint64_t& child_i, uint64_t& child_j, size_t& bit_pos_i, size_t& bit_pos_j) const {
@@ -362,7 +378,7 @@ public:
                 ans = RANGE_RANK_64<7, check_head>(&leaf_addr, new_sigma, i, j, symbol);//runs use 5 bytes (vbyte)
                 break;
             default:
-                std::cout<<"Undefined encoding"<<std::endl;
+                LOG_ERROR("Undefined leaf encoding");
                 exit(1);
         }
 
@@ -927,7 +943,7 @@ public:
                     ans = RANK_64<7, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
                     break;
                 default:
-                    std::cout<<"Undefined encoding"<<std::endl;
+                    LOG_ERROR("Undefined leaf encoding");
                     exit(1);
             }
 
@@ -971,13 +987,11 @@ public:
             if(!succ_found && stream.read_bit(symbol)) {//last opportunity: check if the node is low freq
                 succ_bit_pos = find_low_freq_succ(i, symbol);
                 skip_ext_succ_info(succ_bit_pos);
-                //assert(stream.read_bit(succ_bit_pos+1+symbol));
                 succ_found = true;
             }
         } else {
             decode_ext_succ_info(succ_bit_pos, child, symbol);
             skip_ext_succ_info(succ_bit_pos);
-            //assert(stream.read_bit(succ_bit_pos+1+symbol));
         }
 
         if(!succ_found) return -1;
@@ -1237,7 +1251,7 @@ public:
                     ans = RANK_64<7, check_head>(&leaf_addr, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
                     break;
                 default:
-                    std::cout<<"Undefined encoding"<<std::endl;
+                    LOG_ERROR("Undefined leaf encoding");
                     exit(1);
             }
 
@@ -1271,10 +1285,6 @@ public:
         uint8_t rank_width = si.r_width;
         uint64_t rank = si.rank;
         size_t bk_sz = si.bk_sz;
-
-        //remove
-        //assert(stream.read_bit(bit_pos+symbol));
-        //
 
         while(!is_leaf){
 
@@ -1388,7 +1398,7 @@ public:
                 run_idx = FIRST_RUN_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), new_sigma, symbol);//runs use 5 bytes (vbyte)
                 break;
             default:
-                std::cout<<"Undefined encoding"<<std::endl;
+                LOG_ERROR("Undefined leaf encoding");
                 exit(1);
         }
 
@@ -1645,7 +1655,7 @@ public:
                     ans = SUCC_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), n_runs, new_sigma, i, symbol);//runs use 5 bytes (vbyte)
                     break;
                 default:
-                    std::cout<<"Undefined encoding"<<std::endl;
+                    LOG_ERROR("Undefined leaf encoding");
                     exit(1);
             }
 
@@ -1732,8 +1742,6 @@ public:
         size_t p = path.bit_pos+(ext_pt_width*child);
         p = stream.read(p, p+ext_pt_width-1);
         size_t offset = (p >> (run_width+1)) * ((p & 1)>0);
-        //std::cout<<p<<" "<<int(run_mask)<<" "<<int(run_width)<<" byte_pos"<<int(p>>run_width)<<" offset:"<<int(p & run_mask)<<std::endl;
-        //child = child-(p & run_mask);//eff child in the representation where "i" lies
         child = child-offset;//eff child in the representation where "i" lies
         p = path.bit_pos + (ext_pt_width*child);
         p = stream.read(p, p+ext_pt_width-1)>>1;
@@ -1810,7 +1818,7 @@ public:
         }
     }
 
-    [[nodiscard]] inline std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {
+    [[nodiscard]] std::pair<uint64_t, uint8_t> inverse_select(size_t i) const {
 
         tree_path_type p;
         find_path_to_leaf(p, i);
@@ -1893,7 +1901,7 @@ public:
                 rank_answer = INV_SELECT_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
                 break;
             default:
-                std::cout<<"Undefined encoding"<<std::endl;
+                LOG_ERROR("Undefined leaf encoding");
                 exit(1);
         }
 
@@ -1913,7 +1921,7 @@ public:
         return rank_answer;
     }
 
-    [[nodiscard]] inline uint64_t decode_sa_value(size_t bit_pos, size_t run_id, size_t n_runs) const {
+    [[nodiscard]] uint64_t decode_sa_value(size_t bit_pos, size_t run_id, size_t n_runs) const {
         //NOTE: this function does ont check if run_id is valid
         const size_t sa_width = stream.read(bit_pos, bit_pos + int_pt_width - 1);//read the width
         bit_pos += int_pt_width;
@@ -2012,7 +2020,7 @@ public:
                                                                                   p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
                 break;
             default:
-                std::cout<<"Undefined encoding"<<std::endl;
+                LOG_ERROR("Undefined leaf encoding");
                 exit(1);
         }
 
@@ -2134,7 +2142,7 @@ public:
                 symbol = ACCESS_64<7>(reinterpret_cast<const uint8_t **>(&leaf_addr), p.node_sigma[p.lvl], i);//runs use 5 bytes (vbyte)
                 break;
             default:
-                std::cout<<"Undefined encoding"<<std::endl;
+                LOG_ERROR("Undefined leaf encoding");
                 exit(1);
         }
 
@@ -2154,8 +2162,8 @@ public:
     }
 
     [[nodiscard]] std::pair<uint64_t, uint64_t> count(const std::string &pat) const {
-        size_t l=0, r=size()-1, j=pat.size();
-        //std::cout<<l<<" "<<r<<std::endl;
+        int64_t l=0, r=static_cast<int64_t>(size())-1;
+        size_t j=pat.size();
         while(j-->0 && l<=r){
             const uint8_t cc = packed_alpha[static_cast<uint8_t>(pat[j])];
             //l = C[cc] + rank(l, pat[j]); // count c in bwt[0..l-1]
@@ -2164,15 +2172,15 @@ public:
 
             l = C[cc] + fst;
             r = C[cc] + snd-1;
-            //std::cout<<l<<" "<<r<<" "<<j<<" "<<int(pat[j])<<" "<<fst<<" "<<snd<<std::endl;
         }
-        assert(l<=r);
-        return {l, r};
+        if(l>r) return {1, 0};
+        return {static_cast<uint64_t>(l), static_cast<uint64_t>(r)};
     }
 
     [[nodiscard]] std::tuple<uint64_t, uint64_t, uint64_t> count_with_head(const std::string &pat) const {
-
-        size_t l=0, r=size()-1, j=pat.size();
+        size_t j=pat.size();
+        if (j==0) return {1, 0, 0};
+        int64_t l=0, r=static_cast<int64_t>(size())-1;
         std::pair<uint64_t, uint64_t> head[2]={{0,0}, {j-1, l}};
 
         while(j-->0 && l<=r){
@@ -2183,22 +2191,12 @@ public:
             head[std::get<2>(tmp)] = {j, l};
             l = C[cc] + std::get<0>(tmp); // count c in bwt[0..l-1]
             r = C[cc] + std::get<1>(tmp) - 1; // count c in bwt[0..r]
-
-            //auto res = rank<true>(l, pat[j]);
-            //head[res.second] = {j, l};
-            //l = C[cc] + res.first;// count c in bwt[0..l-1]
-            //r = C[cc] + rank(r+1, pat[j]) - 1; // count c in bwt[0..r]
-
-            //assert(std::get<0>(tmp)==res.first);
-            //assert(std::get<1>(tmp)==(r-C[cc]+1));
-            //assert(std::get<2>(tmp)==res.second);
-            //std::cout<<std::get<0>(tmp)<<" "<<std::get<1>(tmp)<<" "<<std::get<2>(tmp)<<" "<<j<<" "<<pat<<std::endl;
-            //std::cout<<res.first<<" "<<(r-C[cc]+1)<<" "<<res.second<<" "<<j<<std::endl;
         }
 
-        //std::cout<<"mio:"<<pat<<" / "<<head[1].first<<" "<<head[1].second<<std::endl;
+        if (l>r) return {1, 0, 0};
+
         const int64_t sa_samp = sa_samp_of_succ_head(head[1].second, pat[head[1].first]);
-        return {l, r, sa_samp-head[1].first-1};
+        return {static_cast<uint64_t>(l), static_cast<uint64_t>(r), sa_samp-head[1].first-1};
     }
 
     [[nodiscard]] uint8_t eff2byte(uint8_t eff_sym) const {
@@ -2210,7 +2208,7 @@ public:
         return tot_syms;
     }
 
-    size_t alphabet_size() const {
+    [[nodiscard]] size_t alphabet_size() const {
         return sigma;
     }
 };

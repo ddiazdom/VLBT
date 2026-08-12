@@ -13,6 +13,7 @@
 #include <cassert>
 #include <utility>
 #include <fstream>
+#include "logger.h"
 
 struct sample_type {
     uint64_t head_val;
@@ -92,7 +93,7 @@ void get_overlap_stats(std::vector<sample_type>& samples, std::vector<size_type>
     std::unordered_map<size_t, size_t> overlap_stats;
     for(size_t i=0;i<samples.size();i++) {
 
-        const size_t start = samples[i].head_val;
+        [[maybe_unused]] const size_t start = samples[i].head_val;
         const size_t end = i==samples.size()-1?  str_ranges.back()-1 : samples[i+1].head_val-1;
         size_t n_ovps=0;
         while(k<samples_tail.size() && samples_tail[k].prev_tail_val<=end) {
@@ -104,7 +105,8 @@ void get_overlap_stats(std::vector<sample_type>& samples, std::vector<size_type>
     }
 
     for (auto const& pair: overlap_stats) {
-        std::cout << "number of overlaps:"<<pair.first << " proportion:" << (100.0 * static_cast<double>(pair.second)/samples.size()) << std::endl;
+        LOG_INFO("number of overlaps: "+std::to_string(pair.first)+" proportion: "
+                +std::to_string((100.0 * static_cast<double>(pair.second)/samples.size())));
     }
 }
 
@@ -112,18 +114,15 @@ template<class size_type>
 void get_head_samples(std::vector<sample_type>& samples, std::vector<size_type> str_ranges,
                       size_t ssamp_val, const std::string& sa_heads_ssamp_file){
 
-    //compute and store the run head subsamples for phi
-    //std::cout<<"gathering statistics"<<std::endl;
-    //get_overlap_stats(samples, str_ranges);
-
-    std::cout<<"Sampling the heads"<<std::endl;
+    LOG_INFO("Sampling the heads");
     //sort the samples by the text position of the tails
     std::sort(samples.begin(), samples.end(), [](auto const& a, auto const&b){
         return a.head_val<b.head_val;
     });
     //
 
-    size_t n_strings = str_ranges.size()-1, n_samp=0, len, acc_len=0;
+    size_t n_strings = str_ranges.size()-1, n_samp=0, len;
+    [[maybe_unused]] size_t acc_len=0;
     size_type str_boundary;
     size_t s_pos=0;
     for(size_t str=0;str<n_strings;str++){
@@ -135,26 +134,8 @@ void get_head_samples(std::vector<sample_type>& samples, std::vector<size_type> 
         assert(s_pos<samples.size());
 
         while((s_pos+1)<samples.size() && samples[s_pos+1].head_val<=str_boundary){
-
-
-            if((samples[s_pos+1].head_val-samples[last_sampled].head_val>ssamp_val)){
+            if(samples[s_pos+1].head_val-samples[last_sampled].head_val>ssamp_val){
                 len = samples[s_pos].head_val-samples[last_sampled].head_val;
-
-                //std::cout<<"sampled "<<samples[last_sampled].head_val<<std::endl;
-                //if (samples[last_sampled].head_val==430241310) {
-                //    std::cout<<"holaa"<<std::endl;
-                //}
-
-                //samples[last_sampled].valid_area = 0;
-                //if(last_sampled<(s_pos-1)) {
-                //  samples[last_sampled].valid_area = samples[last_sampled+1].head_val-samples[last_sampled].head_val;
-                    //TODO the value below is the real "invalid suffix" anything after this suffix is valid
-                    //std::cout<<samples[s_pos].head_val-samples[last_sampled+1].head_val<<std::endl;
-                //}
-
-                //for(size_t k=last_sampled+1;k<s_pos;k++){
-                //    std::cout<<"Not sampled "<<samples[k].head_val<<" "<<samples[k].head_val-samples[last_sampled].head_val<<" "<<std::endl;;
-                //}
 
                 samples[last_sampled].is_head_sampled = true;
                 acc_len+=len;
@@ -216,7 +197,8 @@ void get_head_samples(std::vector<sample_type>& samples, std::vector<size_type> 
     //a technical hack: samples[0].prev_tail_val contains the SA value of the last run in the BWT.
     //the difference of this value with the value of the following head should be 0 because there is no head.
     samples[0].head_val = samples[0].prev_tail_val;
-    std::cout<<"We subsampled "<<n_samp<<" elements out of "<<samples.size()<<" ("<<double(n_samp)/double(samples.size())*100<<"%)"<<std::endl;
+    LOG_INFO(std::to_string(n_samp)+" elements out of "+
+             std::to_string(samples.size())+" were subsampled ("+std::to_string(double(n_samp)/double(samples.size())*100)+"%)");
     //
 }
 
@@ -226,7 +208,7 @@ void get_tail_samples(std::vector<sample_type>& samples,
                       size_t sri_samp_val,
                       const std::string& sa_tails_ssamp_file){
 
-    std::cout<<"Sampling the tails"<<std::endl;
+    LOG_INFO("Sampling the tails");
 
     //sort by the run tails
     std::sort(samples.begin(), samples.end(), [](sample_type const& a, sample_type const& b){
@@ -259,10 +241,6 @@ void get_tail_samples(std::vector<sample_type>& samples,
                 len = samples[s_pos].prev_tail_val-samples[last_sampled].prev_tail_val;
                 diff = get_diff(samples[last_sampled].prev_tail_val, samples[last_sampled].head_val);
                 is_diff_neg = samples[last_sampled].prev_tail_val>samples[last_sampled].head_val;
-
-                //if (samples[last_sampled].prev_tail_val<=72440562 && 72440561<samples[last_sampled].prev_tail_val+len) {
-                //    std::cout<<"holaa"<<std::endl;
-                //}
 
                 if (n_blocks==1) {
                     output_buffer.push_back(diff, is_diff_neg, 0, len);
@@ -356,7 +334,7 @@ void subsample_sa_samples(const std::string& sa_heads_file, const std::string& s
                           const std::string& sa_heads_ssamp_file, const std::string& sa_tails_ssamp_file,
                           uint64_t n) {
 
-    std::cout<<"Subsampling SA samples with value "<<sri_samp_val<<std::endl;
+    LOG_INFO("Subsampling SA with factor "+std::to_string(sri_samp_val));
     std::vector<size_type> sa_heads = decode_samples<size_type, bytes_per_samp>(sa_heads_file, n);
     std::vector<size_type> sa_tails = decode_samples<size_type, bytes_per_samp>(sa_tails_file, n);
 
@@ -384,7 +362,7 @@ void subsample_bcr_sa_samples(std::string& sa_samples_file, std::string& str_ran
                               std::string& sa_tails_ssamp_file){
 
     size_t n_samples = std::filesystem::file_size(sa_samples_file)/sizeof(size_type);
-    std::cout<<"Subsampling SA samples for the BCR BWT"<<std::endl;
+    LOG_INFO("Subsampling the SA samples (BCR BWT) with factor "+std::to_string(sri_samp_val));
     std::vector<sample_type> samples(n_samples/2);
     size_t s_pos=0;
 

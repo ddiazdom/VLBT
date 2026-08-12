@@ -30,9 +30,9 @@ time_answer += std::chrono::duration_cast<time_unit>( t2 - t1 ).count();\
 using ulint = uint64_t;
 //parse pizza&chilli patterns header:
 void pat_error(){
-    std::cout << "Error: malformed header in patterns file" << std::endl;
-    std::cout << "Take a look here for more info on the file format: http://pizzachili.dcc.uchile.cl/experiments.html" << std::endl;
-    exit(0);
+    std::cerr << "Error: malformed header in patterns file" << std::endl;
+    std::cerr << "Take a look here for more info on the file format: http://pizzachili.dcc.uchile.cl/experiments.html" << std::endl;
+    exit(1);
 }
 
 inline ulint get_n_patterns(std::string header){
@@ -69,7 +69,7 @@ inline ulint get_patterns_len(std::string header){
 }
 
 inline std::vector<std::string> file2pat_list(const std::string& pat_file, ulint &n_pats, ulint& pat_len){
-    std::ifstream ifs(pat_file);
+    std::ifstream ifs(pat_file, std::ios::binary);
     std::string header;
     std::getline(ifs, header);
     n_pats = get_n_patterns(header);

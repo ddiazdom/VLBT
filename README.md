@@ -134,19 +134,28 @@ to produce these files. Our cli uses a compatible format.
 
 ### Run-length BWT
 
-To create the run-length BWT, you can run
+To create the run-length BWT, you can go to the folder `test_data` and run
 
 ```
-./vlbt-cli build test_data/example_text.txt -b 4096 -d 0 
+vlbt-cli build example_text.txt.bwt -b 4096 -d 0 
 ```
-The command above will search for the file `text_data/example_text.txt.bwt` (BWT of `example_text.txt`) and build
-the VLBT index. The input BWT has to be in one-byte-per-symbol encoding (i.e., plain). The `-b` option specifies the
-block size, while the `-d` option specifies the structure we are building (0 means run-lenth BWT). The option `--help`
-gives more details.
 
-### BWT-based CSA 
+or via stdin:
 
-In this case, you also have to have `exaple_text.txt.bwt` beforehand, but also the files 
+```
+cat example_text.txt.bwt | vlbt-cli build - -b 4096 -d 0 -o example_text.txt.rl_bwt 
+```
+
+The input BWT has to be in one-byte-per-symbol encoding (i.e., plain). The `-b` option specifies the
+block size, while the `-d` option specifies the structure we are building (`-d 0` means run-length BWT). The option 
+`--help` gives more details.
+
+Notice the stdin functionality is only available for the run-length BWT and requires an output file. Constructing the 
+run-length BWT with toeholds (`-d 1`) or the $sr$-index (`-d 2`) is not supported yet. 
+
+### BWT-based CSA (sr-index) 
+
+In this case, you also have to have `example_text.txt.bwt` beforehand, but also the files 
 
 * `example_text.txt.ssa`
 * `example_text.txt.esa`
@@ -158,33 +167,34 @@ and a tail. In this case, the corresponding suffix array sample has to be in bot
 
 The folder `test_data` contains an example of such files.
 
-The command to build the CSA is 
+The command to build the $sr$-index is 
 
 ```
-./vlbt-cli build test_data/example_text.txt -b 4096 -d 2 -s 5 
+./vlbt-cli build example_text.txt.bwt example_text.txt.ssa example_text.txt.esa -b 4096 -d 2 -s 5 
 ```
-
-Where `-d 2` indicates that we are building the CSA and `s` is the subsampling parameter of the $sr$-index. The 
-command line interface will look for the input files in the same directory as `example_text.txt`. Our VLB-based CSA for
+Where `-d 2` indicates $sr$-index and `s` is the subsampling parameter. Our VLB-based $sr$-index for
 the moment uses the same block size $\ell$ for both the BWT and $\phi^{-1}$. This may change in the future.  
+
+The construction algorithm will create a temporary folder in the scratch path (e.g., `/tmp/folder`) and place there
+temporary files that will be deleted when the program exits. The scratch path can be changed via CLI.
 
 ## Querying an index:
 
 To $count$ the occurrences of a pattern in an indexed text, use the command 
 
 ```
-./vlbt-cli count example_text.rlbwt_vlbt test_data/example_text.pat
+./vlbt-cli count example_text.rlbwt_vlt example_text.pat
 ```
 
-Where `example_text.rlbwt_vlbt` is the run-length BWT and `example_text.pat` is the pattern file in
-[Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c) format. The same ideas apply to the $sr$-index.
+Where `example_text.rlbwt_vlt` is the run-length BWT and `example_text.pat` is the pattern file in
+[Pizza&Chilli](https://pizzachili.dcc.uchile.cl/utils/genpatterns.c) format (also available in `test_data`). The same ideas apply to the $sr$-index.
 
 To $locate$ the occurrences of a pattern, use 
 
 ```
-./vlbt-cli locate example_text.sri_vlbt test_data/example_text.pat
+./vlbt-cli locate example_text.sri_vlt example_text.pat
 ```
-The input index in this case must be a VLBT CSA. The program will automatically detect the template parameters 
+The input index in this case must be a VLBT $sr$-index. The program will automatically detect the template parameters 
 from the file header.
 
 **Note:** this interface performs the queries, but it only reports statistics (speed, number of occurrences, 
@@ -211,15 +221,20 @@ int main() {
     
     //count occurrences
     std::string pattern = "atggagag";
-    size_t count = bwt.count(pattern); 
+    //NOTE: outputs the SA range {l, r} for pattern, with the actual count computed as (r-l+1);
+    std::oout<uint_64, uint64_t> count = bwt.count(pattern); 
+    
+    //IMPORTANT NOTE: this query offers partial rank functionality: it might return 0 when
+    //it should return >0. When performing rank within bwt.count(pattern) and `pattern` exists
+    //in the text, bwt.rank *will* return the correct answer. This is enough for exact pattern
+    //matching.
+    size_t rank = bwt.rank(2, 'a');
    
     //load from disk
     vlbt_rlbwt<4096> bwt2;
     load_from_file("/path/to/bwt_index", bwt2);//make sure template parameters match 
 }
 ```
-
-The construction algorithm will place temporary files in `/tmp/folder`. It then will delete them. 
 
 CSA:
 ```C++
@@ -248,8 +263,17 @@ int main() {
 }
 ```
 
-We have not tested using VLBT as a library yet, but it should work. If not, please open an issue. The 
+We have not tested using VLBT as a library yet, but it should work. If not, please open an issue. The
 fix should be straightforward.
+
+## A note on supporting backward search with $k$ mismatches
+
+Currently VLBT simplifies the data layout to reduce space usage without impacting query performance (specifically, the 
+rank limitation in the note above). This idea works for exact pattern matching but it might introduce some issues to 
+support mismatches.  
+
+This is a known limitation and we are working on improving it. The fix should be straightforward, but requires some 
+extra work.
 
 ### ⚙️ Architecture-specific notes
 
@@ -260,7 +284,6 @@ On ARM architectures supporting NEON (e.g., Apple Silicon / M1–M3), no additio
 SIMD instructions to be enabled.
 
 It may also be convenient to use the `-mbmi2` flag to optimize some bitwise operations.
-
 
 ## Experimental results
 

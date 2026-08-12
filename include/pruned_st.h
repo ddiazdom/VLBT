@@ -10,8 +10,8 @@
 #ifndef VLBT_PRUNED_ST_H
 #define VLBT_PRUNED_ST_H
 
-#include "bwt_io.h"
 #include "utils.h"
+#include "bwt_streams.h"
 #include <stack>
 
 //suffix tree node represented as the range of the leaves it covers
@@ -42,10 +42,6 @@ struct st_node_t {
     [[nodiscard]] bool intersect(const uint64_t start_, const uint64_t end_) const {
         return !(end+1 < start_ || end_ < start);
     }
-
-    //[[nodiscard]] bool smaller(uint64_t start_, uint64_t end_) const {
-    //    return end_ < start;
-    //}
 };
 
 //pruned suffix tree where the internal nodes with depth>threshold are pruned and the whole subtree is treated as a leaf
@@ -58,12 +54,12 @@ struct pruned_suffix_tree{
         stack.push(nodes_in_dfs[k++]);
     }
 
-    [[nodiscard]] inline bool intersect(uint64_t start, uint64_t end) const {
+    [[nodiscard]] bool intersect(uint64_t start, uint64_t end) const {
         if(k>=nodes_in_dfs.size()) return false;
         return stack.top().intersect(start, end);
     }
 
-    inline void operator++(){
+    void operator++(){
         if(k<nodes_in_dfs.size()){
             assert(!stack.empty());
 
@@ -85,7 +81,7 @@ struct pruned_suffix_tree{
         }
     }
 
-    inline st_node_t operator*() const {
+    st_node_t operator*() const {
         return stack.top();
     }
 };
@@ -98,7 +94,7 @@ struct block_range_t{
     uint64_t rb;
 };
 
-inline std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, const std::vector<uint64_t>& sa_ranges,
+inline std::vector<st_node_t> compute_nodes_of_pruned_st(rle_vbyte_bwt_reader& bwt_buff, const std::vector<uint64_t>& sa_ranges,
                                                          const std::vector<uint8_t>& packed_alpha, const size_t n_iterations){
 
 
@@ -117,38 +113,28 @@ inline std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, c
 
     for(size_t i=0;i<n_iterations;i++){
 
-        //std::vector<uint64_t> new_sa_ranges;
         std::vector<uint64_t> symbols(256, 0);
         std::vector<uint64_t> block_symbols(256, 0);
 
         size_t k = 0;
-        //uint64_t range_start = st_nodes_in_dfs[depth-1][k].start;
         uint64_t range_end = st_nodes_in_dfs[depth-1][k].end+1;
-        size_t acc=0, sym, len, l;
+        size_t acc=0;
+        uint64_t sym, len;
 
-        //std::cout<<" ===== "<<range_start<<" "<<range_end-1<<std::endl;
+        bwt_buff.rewind();
+        while(bwt_buff.next_run(sym, len)){
 
-        for(size_t j=0;j<bwt.size();j++){
-
-            bwt.read_run(j, sym, len);
             sym = packed_alpha[sym];
-
-            //std::cout<<"holaa "<<int(sym)<<" "<<len<<" "<<symbols[0]<<std::endl;
-            //std::cout<<acc<<" "<<range_end<<std::endl;
 
             assert(acc<range_end);
 
             while((acc+len)>=range_end){
-                l = range_end-acc;
+                size_t l = range_end - acc;
                 block_symbols[sym]+=l;
                 acc+=l;
-                //std::cout<<l<<" "<<sym<<" "<<block_symbols[2]<<" "<<j<<std::endl;
 
                 for(size_t s=0;s<256;s++){
                     if(block_symbols[s]>0){
-                        //if((sa_ranges[s]+symbols[s])==24034){
-                        //    std::cout<<int(s)<<" => "<<sa_ranges[s]<<" "<<symbols[s]<<" "<<block_symbols[s]<<" / "<<(sa_ranges[s]+symbols[s])<<" "<<range_end<<" "<<acc<<" "<<l<<std::endl;
-                        //}
                         uint64_t lb = sa_ranges[s]+symbols[s];
                         uint64_t rb = lb+block_symbols[s]-1;
                         st_nodes_in_dfs[depth].emplace_back(lb, rb, depth);
@@ -173,20 +159,8 @@ inline std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, c
             return a.start<b.start;
         });
 
-        /*st_nodes_in_dfs[depth].reserve(new_sa_ranges.size());
-        for(size_t j=0;j<(new_sa_ranges.size()-1);j++){
-            //std::cout<<new_sa_ranges[j]<<std::endl;
-            assert(new_sa_ranges[j]<new_sa_ranges[j+1]);
-            st_nodes_in_dfs[depth].emplace_back(new_sa_ranges[j], new_sa_ranges[j+1]-1, depth);
-        }*/
         tot_nodes+=st_nodes_in_dfs[depth].size();
         depth++;
-        /*for(size_t j=0;j<40;j++){
-            std::cout<<st_nodes_in_dfs[0][j].start<<" "<<st_nodes_in_dfs[0][j].end<<" "<<st_nodes_in_dfs[0][j].depth<<std::endl;
-        }
-        for(size_t j=0;j<300;j++){
-            std::cout<<st_nodes_in_dfs[1][j].start<<" "<<st_nodes_in_dfs[1][j].end<<" "<<st_nodes_in_dfs[1][j].depth<<std::endl;
-        }*/
     }
 
     st_nodes_in_dfs[0].reserve(tot_nodes);
@@ -204,7 +178,6 @@ inline std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, c
         return a.start<b.start;
     });
 
-    //std::cout<<"Size before "<<st_nodes_in_dfs[0].size()<<std::endl;
     size_t k=0;
     for(size_t j=1;j<st_nodes_in_dfs[0].size();j++){
         if(st_nodes_in_dfs[0][j].start!=st_nodes_in_dfs[0][k].start ||
@@ -214,10 +187,7 @@ inline std::vector<st_node_t> compute_nodes_of_pruned_st(bwt_buff_reader& bwt, c
     }
     st_nodes_in_dfs[0].resize(k);
     st_nodes_in_dfs[0].shrink_to_fit();
-    //std::cout<<"Size after "<<st_nodes_in_dfs[0].size()<<std::endl;
-    //for(size_t j=0; j<200; j++){
-    //    std::cout<<j<<" "<<st_nodes_in_dfs[0][j].start<<" "<<st_nodes_in_dfs[0][j].end<<" "<<st_nodes_in_dfs[0][j].depth<<std::endl;
-    //}
+
     return st_nodes_in_dfs[0];
 }
 

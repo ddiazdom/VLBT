@@ -10,6 +10,8 @@
 #ifndef VLBT_DEF_SCAN_H
 #define VLBT_DEF_SCAN_H
 
+#include <cstdint>
+
 template<bool overflow16, bool overflow32=false>
 static inline uint8_t access_scl_8(const uint16_t* stream, uint8_t sigma, uint64_t idx){
     return 0;
@@ -73,7 +75,8 @@ static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64
     return 0;
 }
 
-#if defined(__ARM_NEON__)
+//AArch64 compilers define __ARM_NEON (ACLE); __ARM_NEON__ is the legacy AArch32 spelling
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
 #include "scan_neon.h"
 
 #define INV_SELECT_8 inv_select_neon_8x16
@@ -189,20 +192,24 @@ static inline uint64_t rank_scl_64(const uint16_t* stream, uint8_t sigma, uint64
 #define GET_PHI_RUN_64 get_phi_run_sse42_64x2
 
 #else
-#define INV_SELECT_8 inv_select_scl_8
-#define INV_SELECT_16 inv_select_scl_16
-#define INV_SELECT_32 inv_select_scl_32
-#define INV_SELECT_64 inv_select_scl_64
+//TODO scalar fallback, pending implementation. The *_scl_* functions above are stubs that
+//return 0, and RANGE_RANK_*, FIRST_RUN_*, SUCC_* and GET_PHI_RUN_* have no scalar
+//counterpart yet, so enabling this path would answer every query with 0
+//#define INV_SELECT_8 inv_select_scl_8
+//#define INV_SELECT_16 inv_select_scl_16
+//#define INV_SELECT_32 inv_select_scl_32
+//#define INV_SELECT_64 inv_select_scl_64
 
-#define ACCESS_8 access_scl_8
-#define ACCESS_16 access_scl_16
-#define ACCESS_32 access_scl_32
-#define ACCESS_64 access_scl_64
+//#define ACCESS_8 access_scl_8
+//#define ACCESS_16 access_scl_16
+//#define ACCESS_32 access_scl_32
+//#define ACCESS_64 access_scl_64
 
-#define RANK_8 rank_scl_8
-#define RANK_16 rank_scl_16
-#define RANK_32 rank_scl_32
-#define RANK_64 rank_scl_64
+//#define RANK_8 rank_scl_8
+//#define RANK_16 rank_scl_16
+//#define RANK_32 rank_scl_32
+//#define RANK_64 rank_scl_64
+#error "VLBT needs NEON, SSE4.2 or AVX2. Compile with -march=native (or an equivalent flag)."
 #endif
 
 #endif //VLBT_DEF_SCAN_H

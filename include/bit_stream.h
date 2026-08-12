@@ -7,8 +7,8 @@
  * BSD 3-Clause License. See the LICENSE file for details.
  */
 
-#ifndef LPG_COMPRESSOR_BITSTREAM_H
-#define LPG_COMPRESSOR_BITSTREAM_H
+#ifndef VLBT_BITSTREAM_H
+#define VLBT_BITSTREAM_H
 
 #include <iostream>
 #include <limits>
@@ -21,9 +21,9 @@
 #include <immintrin.h>
 #endif
 
-
+#include "memory_handler.hpp"
 #include "utils.h"
-
+/*
 template <class T> struct mem {
 
     static T * allocate(const size_t n) {
@@ -52,7 +52,7 @@ template <class T> struct mem {
         malloc_trim(0);
 #endif
     }
-};
+};*/
 
 const uint64_t ps_overflow[] = {
         0x8080808080808080ULL,
@@ -305,16 +305,18 @@ struct bit_stream{
         reserve_in_words(bytes2words(byte_size));
     }
 
-    inline void reserve_in_words(size_t n_words){
+    void reserve_in_words(size_t n_words){
         if(n_words>stream_cap){
+            const size_t old_cap = stream_cap;
             if(stream==nullptr){
-                //stream = (word_t *)malloc(words2bytes(n_words));
-                stream = mem<word_t>::allocate(n_words);
+                stream = mem::allocate<word_t>(n_words);
             }else{
                 assert(stream_cap!=0);
-                //stream = (word_t *)realloc(stream, words2bytes(n_words));
-                stream = mem<word_t>::reallocate(stream, n_words);
+                stream = mem::reallocate<word_t>(stream, n_words);
             }
+            //bit writes are read-modify-write, so positions that are never written must
+            //start at zero. Otherwise stale heap bytes end up in the serialized stream
+            memset(stream+old_cap, 0, (n_words-old_cap)*sizeof(word_t));
             stream_cap = n_words;
         }
     }
@@ -334,19 +336,19 @@ struct bit_stream{
     void destroy(){
         if(stream!= nullptr){
             //free(stream);
-            mem<word_t>::deallocate(stream);
+            mem::deallocate(stream);
             stream = nullptr;
         }
         stream_cap=0;
     }
 
-    inline bit_stream& swap(bit_stream& other) {
+    bit_stream& swap(bit_stream& other) noexcept {
         std::swap(stream, other.stream);
         std::swap(stream_cap, other.stream_cap);
         return *this;
     }
 
-    inline bit_stream& operator=(bit_stream const& other){
+    bit_stream& operator=(bit_stream const& other){
         if(&other!=this){
             reserve_in_words(other.stream_cap);
             memcpy(stream, other.stream, words2bytes(other.stream_cap));
@@ -354,7 +356,7 @@ struct bit_stream{
         return *this;
     }
 
-    inline void write(size_t i, size_t j, size_t value){
+    void write(size_t i, size_t j, size_t value){
         size_t cell_i = i >> word_shift;
         size_t i_pos = (i & (word_bits-1UL));
 
@@ -375,7 +377,7 @@ struct bit_stream{
         }
     }
 
-    inline void write_chunk(const void* source, size_t i, size_t j){
+    void write_chunk(const void* source, size_t i, size_t j){
         size_t tot_bits = j-i+1;
         size_t n_words = INT_CEIL(tot_bits, word_bits);
         size_t left = i & (word_bits - 1UL);
@@ -397,7 +399,7 @@ struct bit_stream{
         write(i + read_bits, j, (tmp_src[n_words-1] & masks[tot_bits-read_bits]));
     }
 
-    [[nodiscard]] inline size_t read(size_t i, size_t j) const{
+    [[nodiscard]] size_t read(size_t i, size_t j) const{
         if constexpr (max_dist==1){
             return (stream[i>>word_shift] >> (i & (word_bits - 1UL))) & 1UL;
         } else {
@@ -426,7 +428,7 @@ struct bit_stream{
         }
     }
 
-    inline void prefetch(size_t i) const {
+    void prefetch(size_t i) const {
         __builtin_prefetch(&stream[i>>word_shift], 0, 0);
     }
 
@@ -452,7 +454,7 @@ struct bit_stream{
     }
 
     //from the SDSL
-    [[nodiscard]] static inline uint32_t select64_scalar(uint64_t x, uint32_t i) {
+    [[nodiscard]] static uint32_t select64_scalar(uint64_t x, uint32_t i) {
         uint64_t s = x, b;  // s = sum
         s = s-((s>>1) & 0x5555555555555555ULL);
         s = (s & 0x3333333333333333ULL) + ((s >> 2) & 0x3333333333333333ULL);
@@ -486,7 +488,7 @@ struct bit_stream{
     }
 
     //from the SLDSL
-    [[nodiscard]] static inline uint32_t select64(uint64_t x, size_t i) {
+    [[nodiscard]] static uint32_t select64(uint64_t x, size_t i) {
 #ifdef __BMI2__
         // index i is 1-based here, (i-1) changes it to 0-based
         return __builtin_ctzll(_pdep_u64(1ull << (i-1), x));
@@ -513,25 +515,13 @@ struct bit_stream{
 #endif
     }
 
-    [[nodiscard]] inline size_t select(size_t i, size_t j, size_t r) const {
+    [[nodiscard]] size_t select(size_t i, size_t j, size_t r) const {
         if((j-i+1)<=64){
             return select64(read(i, j), r);
         }else {
             size_t cell_i = i >> word_shift;
             size_t i_pos = (i & (word_bits - 1UL));
             size_t cell_j = j >> word_shift;
-
-            /*size_t tmp=0;
-            for (size_t k = i, m=0; k <= j; k++,m++) {
-                tmp+= read_bit(k);
-                std::cout<<m<<":"<<read_bit(k);
-                if(tmp==r && read_bit(k)){
-                    std::cout<<"* ";
-                }else{
-                    std::cout<<" ";
-                }
-            }
-            std::cout << "" << std::endl;*/
 
             uint64_t word = stream[cell_i] >> i_pos;
             size_t rank = __builtin_popcountll(word), prev_rank = 0;
@@ -548,7 +538,7 @@ struct bit_stream{
         }
     }
 
-    inline void read_chunk(void* dst, size_t i, size_t j) const{
+    void read_chunk(void* dst, size_t i, size_t j) const{
         size_t tot_bits = j-i+1;
         size_t n_words = INT_CEIL(tot_bits, word_bits);
         size_t left = i & (word_bits - 1UL);
@@ -570,7 +560,7 @@ struct bit_stream{
     }
 
     //compare a segment of the stream with an external source of bits
-    inline bool compare_chunk(const void* input, size_t i, size_t bits) const {
+    bool compare_chunk(const void* input, size_t i, size_t bits) const {
 
         size_t n_words = INT_CEIL(bits, word_bits);
         size_t left = i & (word_bits - 1UL);
@@ -618,7 +608,7 @@ struct bit_stream{
 
     //compare the segment ]a-bits..a] with the segment ]b-bits..b+bits]
     //return the bit_pos (0-based) of the rightmost different bit (return len if the segments are equal)
-    inline size_t inv_com_segments(size_t a, size_t b, size_t& bits) const {
+    size_t inv_com_segments(size_t a, size_t b, size_t& bits) const {
         size_t n_words = INT_CEIL(bits, word_bits);
         size_t rem_bits, data_a, data_b, read_bits=0;
 
@@ -660,7 +650,7 @@ struct bit_stream{
         }
     }
 
-    void concatenate(size_t bytes_a, bit_stream<word_t, max_dist>& stream_b, size_t bytes_b){
+    void concatenate(size_t bytes_a, const bit_stream& stream_b, size_t bytes_b){
         size_t new_size_in_words = INT_CEIL((bytes_a+bytes_b), sizeof(word_t));
         reserve_in_words(new_size_in_words);
         auto * tmp_stream_a = (uint8_t *)stream;
@@ -675,7 +665,7 @@ struct bit_stream{
     }
 
     void load(std::istream &in){
-        size_t tmp_size;
+        size_t tmp_size=0;
         load_elm(in, tmp_size);
         reserve_in_words(tmp_size);
         in.read((char *)stream, words2bytes(tmp_size));
@@ -701,4 +691,4 @@ const size_t bit_stream<word_t, max_dist>::masks[65]={0x0,
                                                       0x1FFFFFFFFFFFFFF, 0x3FFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFF,
                                                       0x1FFFFFFFFFFFFFFF, 0x3FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF};
 
-#endif //LPG_COMPRESSOR_BITSTREAM_H
+#endif //VLBT_BITSTREAM_H

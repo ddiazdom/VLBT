@@ -11,6 +11,7 @@
 #define VLBT_BUILD_PHI
 
 #include "vlbt_phi.h"
+#include "logger.h"
 
 #ifdef __linux__
 #include <malloc.h>
@@ -158,7 +159,7 @@ struct phi_node {//state of the compression
         }
     }
 
-    inline void destroy(){
+    void destroy(){
         buffer.destroy();
         children_buffer.destroy();
         for(auto bk : active_blocks){
@@ -172,7 +173,7 @@ struct phi_node {//state of the compression
 #endif
     }
 
-    inline void finish_run_scan(){
+    void finish_run_scan(){
         //handle the last sequence of blocks
         assert(bk_len<=b_size);
         acc_runs+=active_blocks[bk_id].size();
@@ -195,7 +196,7 @@ struct phi_node {//state of the compression
         assert(aligned<8>(node_n_bits));
     }
 
-    inline void process_run(run_type& run) {
+    void process_run(run_type& run) {
 
         while(run.len>0){
             if((bk_len+run.len)<b_size){
@@ -239,7 +240,7 @@ struct phi_node {//state of the compression
         }
     }
 
-    inline void finish_int_node() {
+    void finish_int_node() {
 
         assert(n_children<=s_factor);
         assert(lvl>0);
@@ -325,7 +326,7 @@ struct phi_node {//state of the compression
         stats.header_overhead+=header_bits;
     }
 
-    inline void finish_tree() {
+    void finish_tree() {
 
         assert(lvl==0);
         assert(aligned<8>(node_n_bits));
@@ -352,7 +353,8 @@ struct phi_node {//state of the compression
 
         //write the pointers to the trees
         bit_pos=0;
-        size_t c=0, l=0;
+        [[maybe_unused]] size_t c=0;
+        size_t l=0;
         for(size_t b=0;b<n_children;b++){
 
             buffer.write(bit_pos, bit_pos+phi_rep.ext_pt_width-1, (block_ptr[b]<<1));
@@ -368,7 +370,6 @@ struct phi_node {//state of the compression
             }
             //
 
-            //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" ptr:"<<block_ptr[b]<<" tree_offset:"<<tree_offset[b]<<" "<<tree_offset[b+1]<<std::endl;
             bit_pos+=phi_rep.ext_pt_width;
             size_t r = (tree_offset[b + 1] - tree_offset[b]) / b_size;
             c++;
@@ -378,7 +379,6 @@ struct phi_node {//state of the compression
             while((n_syms+b_size)<tree_offset[b+1]){
                 size_t offsets = (l << run_width) | r;
                 offsets = (offsets<<1) | 1;
-                //std::cout<<"block:"<<b<<" real_block:"<<c<<" b_pos:"<<bit_pos<<" offsets:"<<l<<" "<<r<<std::endl;
                 buffer.write(bit_pos, bit_pos+phi_rep.ext_pt_width-1, offsets);
                 bit_pos+=phi_rep.ext_pt_width;
                 n_syms +=b_size;
@@ -424,7 +424,7 @@ struct phi_node {//state of the compression
         }
     }
 
-    static inline uint8_t compute_leaf_enc(const uint8_t max_bytes, const bool vbyte_enc, const uint64_t *max_psum) {
+    static uint8_t compute_leaf_enc(const uint8_t max_bytes, const bool vbyte_enc, const uint64_t *max_psum) {
 
         uint8_t code = 0;
 
@@ -459,12 +459,12 @@ struct phi_node {//state of the compression
             case 7:
                 return 15;
             default:
-                std::cout<<"Unknown code for leaf encoding"<<std::endl;
+                LOG_ERROR("Undefined leaf encoding");
                 exit(1);
         }
     }
 
-    inline void create_leaf(std::vector<block_type>& blocks, size_t n_blocks){
+    void create_leaf(std::vector<block_type>& blocks, size_t n_blocks){
 
         //for 1 byte: check that the sum of 16 (or 32 for AVX) consecutive run lens is <=256
         //for 2 bytes: check that the sum of 8 (or 16 for AVX) consecutive run lens is <=2^16-1
@@ -613,7 +613,7 @@ struct phi_node {//state of the compression
 
         //RUN SEQUENCE
         auto *byte_stream = reinterpret_cast<uint8_t *>(buffer.stream);
-        const size_t written_bytes = insert_run_lens(blocks, n_blocks, &byte_stream[byte_pos], max_bytes , fix_len_enc);
+        [[maybe_unused]] const size_t written_bytes = insert_run_lens(blocks, n_blocks, &byte_stream[byte_pos], max_bytes , fix_len_enc);
         assert((written_bytes*8)==len_bits);
         bit_pos = (byte_pos*8)+len_bits;
         assert(bit_pos==(header_bits+len_bits));
@@ -812,8 +812,8 @@ struct phi_node {//state of the compression
         }
     }
 
-    template<node_type type>//internal or leaf
-    inline void create_node(const size_t n_blocks) {
+    template<node_class nd_class>//internal or leaf
+    void create_node(const size_t n_blocks) {
 
         assert(aligned<8>(node_n_bits));//check it is byte-aligned
         //lvl=0 means the tree root, and tmp_node is then the root v of a block in the tree.
@@ -824,11 +824,11 @@ struct phi_node {//state of the compression
         tmp_node->lm_tree_branch = lm_tree_branch && tmp_node->lm_child;
         tmp_node->rm_tree_branch = rm_tree_branch && tmp_node->rm_child;
         tmp_node->child_rank = n_children;
-        tmp_node->leaf = type==LEAF;
+        tmp_node->leaf = nd_class==LEAF;
         tmp_node->syms_before=syms_before+consumed_syms;
         tmp_node->node_offset = consumed_syms;
 
-        if constexpr (type==INTERNAL){
+        if constexpr (nd_class==INTERNAL){
             assert(n_blocks==1);
             for(auto & run : active_blocks[0]){
                 tmp_node->process_run(run);
@@ -870,7 +870,7 @@ struct phi_node {//state of the compression
         tmp_node->reset();
     }
 
-    inline void reset(){
+    void reset(){
         std::fill(child_marks.begin(), child_marks.end(), false);
         n_children = 0;
         node_n_bits = 0;
@@ -1014,124 +1014,127 @@ struct phi_tree{
         //
     }*/
 
-    void report_stats(){
+    std::string report_stats(){
+        std::stringstream ss;
 
-        std::cout<<"Number_of_runs_in_a_leaf dist:"<<std::endl;
+        ss<<"Number_of_runs_in_a_leaf dist:"<<std::endl;
         assert(stats.rpl_freq[0]==0);
         for(size_t r=1;r<=phi_dt_type::max_block_runs;r++){
-            std::cout<<"\t"<<r<<" : "<<stats.rpl_freq[r]<<std::endl;
+            ss<<"\t"<<r<<" : "<<stats.rpl_freq[r]<<std::endl;
         }
-        std::cout<<"Total number of runs versus original number of runs: "<<phi_rep.eff_runs<<" / "<<phi_rep.orig_runs<<std::endl;
-        std::cout<<"Increase in the number of runs "<<(double(phi_rep.eff_runs)/double(phi_rep.orig_runs)-1)*100<<"%"<<std::endl;
+        ss<<"Total number of runs versus original number of runs: "<<phi_rep.eff_runs<<" / "<<phi_rep.orig_runs<<std::endl;
+        ss<<"Increase in the number of runs "<<(double(phi_rep.eff_runs)/double(phi_rep.orig_runs)-1)*100<<"%"<<std::endl;
 
-        std::cout<<"Leaf_depth dist:"<<std::endl;
+        ss<<"Leaf_depth dist:"<<std::endl;
         size_t tot_leaves=0;
         for(size_t i=0;i<20;i++){
             tot_leaves+=stats.leaf_depth_freq[i];
         }
         for(size_t i=0;i<20;i++){
             if(stats.leaf_depth_freq[i]>0){
-                std::cout<<"\t"<<i<<": "<<double(stats.leaf_depth_freq[i])/double(tot_leaves)<<std::endl;
+                ss<<"\t"<<i<<": "<<double(stats.leaf_depth_freq[i])/double(tot_leaves)<<std::endl;
             }
         }
 
-        std::cout<<"Leaf_encoding dist:"<<std::endl;
+        ss<<"Leaf_encoding dist:"<<std::endl;
         for(size_t i=0;i<16;i++){
             switch(i) {
                 case 0:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t1 byte: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t1 byte: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 1:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t1 byte, overflow 16: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t1 byte, overflow 16: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 2:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t1 byte, overflow 32: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t1 byte, overflow 32: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 3:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t2 bytes: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 4:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes, overflow 8: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t2 bytes, overflow 8: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 5:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes, overflow 16: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t2 bytes, overflow 16: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 6:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t2 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 7:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes, overflow 8, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t2 bytes, overflow 8, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 8:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t2 bytes, overflow 16, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t2 bytes, overflow 16, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 9:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t3 bytes: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t3 bytes: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 10:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t3 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t3 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 11:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t4 bytes: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t4 bytes: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 12:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t4 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t4 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 13:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t5 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t5 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 case 14:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t6 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t6 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
                     break;
                 default:
-                    if(stats.leaf_enc_freq[i]) std::cout<<"\t7 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
+                    if(stats.leaf_enc_freq[i]) ss<<"\t7 bytes, vbyte_comp: "<<double(stats.leaf_enc_freq[i])/double(tot_leaves)<<std::endl;
             }
         }
 
-        std::cout<<"Number_of_children dist:"<<std::endl;
+        ss<<"Number_of_children dist:"<<std::endl;
         size_t del_nodes=0, tot_nodes=0;
         for(size_t i=0;i<20;i++){
             if(stats.children_freq[i]!=0){
-                std::cout<<"\t"<<i<<": "<<stats.children_freq[i]<<std::endl;
+                ss<<"\t"<<i<<": "<<stats.children_freq[i]<<std::endl;
                 del_nodes+=(phi_rep.scale_factor-i)*stats.children_freq[i];
                 tot_nodes+=stats.children_freq[i];
             }
         }
 
-        std::cout<<"Bits_for_sym dist:"<<std::endl;
+        ss<<"Bits_for_sym dist:"<<std::endl;
         for(size_t i=0;i<65;i++){
             if(stats.sym_bits[i]!=0){
-                std::cout<<"\t"<<i<<": "<<stats.sym_bits[i]<<std::endl;
+                ss<<"\t"<<i<<": "<<stats.sym_bits[i]<<std::endl;
             }
         }
 
-        std::cout<<"Fit 64k "<<stats.fit_cache[0]<<std::endl;
-        std::cout<<"Fit 512k "<<stats.fit_cache[1]<<std::endl;
-        std::cout<<"Fit 16384k "<<stats.fit_cache[2]<<std::endl;
+        ss<<"Fit 64k "<<stats.fit_cache[0]<<std::endl;
+        ss<<"Fit 512k "<<stats.fit_cache[1]<<std::endl;
+        ss<<"Fit 16384k "<<stats.fit_cache[2]<<std::endl;
 
         size_t n_blocks = INT_CEIL(phi_rep.tot_syms, phi_rep.block_size);//original number of blocks in the first level of the tree
-        std::cout<<"Effective number of trees versus full number of trees (n/b): "<<root->n_children<<" / "<<n_blocks<<std::endl;
-        std::cout<<"Percentage of removed trees: "<<(1-double(root->n_children)/double(n_blocks))*100<<"% "<<std::endl;
+        ss<<"Effective number of trees versus full number of trees (n/b): "<<root->n_children<<" / "<<n_blocks<<std::endl;
+        ss<<"Percentage of removed trees: "<<(1-double(root->n_children)/double(n_blocks))*100<<"% "<<std::endl;
 
         tot_nodes*=phi_rep.scale_factor;
         tot_nodes+=n_blocks;
         del_nodes=n_blocks-root->n_children;
 
-        std::cout<<"Percentage of removed nodes: "<<(double(del_nodes)/double(tot_nodes))*100<<"% "<<std::endl;
-        std::cout<<"Written bytes in the data structure: "<<INT_CEIL(root->node_n_bits, 8)<<std::endl;
-        std::cout<<"Space breakdown"<<std::endl;
-        std::cout<<"\tRuns: "<<INT_CEIL(stats.runs_overhead, 8)<<" bytes ("<<(double(stats.runs_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
-        std::cout<<"\t\tSymbols overhead: "<<INT_CEIL(stats.sym_overhead, 8)<<" bytes ("<<(double(stats.sym_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
-        std::cout<<"\t\tLengths overhead: "<<INT_CEIL(stats.len_overhead, 8)<<" bytes ("<<(double(stats.len_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
+        ss<<"Percentage of removed nodes: "<<(double(del_nodes)/double(tot_nodes))*100<<"% "<<std::endl;
+        ss<<"Written bytes in the data structure: "<<INT_CEIL(root->node_n_bits, 8)<<std::endl;
+        ss<<"Space breakdown"<<std::endl;
+        ss<<"\tRuns: "<<INT_CEIL(stats.runs_overhead, 8)<<" bytes ("<<(double(stats.runs_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
+        ss<<"\t\tSymbols overhead: "<<INT_CEIL(stats.sym_overhead, 8)<<" bytes ("<<(double(stats.sym_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
+        ss<<"\t\tLengths overhead: "<<INT_CEIL(stats.len_overhead, 8)<<" bytes ("<<(double(stats.len_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
         if constexpr (phi_dt_type::variant==WITH_VALID_AREA) {
-            std::cout<<"\t\tValid area overhead: "<<INT_CEIL(stats.valid_area_overhead, 8)<<" bytes ("<<(double(stats.valid_area_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
+            ss<<"\t\tValid area overhead: "<<INT_CEIL(stats.valid_area_overhead, 8)<<" bytes ("<<(double(stats.valid_area_overhead)/double(stats.runs_overhead))*100<<"%)"<<std::endl;
         }
-        std::cout<<"\tHeaders: "<<INT_CEIL(stats.header_overhead, 8)<<" bytes ("<<(double(stats.header_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
-        std::cout<<"\t\tTree pointers: "<<INT_CEIL(stats.tree_pointers_overhead, 8)<<" bytes ("<<(double(stats.tree_pointers_overhead)/double(stats.header_overhead))*100<<"%)"<<std::endl;
+        ss<<"\tHeaders: "<<INT_CEIL(stats.header_overhead, 8)<<" bytes ("<<(double(stats.header_overhead)/double(root->node_n_bits))*100<<"%)"<<std::endl;
+        ss<<"\t\tTree pointers: "<<INT_CEIL(stats.tree_pointers_overhead, 8)<<" bytes ("<<(double(stats.tree_pointers_overhead)/double(stats.header_overhead))*100<<"%)"<<std::endl;
         size_t ptr_bv_ov = stats.header_overhead - stats.tree_pointers_overhead;
-        std::cout<<"\t\tInt. Pointers, bitvectors, and extras: "<<INT_CEIL(ptr_bv_ov, 8)<<" bytes ("<<(double(ptr_bv_ov)/double(stats.header_overhead))*100<<"%)"<<std::endl;
+        ss<<"\t\tInt. Pointers, bitvectors, and extras: "<<INT_CEIL(ptr_bv_ov, 8)<<" bytes ("<<(double(ptr_bv_ov)/double(stats.header_overhead))*100<<"%)"<<std::endl;
         assert((stats.header_overhead+stats.runs_overhead)==root->node_n_bits);
-        std::cout<<"space_usage:"<<float(root->node_n_bits)/float(phi_rep.tot_syms)<<" bps"<<std::endl;
+        ss<<"space_usage:"<<float(root->node_n_bits)/float(phi_rep.tot_syms)<<" bps"<<std::endl;
+
+        return ss.str();
     }
 };
 
@@ -1140,7 +1143,7 @@ void build_phi(phi_dt_type& phi_rep, const std::string& sa_tails_subsamp_file, t
 
     phi_tree<phi_dt_type, size_type> tree(phi_rep, twd);
     tree.build(sa_tails_subsamp_file);
-    tree.report_stats();
+    LOG_DEBUG(tree.report_stats());
 }
 
 /*

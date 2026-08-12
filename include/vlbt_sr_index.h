@@ -12,6 +12,7 @@
 
 #include "vlbt_bwt.h"
 #include "vlbt_phi.h"
+#include "logger.h"
 
 template<class bwt_dt_type, class phi_type>
 struct vlbt_sr_index{
@@ -40,11 +41,11 @@ struct vlbt_sr_index{
     [[nodiscard]] std::vector<uint64_t> locate(const std::string& pattern) {
         int64_t l, r, sa_val;
 
-        //obtain (l,r) for the range SA{i..r-1] and the value of sa_val=SA[i]
+        //get (l,r) for the range SA{i..r-1] and the value of sa_val=SA[i]
         std::tie(l, r, sa_val)  = bwt.count_with_head(pattern);
 
         //no occurrences
-        if(l>r) std::vector<uint64_t>();
+        if(l>r) return {};
 
         //compute the occurrences in SA[i+1..r-1]
         const int64_t n_occ = r-l+1;
@@ -104,7 +105,7 @@ struct vlbt_sr_index{
         return bwt.packed_alpha;
     }
 
-    size_t alphabet_size() const {
+    [[nodiscard]] size_t alphabet_size() const {
         return bwt.sigma;
     }
 
@@ -116,14 +117,14 @@ struct vlbt_sr_index{
 
         size_t written_bytes = 0;
 
-        //this is to make sure the data structure is loaded
-        //with the correct template arguments
         written_bytes+= serialize_elm(ofs, tag);
-        size_t b_size_phi = phi_t::block_size;
-        written_bytes+= serialize_elm(ofs, b_size_phi);
+
+        //The BWT goes first, then phi, as read_template_param expects
         size_t b_size_bwt = bwt_t::block_size;
         written_bytes+= serialize_elm(ofs, b_size_bwt);
-        //
+
+        size_t b_size_phi = phi_t::block_size;
+        written_bytes+= serialize_elm(ofs, b_size_phi);
 
         written_bytes+= bwt.serialize(ofs);
         written_bytes+= phi.serialize(ofs);
@@ -134,12 +135,27 @@ struct vlbt_sr_index{
 
         VLBT_TYPE tmp_tag;
         load_elm(ifs, tmp_tag);
-        assert(tmp_tag==tag);
-        size_t b_size_phi, b_size_bwt;
-        load_elm(ifs, b_size_phi);
-        assert(phi_t::block_size==b_size_phi);
+        if (tmp_tag!=tag) {
+            LOG_ERROR("Index type mismatch: the file holds type "+std::to_string(tmp_tag)+
+                      ", but type "+std::to_string(tag)+" was requested");
+            exit(1);
+        }
+
+        size_t b_size_bwt;
         load_elm(ifs, b_size_bwt);
-        assert(bwt_t::block_size==b_size_bwt);
+        if (bwt_t::block_size!=b_size_bwt) {
+            LOG_ERROR("BWT block size mismatch: the index was built with "+std::to_string(b_size_bwt)+
+                      ", but "+std::to_string(bwt_t::block_size)+" was requested");
+            exit(1);
+        }
+
+        size_t b_size_phi;
+        load_elm(ifs, b_size_phi);
+        if (phi_t::block_size!=b_size_phi) {
+            LOG_ERROR("Phi block size mismatch: the index was built with "+std::to_string(b_size_phi)+
+                      ", but "+std::to_string(phi_t::block_size)+" was requested");
+            exit(1);
+        }
 
         bwt.load(ifs);
         phi.load(ifs);
