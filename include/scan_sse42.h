@@ -167,6 +167,27 @@ static void psum_epi8_ovf(const __m128i& input, const uint32_t& idx, uint32_t& p
     pf_sum = pf_sum_vec[idx_run & 7];
 }
 
+#ifdef VLBT_TRACE_RANK
+//prints the (symbol, length) pairs a block decodes to, so an over-read shows up as
+//runs that do not belong to the leaf
+static inline void trace_runs_epi8(const char* tag, const __m128i& block, uint8_t sigma_bits){
+    uint8_t b[16];
+    _mm_storeu_si128((__m128i*)b, block);
+    const uint8_t mask = (uint8_t)((1u<<sigma_bits)-1);
+    fprintf(stderr, "[trace]   %s runs(8x16):", tag);
+    for(int k=0;k<16;k++) fprintf(stderr, " %u:%u", (unsigned)(b[k]&mask), (unsigned)(b[k]>>sigma_bits));
+    fprintf(stderr, "\n");
+}
+static inline void trace_runs_epi16(const char* tag, const __m128i& block, uint8_t sigma_bits){
+    uint16_t b[8];
+    _mm_storeu_si128((__m128i*)b, block);
+    const uint16_t mask = (uint16_t)((1u<<sigma_bits)-1);
+    fprintf(stderr, "[trace]   %s runs(16x8):", tag);
+    for(int k=0;k<8;k++) fprintf(stderr, " %u:%u", (unsigned)(b[k]&mask), (unsigned)(b[k]>>sigma_bits));
+    fprintf(stderr, "\n");
+}
+#endif
+
 static uint32_t hsum_epi8_ovf(const __m128i& input) {
     const __m128i sum1 = _mm_add_epi16(_mm_shuffle_epi8(input, _mm_set_epi8(-1,7,  -1,6,  -1,5,  -1,4,  -1,3,  -1,2,  -1,1, -1,0)),
                                        _mm_shuffle_epi8(input, _mm_set_epi8(-1,15, -1,14, -1,13, -1,12, -1,11, -1,10, -1,9, -1,8)));
@@ -930,6 +951,13 @@ static int64_t rank_sse42_8x16(const uint8_t **stream, const uint8_t sigma, uint
 
     uint32_t rank=0;
     //size_t l=0;
+#ifdef VLBT_TRACE_RANK
+    const uint8_t* trace_start = *stream - 16;
+    int trace_iter = 0;
+    fprintf(stderr, "[trace] rank_sse42_8x16: idx=%llu sigma=%u sigma_bits=%u symbol=%u  first block acc=%u\n",
+            (unsigned long long)idx, (unsigned)sigma, (unsigned)sigma_bits, (unsigned)symbol, acc);
+    trace_runs_epi8("block0", block, sigma_bits);
+#endif
     while(acc<=idx){
         //compute acc rank in the previous block
         bk_lengths = _mm_and_si128(bk_lengths, _mm_cmpeq_epi8(_mm_and_si128(block, alpha_mask), sym_vec));
@@ -938,6 +966,10 @@ static int64_t rank_sse42_8x16(const uint8_t **stream, const uint8_t sigma, uint
         } else {
             rank += hsum_epi8(bk_lengths);
         }
+#ifdef VLBT_TRACE_RANK
+        fprintf(stderr, "[trace]  iter %d: whole block added unmasked, rank=%u  (acc=%u <= idx=%llu)\n",
+                trace_iter, rank, acc, (unsigned long long)idx);
+#endif
 
         block = _mm_loadu_si128((const __m128i*)*stream);
         *stream+=16;
@@ -946,7 +978,17 @@ static int64_t rank_sse42_8x16(const uint8_t **stream, const uint8_t sigma, uint
         prev_acc = acc;
         acc += hsum_epi8_ovf(bk_lengths);
         //l++;
+#ifdef VLBT_TRACE_RANK
+        fprintf(stderr, "[trace]  iter %d: loaded next block at byte offset %td, acc %u -> %u\n",
+                trace_iter, (ptrdiff_t)(*stream-16-trace_start), prev_acc, acc);
+        trace_runs_epi8("next  ", block, sigma_bits);
+        trace_iter++;
+#endif
     }
+#ifdef VLBT_TRACE_RANK
+    fprintf(stderr, "[trace] loop done after %d iterations, bytes consumed=%td, prev_acc=%u acc=%u rank=%u\n",
+            trace_iter, (ptrdiff_t)(*stream-trace_start), prev_acc, acc, rank);
+#endif
 
     idx-=prev_acc;
     uint32_t idx_run, pf_sum;
@@ -989,6 +1031,16 @@ static int64_t rank_sse42_8x16(const uint8_t **stream, const uint8_t sigma, uint
         rank += hsum_epi8(bk_lengths);
     }
 
+#ifdef VLBT_TRACE_RANK
+    fprintf(stderr, "[trace] tail: idx_in_block=%llu idx_run=%u (16 means past the last lane) "
+                    "pf_sum=%u run=0x%02x last_symbol=%u rank_before_correction=%u\n",
+            (unsigned long long)idx, idx_run, pf_sum, (unsigned)run, (unsigned)last_symbol, rank);
+    if(idx_run>=16){
+        fprintf(stderr, "[trace] *** idx_run is out of range: the shuffle wraps to lane 0 and "
+                        "pf_sum(%u) < idx(%llu), so the correction below underflows\n",
+                pf_sum, (unsigned long long)idx);
+    }
+#endif
     if constexpr (check_head) {
         const uint8_t len = run >> sigma_bits;//get the length of the run where idx falls
         const bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
@@ -999,6 +1051,10 @@ static int64_t rank_sse42_8x16(const uint8_t **stream, const uint8_t sigma, uint
     } else {
         rank -=(pf_sum-idx) * (last_symbol==symbol);
     }
+#ifdef VLBT_TRACE_RANK
+    fprintf(stderr, "[trace] rank_sse42_8x16 returns %u  (correction subtracted %lld)\n",
+            rank, (long long)((uint64_t)pf_sum-(uint64_t)idx)*(last_symbol==symbol));
+#endif
 
     return rank;
 }
@@ -1019,6 +1075,13 @@ static int64_t rank_sse42_16x8(const uint8_t **stream, const uint8_t sigma, uint
     uint32_t acc = hsum_epi16_ovf(bk_lengths);
     uint64_t rank = 0;
 
+#ifdef VLBT_TRACE_RANK
+    const uint8_t* trace_start = *stream;
+    int trace_iter = 0;
+    fprintf(stderr, "[trace] rank_sse42_16x8: idx=%llu sigma=%u sigma_bits=%u symbol=%u  first block acc=%u\n",
+            (unsigned long long)idx, (unsigned)sigma, (unsigned)sigma_bits, (unsigned)symbol, acc);
+    trace_runs_epi16("block0", block, sigma_bits);
+#endif
     while(acc<=idx){
         bk_lengths = _mm_and_si128(bk_lengths, _mm_cmpeq_epi16(_mm_and_si128(block, alpha_mask), sym_vec));
         if constexpr (overflow16){
@@ -1026,13 +1089,27 @@ static int64_t rank_sse42_16x8(const uint8_t **stream, const uint8_t sigma, uint
         }else{
             rank += hsum_epi16(bk_lengths);
         }
+#ifdef VLBT_TRACE_RANK
+        fprintf(stderr, "[trace]  iter %d: whole block added unmasked, rank=%llu  (acc=%u <= idx=%llu)\n",
+                trace_iter, (unsigned long long)rank, acc, (unsigned long long)idx);
+#endif
 
         block = decode_block_sse42<vbyte_compressed,1,2>(stream);
         bk_lengths =  shift_right_epi16(block, sigma_bits);
 
         prev_acc = acc;
         acc += hsum_epi16_ovf(bk_lengths);
+#ifdef VLBT_TRACE_RANK
+        fprintf(stderr, "[trace]  iter %d: next block read (bytes consumed so far %td), acc %u -> %u\n",
+                trace_iter, (ptrdiff_t)(*stream-trace_start), prev_acc, acc);
+        trace_runs_epi16("next  ", block, sigma_bits);
+        trace_iter++;
+#endif
     }
+#ifdef VLBT_TRACE_RANK
+    fprintf(stderr, "[trace] loop done after %d iterations, bytes consumed=%td, prev_acc=%u acc=%u rank=%llu\n",
+            trace_iter, (ptrdiff_t)(*stream-trace_start), prev_acc, acc, (unsigned long long)rank);
+#endif
 
     idx-=prev_acc;
     uint32_t idx_run, pf_sum;
@@ -1080,6 +1157,17 @@ static int64_t rank_sse42_16x8(const uint8_t **stream, const uint8_t sigma, uint
         rank += hsum_epi16(bk_lengths);
     }
 
+#ifdef VLBT_TRACE_RANK
+    fprintf(stderr, "[trace] tail: idx_in_block=%llu idx_run=%u (8 means past the last lane) "
+                    "pf_sum=%u run=0x%04x last_symbol=%u rank_before_correction=%llu\n",
+            (unsigned long long)idx, idx_run, pf_sum, (unsigned)run, (unsigned)last_symbol,
+            (unsigned long long)rank);
+    if(idx_run>=8){
+        fprintf(stderr, "[trace] *** idx_run is out of range: the shuffle wraps and "
+                        "pf_sum(%u) < idx(%llu), so the correction below underflows\n",
+                pf_sum, (unsigned long long)idx);
+    }
+#endif
     if constexpr (check_head) {
         const uint16_t len = run >> sigma_bits;//get the length of the run where idx falls
         const bool is_same_sym = last_symbol==symbol;//check if the symbol of the run where idx falls matches the query symbol
@@ -1090,6 +1178,10 @@ static int64_t rank_sse42_16x8(const uint8_t **stream, const uint8_t sigma, uint
     } else {
         rank -= (pf_sum-idx) * (last_symbol==symbol);
     }
+#ifdef VLBT_TRACE_RANK
+    fprintf(stderr, "[trace] rank_sse42_16x8 returns %llu  (correction subtracted %lld)\n",
+            (unsigned long long)rank, (long long)((uint64_t)pf_sum-(uint64_t)idx)*(last_symbol==symbol));
+#endif
 
     return (int64_t)rank;
 }

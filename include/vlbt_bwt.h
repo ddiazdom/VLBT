@@ -915,11 +915,22 @@ public:
             symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//only works because bit_stream[bit_pos+symbol] is true
             bit_pos+=node_sigma;
             const size_t r_pos = bit_pos + symbol*rank_width;
+#ifdef VLBT_TRACE_RANK
+            const int64_t rank_before_leaf = rank;
+            const uint64_t stored_rank = stream.read(r_pos, r_pos+rank_width-1);
+#endif
             rank+=stream.read(r_pos, r_pos+rank_width-1);
             bit_pos+=new_sigma*rank_width;
 
             const uint8_t leaf_enc = stream.read(bit_pos, bit_pos+leaf_enc_width-1);
             bit_pos+= leaf_enc_width;
+#ifdef VLBT_TRACE_RANK
+            fprintf(stderr, "[trace] leaf: i=%zu bk_sz=%zu node_sigma=%u new_sigma=%u sym_in_leaf=%u "
+                            "rank_width=%u r_pos=%zu stored_rank=%llu leaf_enc=%u  rank %lld -> %lld\n",
+                    i, bk_sz, (unsigned)node_sigma, (unsigned)new_sigma, (unsigned)symbol,
+                    (unsigned)rank_width, r_pos, (unsigned long long)stored_rank, (unsigned)leaf_enc,
+                    (long long)rank_before_leaf, (long long)rank);
+#endif
 
             bool false_break;
             if constexpr (var==RLBWT_WITH_TOEHOLDS){
@@ -1013,6 +1024,12 @@ public:
                     exit(1);
             }
 
+#ifdef VLBT_TRACE_RANK
+            fprintf(stderr, "[trace] leaf scan returned %lld for i=%zu (leaf covers %zu symbols, enc=%u) "
+                            "-> total %lld%s\n",
+                    (long long)ans, i, bk_sz, (unsigned)leaf_enc, (long long)(rank+ans),
+                    i>bk_sz ? "   [i is past the end of the leaf]" : "");
+#endif
             if constexpr (check_head){
                 //complete information
                 const bool is_same_sym = ans & 1UL;//the query symbol is the same as the symbol of the run where "i" falls
