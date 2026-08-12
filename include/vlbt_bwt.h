@@ -458,6 +458,14 @@ public:
         i-=offset;
         j-=offset;
 
+#ifdef VLBT_TRACE_RANK
+        //compile with -DVLBT_TRACE_RANK to dump this descent. The block disappears
+        //at preprocessing time otherwise, so normal builds are unaffected
+        fprintf(stderr, "[trace] descent starts: packed_sym=%u block=%llu i=%llu j=%llu (block-relative)\n",
+                (unsigned)symbol, (unsigned long long)(offset/block_size),
+                (unsigned long long)i, (unsigned long long)j);
+#endif
+
         do {
             const uint8_t new_sigma = stream.pop_count(bit_pos, bit_pos+node_sigma-1);//node_sigma is always >0
             symbol = stream.pop_count(bit_pos, bit_pos+symbol)-1;//this works only because bit_stream[bit_pos+symbol] is true
@@ -517,10 +525,22 @@ public:
             //!stream.read_bit(bit_pos) means child_i is an internal node
             traverse_common_path = child_i==child_j && ((succ_pred_info >> child_i) & 1) && !stream.read_bit(bit_pos++);
             //
+#ifdef VLBT_TRACE_RANK
+            fprintf(stderr, "[trace]   level bk_sz=%zu: child_i=%llu child_j=%llu  child_info=0x%llx  "
+                            "succ_pred_info=0x%llx  n_children=%zu  rank_so_far=%lld  i=%llu j=%llu  continue=%d\n",
+                    bk_sz, (unsigned long long)child_i, (unsigned long long)child_j,
+                    (unsigned long long)child_info, (unsigned long long)succ_pred_info,
+                    n_children, (long long)rank, (unsigned long long)i, (unsigned long long)j,
+                    (int)traverse_common_path);
+#endif
         } while(traverse_common_path);
 
         //entering this if means the range of siblings i,i+1,...,j does not contain the symbol
         if((succ_pred_info>>child_i & ((1<<(child_j-child_i+1))-1))==0) {
+#ifdef VLBT_TRACE_RANK
+            fprintf(stderr, "[trace]   no sibling in [child_i, child_j] holds the symbol -> (%lld, %lld)\n",
+                    (long long)rank_i, (long long)rank_j);
+#endif
             return std::make_pair(rank_i, rank_j);
         }
         //
@@ -566,6 +586,9 @@ public:
             size_t start = stream_type::select64(child_info, pred+1);
             size_t n_real_lsib = __builtin_ctzll(child_info>>(start+1))+1;
             bool following_pred = pred<child_j;
+#ifdef VLBT_TRACE_RANK
+            const size_t j_before = j;
+#endif
             j = !following_pred*j + following_pred*(bk_sz*n_real_lsib-1);
             child_j = pred;
 
@@ -573,8 +596,22 @@ public:
             bit_pos_j = pos + stream.read(p, p+p_width-1)*8;//add the bit offset. now bit_pos points to child
 
             const bool is_leaf = stream.read_bit(bit_pos_j++);
+#ifdef VLBT_TRACE_RANK
+            const int64_t rank_j_before = rank_j;
+#endif
             rank_j += subtree_rank(bit_pos_j, j, symbol, node_sigma, rank_width, bk_sz, is_leaf, following_pred);
+#ifdef VLBT_TRACE_RANK
+            fprintf(stderr, "[trace]   j side: sp_info_j=0x%llx pred=%zu start=%zu n_real_lsib=%zu "
+                            "following_pred=%d  j %zu -> %zu  bk_sz=%zu is_leaf=%d  "
+                            "rank_j %lld -> %lld (subtree contributed %lld)\n",
+                    (unsigned long long)sp_info_j, pred, start, n_real_lsib, (int)following_pred,
+                    j_before, j, bk_sz, (int)is_leaf,
+                    (long long)rank_j_before, (long long)rank_j, (long long)(rank_j-rank_j_before));
+#endif
         }
+#ifdef VLBT_TRACE_RANK
+        fprintf(stderr, "[trace] result: rank_i=%lld rank_j=%lld\n", (long long)rank_i, (long long)rank_j);
+#endif
         return std::make_pair(rank_i, rank_j);
     }
 
